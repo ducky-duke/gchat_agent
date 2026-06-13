@@ -1,0 +1,60 @@
+# Method: spaces.messages.update
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/update#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/update#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/update#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/update#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/update#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/update#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/update#try-it)
+
+Updates a message. There's a difference between the `patch` and `update` methods. The `patch` method uses a `patch` request while the `update` method uses a `put` request. We recommend using the `patch` method. For an example, see [Update a message](https://developers.google.com/workspace/chat/update-messages).
+
+Supports the following types of [authentication](https://developers.google.com/workspace/chat/authenticate-authorize):
+
+- [App authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) with the authorization scope:
+
+  - `https://www.googleapis.com/auth/chat.bot`
+- [User authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following authorization scopes:
+
+  - `https://www.googleapis.com/auth/chat.messages`
+  - `https://www.googleapis.com/auth/chat.import` (import mode spaces only)
+
+When using app authentication, requests can only update messages created by the calling Chat app.
+
+### HTTP request
+
+`PUT https://chat.googleapis.com/v1/{message.name=spaces/*/messages/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `message.name` | `string` Identifier. Resource name of the message. Format: `spaces/{space}/messages/{message}` Where `{space}` is the ID of the space where the message is posted and `{message}` is a system-assigned ID for the message. For example, `spaces/AAAAAAAAAAA/messages/BBBBBBBBBBB.BBBBBBBBBBB`. If you set a custom ID when you create a message, you can use this ID to specify the message in a request by replacing `{message}` with the value from the `clientAssignedMessageId` field. For example, `spaces/AAAAAAAAAAA/messages/client-custom-name`. For details, see [Name a message](https://developers.google.com/workspace/chat/create-messages#name_a_created_message). |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `updateMask` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#field-mask` format)`` Required. The field paths to update. Separate multiple values with commas or use `*` to update all field paths. Currently supported field paths: - `text` - `attachment` - `cards` (Requires [app authentication](https://developers.google.com/chat/api/guides/auth/service-accounts).) - `cardsV2` (Requires [app authentication](https://developers.google.com/chat/api/guides/auth/service-accounts).) - `accessoryWidgets` (Requires [app authentication](https://developers.google.com/chat/api/guides/auth/service-accounts).) - `quotedMessageMetadata` (Only allows removal of the quoted message.) |
+| `allowMissing` | `boolean` Optional. If `true` and the message isn't found, a new message is created and `updateMask` is ignored. The specified message ID must be [client-assigned](https://developers.google.com/workspace/chat/create-messages#name_a_created_message) or the request fails. |
+
+### Request body
+
+The request body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.bot`
+- `https://www.googleapis.com/auth/chat.import`
+- `https://www.googleapis.com/auth/chat.messages`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

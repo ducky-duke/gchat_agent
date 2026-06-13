@@ -1,0 +1,22 @@
+# REST Resource: users.spaces.threads
+
+- [Resource: ThreadReadState](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads#ThreadReadState)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads#ThreadReadState.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads#METHODS_SUMMARY)
+
+## Resource: ThreadReadState
+
+A user's read state within a thread, used to identify read and unread messages.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "lastReadTime": string } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Resource name of the thread read state. Format: `users/{user}/spaces/{space}/threads/{thread}/threadReadState` |
+| `lastReadTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` The time when the user's thread read state was updated. Usually this corresponds with the timestamp of the last read message in a thread. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads/getThreadReadState` | Returns details about a user's read state within a thread, used to identify read and unread messages. |

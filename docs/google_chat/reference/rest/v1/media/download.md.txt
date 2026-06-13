@@ -1,0 +1,42 @@
+# Method: media.download
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download#body.Media.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download#body.aspect)
+
+Downloads uploaded media, but not Google Drive files. Download is supported on the URI `/v1/media/{+name}?alt=media`. To export bytes from a Google Drive file, see the `https://developers.google.com/drive/api/reference/rest/v3/files/export` method in Google Drive.
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/media/{resourceName=**}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `resourceName` | `string` Name of the media that you are downloading. For more information, see `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.AttachmentDataRef`. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, this method returns the file content as bytes.
+
+To download only part of a file, use the `Range` header with a [byte range](https://www.rfc-editor.org/rfc/rfc9110.html#name-byte-ranges). For example: `Range: bytes=500-999`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.bot`
+- `https://www.googleapis.com/auth/chat.messages`
+- `https://www.googleapis.com/auth/chat.messages.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

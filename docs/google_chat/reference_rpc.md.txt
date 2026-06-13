@@ -1,0 +1,57 @@
+The Google Chat API lets you build Chat apps to integrate your services with Google Chat and manage Chat resources such as spaces, members, and messages.
+
+## Service: chat.googleapis.com
+
+The Service name `chat.googleapis.com` is needed to create RPC client stubs.
+
+## `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService`
+
+| Methods ||
+|---|---|
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.CompleteImportSpace` `` | Completes the [import process](https://developers.google.com/workspace/chat/import-data) for the specified space and makes it visible to users. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.CreateCustomEmoji` `` | Creates a custom emoji. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.CreateMembership` `` | Creates a membership for the calling Chat app, a user, or a Google Group. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.CreateMessage` `` | Creates a message in a Google Chat space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.CreateMessagePin` `` | Creates a message pin. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.CreateReaction` `` | Creates a reaction and adds it to a message. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.CreateSection` `` | Creates a section in Google Chat. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.CreateSpace` `` | Creates a space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.DeleteCustomEmoji` `` | Deletes a custom emoji. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.DeleteMembership` `` | Deletes a membership. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.DeleteMessage` `` | Deletes a message. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.DeleteMessagePin` `` | Deletes a message pin. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.DeleteReaction` `` | Deletes a reaction to a message. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.DeleteSection` `` | Deletes a section of type `CUSTOM_SECTION`. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.DeleteSpace` `` | Deletes a named space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.FindDirectMessage` `` | Returns the existing direct message with the specified user. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.FindGroupChats` `` | Returns all spaces with `spaceType == GROUP_CHAT`, whose human memberships contain exactly the calling user, and the users specified in `FindGroupChatsRequest.users`. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetAttachment` `` | Gets the metadata of a message attachment. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetCustomEmoji` `` | Returns details about a custom emoji. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetMembership` `` | Returns details about a membership. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetMessage` `` | Returns details about a message. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetSpace` `` | Returns details about a space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetSpaceEvent` `` | Returns an event from a Google Chat space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetSpaceNotificationSetting` `` | Gets the space notification setting. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetSpaceReadState` `` | Returns details about a user's read state within a space, used to identify read and unread messages. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.GetThreadReadState` `` | Returns details about a user's read state within a thread, used to identify read and unread messages. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListCustomEmojis` `` | Lists custom emojis visible to the authenticated user. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListMemberships` `` | Lists memberships in a space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListMessagePins` `` | Lists message pins in a space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListMessages` `` | Lists messages in a space that the caller is a member of, including messages from blocked members and spaces. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListReactions` `` | Lists reactions to a message. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListSectionItems` `` | Lists items in a section. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListSections` `` | Lists sections available to the Chat user. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListSpaceEvents` `` | Lists events from a Google Chat space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ListSpaces` `` | Lists spaces the caller is a member of. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.MoveSectionItem` `` | Moves an item from one section to another. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.PositionSection` `` | Changes the sort order of a section. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.ReplaceMessageCards` `` | > [!WARNING] > **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features. Replaces the cards included in a message. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.SearchMessages` `` | > [!WARNING] > **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features. Searches for messages in Google Chat that the calling user has access to. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.SearchSpaces` `` | Returns a list of spaces in a Google Workspace organization based on an administrator's search. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.SetUpSpace` `` | Creates a space and adds specified users to it. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.UpdateMembership` `` | Updates a membership. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.UpdateMessage` `` | Updates a message. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.UpdateSection` `` | Updates a section. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.UpdateSpace` `` | Updates a space. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.UpdateSpaceNotificationSetting` `` | Updates the space notification setting. |
+| `` `https://developers.google.com/workspace/chat/api/reference/rpc/google.chat.v1#google.chat.v1.ChatService.UpdateSpaceReadState` `` | Updates a user's read state within a space, used to identify read and unread messages. |

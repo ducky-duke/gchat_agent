@@ -1,0 +1,44 @@
+# Method: users.spaces.threads.getThreadReadState
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads/getThreadReadState#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads/getThreadReadState#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads/getThreadReadState#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads/getThreadReadState#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads/getThreadReadState#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads/getThreadReadState#try-it)
+
+Returns details about a user's read state within a thread, used to identify read and unread messages. For an example, see [Get details about a user's thread read state](https://developers.google.com/workspace/chat/get-thread-read-state).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following [authorization scopes](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.users.readstate.readonly`
+- `https://www.googleapis.com/auth/chat.users.readstate`
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/{name=users/*/spaces/*/threads/*/threadReadState}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. Resource name of the thread read state to retrieve. Only supports getting read state for the calling user. To refer to the calling user, set one of the following: - The `me` alias. For example, `users/me/spaces/{space}/threads/{thread}/threadReadState`. - Their Workspace email address. For example, `users/user@example.com/spaces/{space}/threads/{thread}/threadReadState`. - Their user id. For example, `users/123456789/spaces/{space}/threads/{thread}/threadReadState`. Format: users/{user}/spaces/{space}/threads/{thread}/threadReadState |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads#ThreadReadState`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.users.readstate`
+- `https://www.googleapis.com/auth/chat.users.readstate.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

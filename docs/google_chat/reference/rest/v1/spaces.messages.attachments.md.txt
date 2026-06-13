@@ -1,0 +1,55 @@
+# REST Resource: spaces.messages.attachments
+
+- [Resource: Attachment](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.SCHEMA_REPRESENTATION)
+  - [AttachmentDataRef](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.AttachmentDataRef)
+    - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.AttachmentDataRef.SCHEMA_REPRESENTATION)
+  - [Source](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.Source)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#METHODS_SUMMARY)
+
+## Resource: Attachment
+
+An attachment in Google Chat.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "contentName": string, "contentType": string, "thumbnailUri": string, "downloadUri": string, "source": enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.Source`), "attachmentDataRef": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.AttachmentDataRef`) }, "driveDataRef": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/DriveDataRef`) } } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Identifier. Resource name of the attachment. Format: `spaces/{space}/messages/{message}/attachments/{attachment}`. |
+| `contentName` | `string` Output only. The original file name for the content, not the full path. |
+| `contentType` | `string` Output only. The content type (MIME type) of the file. |
+| `thumbnailUri` | `string` Output only. The thumbnail URL which should be used to preview the attachment to a human user. Chat apps shouldn't use this URL to download attachment content. |
+| `downloadUri` | `string` Output only. The download URL which should be used to allow a human user to download the attachment. Chat apps shouldn't use this URL to download attachment content. |
+| `source` | ``enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.Source`)`` Output only. The source of the attachment. |
+| Union field `data_ref`. The data reference to the attachment. `data_ref` can be only one of the following: ||
+| `attachmentDataRef` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.AttachmentDataRef`)`` Optional. A reference to the attachment data. This field is used to create or update messages with attachments, or with the media API to download the attachment data. |
+| `driveDataRef` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/DriveDataRef`)`` Output only. A reference to the Google Drive attachment. This field is used with the Google Drive API. |
+
+### AttachmentDataRef
+
+A reference to the attachment data.
+
+| JSON representation |
+|---|
+| ``` { "resourceName": string, "attachmentUploadToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `resourceName` | `string` Optional. The resource name of the attachment data. This field is used with the media API to download the attachment data. |
+| `attachmentUploadToken` | `string` Optional. Opaque token containing a reference to an uploaded attachment. Treated by clients as an opaque string and used to create or update Chat messages with attachments. |
+
+### Source
+
+The source of the attachment.
+
+| Enums ||
+|---|---|
+| `SOURCE_UNSPECIFIED` | Reserved. |
+| `DRIVE_FILE` | The file is a Google Drive file. |
+| `UPLOADED_CONTENT` | The file is uploaded to Chat. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments/get` | Gets the metadata of a message attachment. |

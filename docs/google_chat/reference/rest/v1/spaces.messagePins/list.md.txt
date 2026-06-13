@@ -1,0 +1,66 @@
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list#body.ListMessagePinsResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list#try-it)
+
+Lists message pins in a space. Users can pin important messages in spaces for easy access. For more information, see [Pin or unpin a conversation in Google Chat](https://support.google.com/chat/answer/15622437).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following [authorization scopes](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.spaces.pins.readonly`
+- `https://www.googleapis.com/auth/chat.spaces.pins`
+- `https://www.googleapis.com/auth/chat.spaces.readonly`
+- `https://www.googleapis.com/auth/chat.spaces`
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/{parent=spaces/*}/messagePins`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. The parent space which owns the collection of pinned items Format: `spaces/{space}` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Optional. The maximum number of message pins returned. The service might return fewer messages than this value. The maximum value is 100. If you use a value more than 100, it's automatically changed to 100. If unspecified, at most 100 message pins will be returned. Negative values return an `INVALID_ARGUMENT` error. |
+| `pageToken` | `string` Optional. A page token received from a previous list message pins call. Provide this parameter to retrieve the subsequent page. When paginating, all other parameters provided should match the call that provided the page token. Passing different values to the other parameters might lead to unexpected results. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response message for listing message pins.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "messagePins": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins#MessagePin`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `messagePins[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins#MessagePin`)`` The pinned messages from the specified space. |
+| `nextPageToken` | `string` You can send a token as `pageToken` to retrieve the next page of results. If empty, there are no subsequent pages. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.spaces.pins`
+- `https://www.googleapis.com/auth/chat.spaces.pins.readonly`
+- `https://www.googleapis.com/auth/chat.spaces`
+- `https://www.googleapis.com/auth/chat.spaces.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

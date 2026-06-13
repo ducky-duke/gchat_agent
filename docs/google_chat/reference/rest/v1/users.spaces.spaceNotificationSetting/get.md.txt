@@ -1,0 +1,42 @@
+# Method: users.spaces.spaceNotificationSetting.get
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/get#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/get#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/get#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/get#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/get#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/get#try-it)
+
+Gets the space notification setting. For an example, see [Get the caller's space notification setting](https://developers.google.com/workspace/chat/get-space-notification-setting).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with the [authorization scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.users.spacesettings`
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/{name=users/*/spaces/*/spaceNotificationSetting}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. Format: users/{user}/spaces/{space}/spaceNotificationSetting - `users/me/spaces/{space}/spaceNotificationSetting`, OR - `users/user@example.com/spaces/{space}/spaceNotificationSetting`, OR - `users/123456789/spaces/{space}/spaceNotificationSetting`. Note: Only the caller's user id or email is allowed in the path. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#SpaceNotificationSetting`.
+
+### Authorization scopes
+
+Requires the following OAuth scope:
+
+- `https://www.googleapis.com/auth/chat.users.spacesettings`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

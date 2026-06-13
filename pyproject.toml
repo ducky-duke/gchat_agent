@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gchat-agent"
+version = "0.1.0"
+description = "Google Chat issue-spotter AI agent (detect → clarify → report)."
+requires-python = ">=3.11"
+# Core LLM transport (§2/§9): the official OpenAI SDK pointed at OpenRouter.
+# Pure-Python and lazy-imported at runtime, so the mock/CI path needs no key.
+dependencies = [
+    "openai",
+]
+
+[project.optional-dependencies]
+# Langfuse LLM + agent-flow tracing; active only when OBSERVABILITY=langfuse (§5.9).
+observability = ["langfuse"]
+# google-auth, used ONLY for the optional Phase-2 webhook bearer-token check (§5.4).
+google = ["google-auth"]
+# Optional local embedding backend for the dense retriever (RAG_DENSE=true);
+# pulls torch and may lag Python 3.14 — off by default, the BM25+boost default
+# needs none of it.
+embeddings = ["sentence-transformers"]
+dev = []
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

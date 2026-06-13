@@ -1,0 +1,69 @@
+# Method: spaces.members.delete
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/delete#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/delete#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/delete#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/delete#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/delete#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/delete#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/delete#try-it)
+
+Deletes a membership. For an example, see [Remove a user or a Google Chat app from a space](https://developers.google.com/workspace/chat/delete-members).
+
+Supports the following types of [authentication](https://developers.google.com/workspace/chat/authenticate-authorize):
+
+- [App authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) with [administrator approval](https://support.google.com/a?p=chat-app-auth) and the authorization scope:
+
+  - `https://www.googleapis.com/auth/chat.app.memberships`
+- [User authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following authorization scopes:
+
+  - `https://www.googleapis.com/auth/chat.memberships`
+  - `https://www.googleapis.com/auth/chat.memberships.app` (to remove the calling app from the space)
+  - `https://www.googleapis.com/auth/chat.import` (import mode spaces only)
+  - User authentication grants administrator privileges when an administrator account authenticates, `useAdminAccess` is `true`, and the following authorization scope is used:
+    - `https://www.googleapis.com/auth/chat.admin.memberships`
+
+App authentication is not supported for the following use cases:
+
+- Removing a Google Group from a space.
+- Removing a Chat app from a space.
+
+To delete memberships for space managers, the requester must be a space manager. If you're using [app authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) the Chat app must be the space creator.
+
+### HTTP request
+
+`DELETE https://chat.googleapis.com/v1/{name=spaces/*/members/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. Resource name of the membership to delete. Chat apps can delete human users' or their own memberships. Chat apps can't delete other apps' memberships. When deleting a human membership, requires the `chat.memberships` scope with [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) or the `chat.memberships.app` scope with [app authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) and the `spaces/{space}/members/{member}` format. You can use the email as an alias for `{member}`. For example, `spaces/{space}/members/example@gmail.com` where `example@gmail.com` is the email of the Google Chat user. When deleting an app membership, requires the `chat.memberships.app` scope and `spaces/{space}/members/app` format. Format: `spaces/{space}/members/{member}` or `spaces/{space}/members/app`. |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `useAdminAccess` | `boolean` Optional. When `true`, the method runs using the user's Google Workspace administrator privileges. The calling user must be a Google Workspace administrator with the [manage chat and spaces conversations privilege](https://support.google.com/a/answer/13369245). Requires the `chat.admin.memberships` [OAuth 2.0 scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes). Deleting app memberships in a space isn't supported using admin access. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.app.memberships`
+- `https://www.googleapis.com/auth/chat.admin.memberships`
+- `https://www.googleapis.com/auth/chat.import`
+- `https://www.googleapis.com/auth/chat.memberships`
+- `https://www.googleapis.com/auth/chat.memberships.app`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

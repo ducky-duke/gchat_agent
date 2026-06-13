@@ -1,0 +1,74 @@
+# Method: spaces.members.create
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create#try-it)
+
+Creates a membership for the calling Chat app, a user, or a Google Group. Creating memberships for other Chat apps isn't supported. When creating a membership, if the specified member has their auto-accept policy turned off, then they're invited, and must accept the space invitation before joining. Otherwise, creating a membership adds the member directly to the specified space.
+
+Supports the following types of [authentication](https://developers.google.com/workspace/chat/authenticate-authorize):
+
+- [App authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) with [administrator approval](https://support.google.com/a?p=chat-app-auth) and the authorization scope:
+
+  - `https://www.googleapis.com/auth/chat.app.memberships`
+- [User authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following authorization scopes:
+
+  - `https://www.googleapis.com/auth/chat.memberships`
+  - `https://www.googleapis.com/auth/chat.memberships.app` (to add the calling app to the space)
+  - `https://www.googleapis.com/auth/chat.import` (import mode spaces only)
+  - User authentication grants administrator privileges when an administrator account authenticates, `useAdminAccess` is `true`, and the following authorization scope is used:
+    - `https://www.googleapis.com/auth/chat.admin.memberships`
+
+App authentication is not supported for the following use cases:
+
+- Inviting users external to the Workspace organization that owns the space.
+- Adding a Google Group to a space.
+- Adding a Chat app to a space.
+
+For example usage, see:
+
+- [Invite or add a user to a space](https://developers.google.com/workspace/chat/create-members#create-user-membership).
+- [Invite or add a Google Group to a space](https://developers.google.com/workspace/chat/create-members#create-group-membership).
+- [Add the Chat app to a space](https://developers.google.com/workspace/chat/create-members#create-membership-calling-api).
+
+### HTTP request
+
+`POST https://chat.googleapis.com/v1/{parent=spaces/*}/members`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. The resource name of the space for which to create the membership. Format: spaces/{space} |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `useAdminAccess` | `boolean` Optional. When `true`, the method runs using the user's Google Workspace administrator privileges. The calling user must be a Google Workspace administrator with the [manage chat and spaces conversations privilege](https://support.google.com/a/answer/13369245). Requires the `chat.admin.memberships` [OAuth 2.0 scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes). Creating app memberships or creating memberships for users outside the administrator's Google Workspace organization isn't supported using admin access. |
+
+### Request body
+
+The request body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`.
+
+### Response body
+
+If successful, the response body contains a newly created instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.app.memberships`
+- `https://www.googleapis.com/auth/chat.admin.memberships`
+- `https://www.googleapis.com/auth/chat.import`
+- `https://www.googleapis.com/auth/chat.memberships`
+- `https://www.googleapis.com/auth/chat.memberships.app`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

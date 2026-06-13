@@ -1,0 +1,109 @@
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#body.aspect)
+- [MessageReplyOption](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#MessageReplyOption)
+- [CreateMessageNotificationOptions](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#CreateMessageNotificationOptions)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#CreateMessageNotificationOptions.SCHEMA_REPRESENTATION)
+- [NotificationType](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#NotificationType)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#try-it)
+
+Creates a message in a Google Chat space. For an example, see [Send a message](https://developers.google.com/workspace/chat/create-messages).
+
+Supports the following types of [authentication](https://developers.google.com/workspace/chat/authenticate-authorize):
+
+- [App authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) with the authorization scope:
+  - `https://www.googleapis.com/auth/chat.bot`
+- [User authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following authorization scopes:
+  - `https://www.googleapis.com/auth/chat.messages.create`
+  - `https://www.googleapis.com/auth/chat.messages`
+  - `https://www.googleapis.com/auth/chat.import` (import mode spaces only)
+
+Chat attributes the message sender differently depending on the type of authentication that you use in your request.
+
+The following image shows how Chat attributes a message when you use app authentication. Chat displays the Chat app as the message sender. The content of the message can contain text (`text`), cards (`cardsV2`), and accessory widgets (`accessoryWidgets`).
+
+![Message sent with app authentication](https://developers.google.com/workspace/chat/images/message-app-auth.svg)
+
+The following image shows how Chat attributes a message when you use user authentication. Chat displays the user as the message sender and attributes the Chat app to the message by displaying its name. The content of message can only contain text (`text`).
+
+![Message sent with user authentication](https://developers.google.com/workspace/chat/images/message-user-auth.svg)
+
+The maximum message size, including the message contents, is 32,000 bytes.
+
+For [webhook](https://developers.google.com/workspace/chat/quickstart/webhooks) requests, the response doesn't contain the full message. The response only populates the `name` and `thread.name` fields in addition to the information that was in the request.
+
+### HTTP request
+
+`POST https://chat.googleapis.com/v1/{parent=spaces/*}/messages`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. The resource name of the space in which to create a message. Format: `spaces/{space}` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `threadKey (deprecated)` | `string` Optional. Deprecated: Use `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.Thread.FIELDS.thread_key` instead. ID for the thread. Supports up to 4000 characters. To start or add to a thread, create a message and specify a `threadKey` or the `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.Thread.FIELDS.name`. For example usage, see [Start or reply to a message thread](https://developers.google.com/workspace/chat/create-messages#create-message-thread). |
+| `requestId` | `string` Optional. A unique request ID for this message. Specifying an existing request ID returns the message created with that ID instead of creating a new message. |
+| `messageReplyOption` | ``enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#MessageReplyOption`)`` Optional. Specifies whether a message starts a thread or replies to one. Only supported in named spaces. When [responding to user interactions](https://developers.google.com/workspace/chat/receive-respond-interactions), this field is ignored. For interactions within a thread, the reply is created in the same thread. Otherwise, the reply is created as a new thread. |
+| `messageId` | `string` Optional. A custom ID for a message. Lets Chat apps get, update, or delete a message without needing to store the system-assigned ID in the message's resource name (represented in the message `name` field). The value for this field must meet the following requirements: - Begins with `client-`. For example, `client-custom-name` is a valid custom ID, but `custom-name` is not. - Contains up to 63 characters and only lowercase letters, numbers, and hyphens. - Is unique within a space. A Chat app can't use the same custom ID for different messages. For details, see [Name a message](https://developers.google.com/workspace/chat/create-messages#name_a_created_message). |
+| `createMessageNotificationOptions` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#CreateMessageNotificationOptions`)`` Optional. Controls the notification behavior when the message is posted. To learn more, see [Force notifications or send silent messages](https://developer.google.com/workspace/chat/create-messages#force-notify-silent). |
+
+### Request body
+
+The request body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`.
+
+### Response body
+
+If successful, the response body contains a newly created instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.bot`
+- `https://www.googleapis.com/auth/chat.import`
+- `https://www.googleapis.com/auth/chat.messages`
+- `https://www.googleapis.com/auth/chat.messages.create`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).
+
+## MessageReplyOption
+
+Specifies how to reply to a message. More states might be added in the future.
+
+| Enums ||
+|---|---|
+| `MESSAGE_REPLY_OPTION_UNSPECIFIED` | Default. Starts a new thread. Using this option ignores any `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.Thread.FIELDS.name` or `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.Thread.FIELDS.thread_key` that's included. |
+| `REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD` | Creates the message as a reply to the thread specified by `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.Thread.FIELDS.name` or `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.Thread.FIELDS.thread_key`. If it fails, the message starts a new thread instead. |
+| `REPLY_MESSAGE_OR_FAIL` | Creates the message as a reply to the thread specified by `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.Thread.FIELDS.name` or `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.Thread.FIELDS.thread_key`. If a new `threadKey` is used, a new thread is created. If the message creation fails, a `NOT_FOUND` error is returned instead. |
+
+## CreateMessageNotificationOptions
+
+Options for the notification behavior when the message is posted.
+
+| JSON representation |
+|---|
+| ``` { "notificationType": enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#NotificationType`) } ``` |
+
+| Fields ||
+|---|---|
+| `notificationType` | ``enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create#NotificationType`)`` The notification type for the message. |
+
+## NotificationType
+
+The notification types options for the message.
+
+| Enums ||
+|---|---|
+| `NOTIFICATION_TYPE_NONE` | Default behavior. Notification behavior is similar to when the human user sends the message using the Chat UI: no notification is sent to the human sender. |
+| `NOTIFICATION_TYPE_FORCE_NOTIFY` | Force notify recipients. This bypasses users' space notification settings and [Chat Do Not Disturb settings](https://support.google.com/chat/answer/9093489). This option does not bypass device-level Do Not Disturb settings. Requires [app authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app). |
+| `NOTIFICATION_TYPE_SILENT` | Silence the notification as if the recipients have [Chat Do Not Disturb](https://support.google.com/chat/answer/9093489) enabled or have muted the space. Requires [app authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app). |

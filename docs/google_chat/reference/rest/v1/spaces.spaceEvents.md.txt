@@ -1,0 +1,331 @@
+# REST Resource: spaces.spaceEvents
+
+- [Resource: SpaceEvent](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceEvent)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceEvent.SCHEMA_REPRESENTATION)
+- [MessageCreatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageCreatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageCreatedEventData.SCHEMA_REPRESENTATION)
+- [MessageUpdatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageUpdatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageUpdatedEventData.SCHEMA_REPRESENTATION)
+- [MessageDeletedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageDeletedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageDeletedEventData.SCHEMA_REPRESENTATION)
+- [MessageBatchCreatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchCreatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchCreatedEventData.SCHEMA_REPRESENTATION)
+- [MessageBatchUpdatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchUpdatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchUpdatedEventData.SCHEMA_REPRESENTATION)
+- [MessageBatchDeletedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchDeletedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchDeletedEventData.SCHEMA_REPRESENTATION)
+- [SpaceUpdatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceUpdatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceUpdatedEventData.SCHEMA_REPRESENTATION)
+- [SpaceBatchUpdatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceBatchUpdatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceBatchUpdatedEventData.SCHEMA_REPRESENTATION)
+- [MembershipCreatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipCreatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipCreatedEventData.SCHEMA_REPRESENTATION)
+- [MembershipUpdatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipUpdatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipUpdatedEventData.SCHEMA_REPRESENTATION)
+- [MembershipDeletedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipDeletedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipDeletedEventData.SCHEMA_REPRESENTATION)
+- [MembershipBatchCreatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchCreatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchCreatedEventData.SCHEMA_REPRESENTATION)
+- [MembershipBatchUpdatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchUpdatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchUpdatedEventData.SCHEMA_REPRESENTATION)
+- [MembershipBatchDeletedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchDeletedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchDeletedEventData.SCHEMA_REPRESENTATION)
+- [ReactionCreatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionCreatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionCreatedEventData.SCHEMA_REPRESENTATION)
+- [ReactionDeletedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionDeletedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionDeletedEventData.SCHEMA_REPRESENTATION)
+- [ReactionBatchCreatedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionBatchCreatedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionBatchCreatedEventData.SCHEMA_REPRESENTATION)
+- [ReactionBatchDeletedEventData](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionBatchDeletedEventData)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionBatchDeletedEventData.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#METHODS_SUMMARY)
+
+## Resource: SpaceEvent
+
+An event that represents a change or activity in a Google Chat space. To learn more, see [Work with events from Google Chat](https://developers.google.com/workspace/chat/events-overview).
+
+| JSON representation |
+|---|
+| ``` { "name": string, "eventTime": string, "eventType": string, "messageCreatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageCreatedEventData`) }, "messageUpdatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageUpdatedEventData`) }, "messageDeletedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageDeletedEventData`) }, "messageBatchCreatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchCreatedEventData`) }, "messageBatchUpdatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchUpdatedEventData`) }, "messageBatchDeletedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchDeletedEventData`) }, "spaceUpdatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceUpdatedEventData`) }, "spaceBatchUpdatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceBatchUpdatedEventData`) }, "membershipCreatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipCreatedEventData`) }, "membershipUpdatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipUpdatedEventData`) }, "membershipDeletedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipDeletedEventData`) }, "membershipBatchCreatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchCreatedEventData`) }, "membershipBatchUpdatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchUpdatedEventData`) }, "membershipBatchDeletedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchDeletedEventData`) }, "reactionCreatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionCreatedEventData`) }, "reactionDeletedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionDeletedEventData`) }, "reactionBatchCreatedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionBatchCreatedEventData`) }, "reactionBatchDeletedEventData": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionBatchDeletedEventData`) } } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Resource name of the space event. Format: `spaces/{space}/spaceEvents/{spaceEvent}` |
+| `eventTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Time when the event occurred. |
+| `eventType` | `string` Type of space event. Each event type has a batch version, which represents multiple instances of the event type that occur in a short period of time. For `spaceEvents.list()` requests, omit batch event types in your query filter. By default, the server returns both event type and its batch version. Supported event types for [messages](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages): - New message: `google.workspace.chat.message.v1.created` - Updated message: `google.workspace.chat.message.v1.updated` - Deleted message: `google.workspace.chat.message.v1.deleted` - Multiple new messages: `google.workspace.chat.message.v1.batchCreated` - Multiple updated messages: `google.workspace.chat.message.v1.batchUpdated` - Multiple deleted messages: `google.workspace.chat.message.v1.batchDeleted` Supported event types for [memberships](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members): - New membership: `google.workspace.chat.membership.v1.created` - Updated membership: `google.workspace.chat.membership.v1.updated` - Deleted membership: `google.workspace.chat.membership.v1.deleted` - Multiple new memberships: `google.workspace.chat.membership.v1.batchCreated` - Multiple updated memberships: `google.workspace.chat.membership.v1.batchUpdated` - Multiple deleted memberships: `google.workspace.chat.membership.v1.batchDeleted` Supported event types for [reactions](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions): - New reaction: `google.workspace.chat.reaction.v1.created` - Deleted reaction: `google.workspace.chat.reaction.v1.deleted` - Multiple new reactions: `google.workspace.chat.reaction.v1.batchCreated` - Multiple deleted reactions: `google.workspace.chat.reaction.v1.batchDeleted` Supported event types about the [space](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces): - Updated space: `google.workspace.chat.space.v1.updated` - Multiple space updates: `google.workspace.chat.space.v1.batchUpdated` |
+| Union field `payload`. `payload` can be only one of the following: ||
+| `messageCreatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageCreatedEventData`)`` Event payload for a new message. Event type: `google.workspace.chat.message.v1.created` |
+| `messageUpdatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageUpdatedEventData`)`` Event payload for an updated message. Event type: `google.workspace.chat.message.v1.updated` |
+| `messageDeletedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageDeletedEventData`)`` Event payload for a deleted message. Event type: `google.workspace.chat.message.v1.deleted` |
+| `messageBatchCreatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchCreatedEventData`)`` Event payload for multiple new messages. Event type: `google.workspace.chat.message.v1.batchCreated` |
+| `messageBatchUpdatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchUpdatedEventData`)`` Event payload for multiple updated messages. Event type: `google.workspace.chat.message.v1.batchUpdated` |
+| `messageBatchDeletedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageBatchDeletedEventData`)`` Event payload for multiple deleted messages. Event type: `google.workspace.chat.message.v1.batchDeleted` |
+| `spaceUpdatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceUpdatedEventData`)`` Event payload for a space update. Event type: `google.workspace.chat.space.v1.updated` |
+| `spaceBatchUpdatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceBatchUpdatedEventData`)`` Event payload for multiple updates to a space. Event type: `google.workspace.chat.space.v1.batchUpdated` |
+| `membershipCreatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipCreatedEventData`)`` Event payload for a new membership. Event type: `google.workspace.chat.membership.v1.created` |
+| `membershipUpdatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipUpdatedEventData`)`` Event payload for an updated membership. Event type: `google.workspace.chat.membership.v1.updated` |
+| `membershipDeletedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipDeletedEventData`)`` Event payload for a deleted membership. Event type: `google.workspace.chat.membership.v1.deleted` |
+| `membershipBatchCreatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchCreatedEventData`)`` Event payload for multiple new memberships. Event type: `google.workspace.chat.membership.v1.batchCreated` |
+| `membershipBatchUpdatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchUpdatedEventData`)`` Event payload for multiple updated memberships. Event type: `google.workspace.chat.membership.v1.batchUpdated` |
+| `membershipBatchDeletedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipBatchDeletedEventData`)`` Event payload for multiple deleted memberships. Event type: `google.workspace.chat.membership.v1.batchDeleted` |
+| `reactionCreatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionCreatedEventData`)`` Event payload for a new reaction. Event type: `google.workspace.chat.reaction.v1.created` |
+| `reactionDeletedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionDeletedEventData`)`` Event payload for a deleted reaction. Event type: `google.workspace.chat.reaction.v1.deleted` |
+| `reactionBatchCreatedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionBatchCreatedEventData`)`` Event payload for multiple new reactions. Event type: `google.workspace.chat.reaction.v1.batchCreated` |
+| `reactionBatchDeletedEventData` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionBatchDeletedEventData`)`` Event payload for multiple deleted reactions. Event type: `google.workspace.chat.reaction.v1.batchDeleted` |
+
+## MessageCreatedEventData
+
+Event payload for a new message.
+
+Event type: `google.workspace.chat.message.v1.created`
+
+| JSON representation |
+|---|
+| ``` { "message": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`) } } ``` |
+
+| Fields ||
+|---|---|
+| `message` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`)`` The new message. |
+
+## MessageUpdatedEventData
+
+Event payload for an updated message.
+
+Event type: `google.workspace.chat.message.v1.updated`
+
+| JSON representation |
+|---|
+| ``` { "message": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`) } } ``` |
+
+| Fields ||
+|---|---|
+| `message` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`)`` The updated message. |
+
+## MessageDeletedEventData
+
+Event payload for a deleted message.
+
+Event type: `google.workspace.chat.message.v1.deleted`
+
+| JSON representation |
+|---|
+| ``` { "message": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`) } } ``` |
+
+| Fields ||
+|---|---|
+| `message` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`)`` The deleted message. Only the `name`, `createTime`, and `deletionMetadata` fields are populated. |
+
+## MessageBatchCreatedEventData
+
+Event payload for multiple new messages.
+
+Event type: `google.workspace.chat.message.v1.batchCreated`
+
+| JSON representation |
+|---|
+| ``` { "messages": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageCreatedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `messages[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageCreatedEventData`)`` A list of new messages. |
+
+## MessageBatchUpdatedEventData
+
+Event payload for multiple updated messages.
+
+Event type: `google.workspace.chat.message.v1.batchUpdated`
+
+| JSON representation |
+|---|
+| ``` { "messages": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageUpdatedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `messages[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageUpdatedEventData`)`` A list of updated messages. |
+
+## MessageBatchDeletedEventData
+
+Event payload for multiple deleted messages.
+
+Event type: `google.workspace.chat.message.v1.batchDeleted`
+
+| JSON representation |
+|---|
+| ``` { "messages": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageDeletedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `messages[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MessageDeletedEventData`)`` A list of deleted messages. |
+
+## SpaceUpdatedEventData
+
+Event payload for an updated space.
+
+Event type: `google.workspace.chat.space.v1.updated`
+
+| JSON representation |
+|---|
+| ``` { "space": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`) } } ``` |
+
+| Fields ||
+|---|---|
+| `space` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`)`` The updated space. |
+
+## SpaceBatchUpdatedEventData
+
+Event payload for multiple updates to a space.
+
+Event type: `google.workspace.chat.space.v1.batchUpdated`
+
+| JSON representation |
+|---|
+| ``` { "spaces": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceUpdatedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `spaces[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#SpaceUpdatedEventData`)`` A list of updated spaces. |
+
+## MembershipCreatedEventData
+
+Event payload for a new membership.
+
+Event type: `google.workspace.chat.membership.v1.created`.
+
+| JSON representation |
+|---|
+| ``` { "membership": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`) } } ``` |
+
+| Fields ||
+|---|---|
+| `membership` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`)`` The new membership. |
+
+## MembershipUpdatedEventData
+
+Event payload for an updated membership.
+
+Event type: `google.workspace.chat.membership.v1.updated`
+
+| JSON representation |
+|---|
+| ``` { "membership": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`) } } ``` |
+
+| Fields ||
+|---|---|
+| `membership` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`)`` The updated membership. |
+
+## MembershipDeletedEventData
+
+Event payload for a deleted membership.
+
+Event type: `google.workspace.chat.membership.v1.deleted`
+
+| JSON representation |
+|---|
+| ``` { "membership": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`) } } ``` |
+
+| Fields ||
+|---|---|
+| `membership` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members#Membership`)`` The deleted membership. Only the `name` and `state` fields are populated. |
+
+## MembershipBatchCreatedEventData
+
+Event payload for multiple new memberships.
+
+Event type: `google.workspace.chat.membership.v1.batchCreated`
+
+| JSON representation |
+|---|
+| ``` { "memberships": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipCreatedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `memberships[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipCreatedEventData`)`` A list of new memberships. |
+
+## MembershipBatchUpdatedEventData
+
+Event payload for multiple updated memberships.
+
+Event type: `google.workspace.chat.membership.v1.batchUpdated`
+
+| JSON representation |
+|---|
+| ``` { "memberships": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipUpdatedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `memberships[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipUpdatedEventData`)`` A list of updated memberships. |
+
+## MembershipBatchDeletedEventData
+
+Event payload for multiple deleted memberships.
+
+Event type: `google.workspace.chat.membership.v1.batchDeleted`
+
+| JSON representation |
+|---|
+| ``` { "memberships": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipDeletedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `memberships[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#MembershipDeletedEventData`)`` A list of deleted memberships. |
+
+## ReactionCreatedEventData
+
+Event payload for a new reaction.
+
+Event type: `google.workspace.chat.reaction.v1.created`
+
+| JSON representation |
+|---|
+| ``` { "reaction": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#Reaction`) } } ``` |
+
+| Fields ||
+|---|---|
+| `reaction` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#Reaction`)`` The new reaction. |
+
+## ReactionDeletedEventData
+
+Event payload for a deleted reaction.
+
+Type: `google.workspace.chat.reaction.v1.deleted`
+
+| JSON representation |
+|---|
+| ``` { "reaction": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#Reaction`) } } ``` |
+
+| Fields ||
+|---|---|
+| `reaction` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#Reaction`)`` The deleted reaction. |
+
+## ReactionBatchCreatedEventData
+
+Event payload for multiple new reactions.
+
+Event type: `google.workspace.chat.reaction.v1.batchCreated`
+
+| JSON representation |
+|---|
+| ``` { "reactions": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionCreatedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `reactions[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionCreatedEventData`)`` A list of new reactions. |
+
+## ReactionBatchDeletedEventData
+
+Event payload for multiple deleted reactions.
+
+Event type: `google.workspace.chat.reaction.v1.batchDeleted`
+
+| JSON representation |
+|---|
+| ``` { "reactions": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionDeletedEventData`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `reactions[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents#ReactionDeletedEventData`)`` A list of deleted reactions. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents/get` | Returns an event from a Google Chat space. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents/list` | Lists events from a Google Chat space. |

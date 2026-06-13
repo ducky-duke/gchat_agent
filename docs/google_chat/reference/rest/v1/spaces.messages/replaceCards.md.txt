@@ -1,0 +1,60 @@
+# Method: spaces.messages.replaceCards
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/replaceCards#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/replaceCards#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/replaceCards#body.request_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/replaceCards#body.request_body.SCHEMA_REPRESENTATION)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/replaceCards#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/replaceCards#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/replaceCards#try-it)
+
+<br />
+
+> [!WARNING]
+> **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features.
+
+Replaces the cards included in a message.
+
+<br />
+
+A Chat app can only replace cards on a human-created message if the message already contains cards, and the cards were created by the app.
+
+If the app replaces the cards with an empty list, the cards are removed. After removing the cards, the app cannot add cards back to the message.
+
+Requires [app authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) with the [authorization scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes): - `https://www.googleapis.com/auth/chat.bot`
+
+### HTTP request
+
+`POST https://chat.googleapis.com/v1/{name=spaces/*/messages/*}:replaceCards`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. The resource name of the message. Format: `spaces/{space}/messages/{message}` |
+
+### Request body
+
+The request body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "cardsV2": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.CardWithId`) } ] } ``` |
+
+| Fields ||
+|---|---|
+| `cardsV2[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message.CardWithId`)`` Optional. An array of [cards](https://developers.google.com/workspace/chat/api/reference/rest/v1/cards) to be included in the message. These cards will replace the existing cards of the message. If empty, the original cards included in the message will be cleared. |
+
+### Response body
+
+If successful, the response body is empty.
+
+### Authorization scopes
+
+Requires the following OAuth scope:
+
+- `https://www.googleapis.com/auth/chat.bot`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

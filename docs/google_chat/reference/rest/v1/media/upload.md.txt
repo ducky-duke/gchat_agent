@@ -1,0 +1,68 @@
+# Method: media.upload
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload#body.request_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload#body.request_body.SCHEMA_REPRESENTATION)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload#body.UploadAttachmentResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload#body.aspect)
+
+Uploads an attachment. For an example, see [Upload media as a file attachment](https://developers.google.com/workspace/chat/upload-media-attachments).
+
+Requires user [authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following [authorization scopes](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.messages.create`
+- `https://www.googleapis.com/auth/chat.messages`
+- `https://www.googleapis.com/auth/chat.import` (import mode spaces only)
+
+You can upload attachments up to 200 MB. Certain file types aren't supported. For details, see [File types blocked by Google Chat](https://support.google.com/chat/answer/7651457?&co=GENIE.Platform%3DDesktop#File%20types%20blocked%20in%20Google%20Chat).
+
+### HTTP request
+
+- Upload URI, for media upload requests:  
+  `POST https://chat.googleapis.com/upload/v1/{parent=spaces/*}/attachments:upload`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. Resource name of the Chat space in which the attachment is uploaded. Format "spaces/{space}". |
+
+### Request body
+
+The request body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "filename": string } ``` |
+
+| Fields ||
+|---|---|
+| `filename` | `string` Required. The filename of the attachment, including the file extension. |
+
+### Response body
+
+Response of uploading an attachment.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "attachmentDataRef": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.AttachmentDataRef`) } } ``` |
+
+| Fields ||
+|---|---|
+| `attachmentDataRef` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments#Attachment.AttachmentDataRef`)`` Reference to the uploaded attachment. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.import`
+- `https://www.googleapis.com/auth/chat.messages.create`
+- `https://www.googleapis.com/auth/chat.messages`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

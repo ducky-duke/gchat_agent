@@ -1,0 +1,22 @@
+- [Resource: MessagePin](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins#MessagePin)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins#MessagePin.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins#METHODS_SUMMARY)
+
+## Resource: MessagePin
+
+A pin on a Chat message. For more information see [Pin a message](https://support.google.com/chat?p=chat-board-hc).
+
+| JSON representation |
+|---|
+| ``` { "name": string, "message": string } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Identifier. The resource name of the message pin. Format: `spaces/{space}/messagePins/{messagePin}` The resource ID component matches the resource ID component of the message. For example, a message with `spaces/AAA/messages/bbb.ccc` corresponds to the message pin with the resource name `spaces/AAA/messagePins/bbb.ccc`. |
+| `message` | `string` Required. Immutable. The resource name of the message that is pinned. Format: `spaces/{space}/messages/{message}` |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/create` | Pins a message. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/delete` | Deletes a message pin (unpins the message). |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list` | Lists pinned messages in a space. |

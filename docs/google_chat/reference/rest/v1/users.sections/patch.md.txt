@@ -1,0 +1,49 @@
+# Method: users.sections.patch
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/patch#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/patch#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/patch#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/patch#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/patch#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/patch#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/patch#try-it)
+
+Updates a section. Only sections of type `CUSTOM_SECTION` can be updated. For details, see [Create and organize sections in Google Chat](https://support.google.com/chat/answer/16059854).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with the [authorization scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.users.sections`
+
+### HTTP request
+
+`PATCH https://chat.googleapis.com/v1/{section.name=users/*/sections/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `section.name` | `string` Identifier. Resource name of the section. For system sections, the section ID is a constant string: - DEFAULT_DIRECT_MESSAGES: `users/{user}/sections/default-direct-messages` - DEFAULT_SPACES: `users/{user}/sections/default-spaces` - DEFAULT_APPS: `users/{user}/sections/default-apps` Format: `users/{user}/sections/{section}` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `updateMask` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#field-mask` format)`` Required. The mask to specify which fields to update. Currently supported field paths: - `displayName` |
+
+### Request body
+
+The request body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections#Section`.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections#Section`.
+
+### Authorization scopes
+
+Requires the following OAuth scope:
+
+- `https://www.googleapis.com/auth/chat.users.sections`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

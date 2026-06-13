@@ -1,0 +1,75 @@
+# Method: spaces.messages.list
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list#body.ListMessagesResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list#try-it)
+
+Lists messages in a space that the caller is a member of, including messages from blocked members and spaces. System messages, like those announcing new space members, aren't included. If you list messages from a space with no messages, the response is an empty object. When using a REST/HTTP interface, the response contains an empty JSON object, `{}`. For an example, see [List messages](https://developers.google.com/workspace/chat/api/guides/v1/messages/list).
+
+Supports the following types of [authentication](https://developers.google.com/workspace/chat/authenticate-authorize):
+
+- [App authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) with [administrator approval](https://support.google.com/a?p=chat-app-auth) with the authorization scope:
+
+  - `https://www.googleapis.com/auth/chat.app.messages.readonly`. When using this authentication scope, this method only returns public messages in a space. It doesn't include private messages.
+- [User authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following authorization scopes:
+
+  - `https://www.googleapis.com/auth/chat.messages.readonly`
+  - `https://www.googleapis.com/auth/chat.messages`
+  - `https://www.googleapis.com/auth/chat.import` (import mode spaces only)
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/{parent=spaces/*}/messages`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. The resource name of the space to list messages from. Format: `spaces/{space}` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Optional. The maximum number of messages returned. The service might return fewer messages than this value. If unspecified, at most 25 are returned. The maximum value is 1000. If you use a value more than 1000, it's automatically changed to 1000. Negative values return an `INVALID_ARGUMENT` error. |
+| `pageToken` | `string` Optional. A page token received from a previous list messages call. Provide this parameter to retrieve the subsequent page. When paginating, all other parameters provided should match the call that provided the page token. Passing different values to the other parameters might lead to unexpected results. |
+| `filter` | `string` Optional. A query filter. You can filter messages by date (`createTime`) and thread (`thread.name`). To filter messages by the date they were created, specify the `createTime` with a timestamp in [RFC-3339](https://www.rfc-editor.org/rfc/rfc3339) format and double quotation marks. For example, `"2023-04-21T11:30:00-04:00"`. You can use the greater than operator `>` to list messages that were created after a timestamp, or the less than operator `<` to list messages that were created before a timestamp. To filter messages within a time interval, use the `AND` operator between two timestamps. To filter by thread, specify the `thread.name`, formatted as `spaces/{space}/threads/{thread}`. You can only specify one `thread.name` per query. To filter by both thread and date, use the `AND` operator in your query. For example, the following queries are valid: createTime > "2012-04-21T11:30:00-04:00" createTime > "2012-04-21T11:30:00-04:00" AND thread.name = spaces/AAAAAAAAAAA/threads/123 createTime > "2012-04-21T11:30:00+00:00" AND createTime < "2013-01-01T00:00:00+00:00" AND thread.name = spaces/AAAAAAAAAAA/threads/123 thread.name = spaces/AAAAAAAAAAA/threads/123 Invalid queries are rejected by the server with an `INVALID_ARGUMENT` error. |
+| `orderBy` | `string` Optional. How the list of messages is ordered. Specify a value to order by an ordering operation. Valid ordering operation values are as follows: - `ASC` for ascending. - `DESC` for descending. The default ordering is `createTime ASC`. |
+| `showDeleted` | `boolean` Optional. Whether to include deleted messages. Deleted messages include deleted time and metadata about their deletion, but message content is unavailable. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response message for listing messages.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "messages": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `messages[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#Message`)`` List of messages. |
+| `nextPageToken` | `string` You can send a token as `pageToken` to retrieve the next page of results. If empty, there are no subsequent pages. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.import`
+- `https://www.googleapis.com/auth/chat.messages`
+- `https://www.googleapis.com/auth/chat.messages.readonly`
+- `https://www.googleapis.com/auth/chat.app.messages.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

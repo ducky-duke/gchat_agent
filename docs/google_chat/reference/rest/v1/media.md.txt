@@ -1,0 +1,13 @@
+# REST Resource: media
+
+- [Resource](https://developers.google.com/workspace/chat/api/reference/rest/v1/media#RESOURCE_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/media#METHODS_SUMMARY)
+
+## Resource
+
+A file in Google Chat. For example, a file attached to a message.
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download` | Downloads media. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload` | Uploads an attachment. |

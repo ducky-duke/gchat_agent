@@ -1,0 +1,68 @@
+# Method: spaces.patch
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch#try-it)
+
+Updates a space. For an example, see [Update a space](https://developers.google.com/workspace/chat/update-spaces).
+
+If you're updating the `displayName` field and receive the error message `ALREADY_EXISTS`, try a different display name.. An existing space within the Google Workspace organization might already use this display name.
+
+Supports the following types of [authentication](https://developers.google.com/workspace/chat/authenticate-authorize):
+
+- [App authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) with [administrator approval](https://support.google.com/a?p=chat-app-auth) and one of the following authorization scopes:
+
+  - `https://www.googleapis.com/auth/chat.app.spaces`
+- [User authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following authorization scopes:
+
+  - `https://www.googleapis.com/auth/chat.spaces`
+  - `https://www.googleapis.com/auth/chat.import` (import mode spaces only)
+  - User authentication grants administrator privileges when an administrator account authenticates, `useAdminAccess` is `true`, and the following authorization scopes is used:
+    - `https://www.googleapis.com/auth/chat.admin.spaces`
+
+App authentication has the following limitations:
+
+- To update either `space.predefined_permission_settings` or `space.permission_settings`, the app must be the space creator.
+- Updating the `space.access_settings.audience` is not supported for app authentication.
+
+### HTTP request
+
+`PATCH https://chat.googleapis.com/v1/{space.name=spaces/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `space.name` | `string` Identifier. Resource name of the space. Format: `spaces/{space}` Where `{space}` represents the system-assigned ID for the space. You can obtain the space ID by calling the [`spaces.list()`](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list) method or from the space URL. For example, if the space URL is `https://mail.google.com/mail/u/0/#chat/space/AAAAAAAAA`, the space ID is `AAAAAAAAA`. |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `updateMask` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#field-mask` format)`` Required. The updated field paths, comma separated if there are multiple. You can update the following fields for a space: `spaceDetails`: Updates the space's description and guidelines. You must pass both description and guidelines in the update request as `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space.SpaceDetails`. If you only want to update one of the fields, pass the existing value for the other field. `displayName`: Only supports updating the display name for spaces where `spaceType` field is `SPACE`. If you receive the error message `ALREADY_EXISTS`, try a different value. An existing space within the Google Workspace organization might already use this display name. `spaceType`: Only supports changing a `GROUP_CHAT` space type to `SPACE`. Include `displayName` together with `spaceType` in the update mask and ensure that the specified space has a non-empty display name and the `SPACE` space type. Including the `spaceType` mask and the `SPACE` type in the specified space when updating the display name is optional if the existing space already has the `SPACE` type. Trying to update the space type in other ways results in an invalid argument error. `spaceType` is not supported with `useAdminAccess`. `spaceHistoryState`: Updates [space history settings](https://support.google.com/chat/answer/7664687) by turning history on or off for the space. Only supported if history settings are enabled for the Google Workspace organization. To update the space history state, you must omit all other field masks in your request. `spaceHistoryState` is not supported with `useAdminAccess`. `accessSettings.audience`: Updates the [access setting](https://support.google.com/chat/answer/11971020) of who can discover the space, join the space, and preview the messages in named space where `spaceType` field is `SPACE`. If the existing space has a target audience, you can remove the audience and restrict space access by omitting a value for this field mask. To update access settings for a space, the authenticating user must be a space manager and omit all other field masks in your request. You can't update this field if the space is in [import mode](https://developers.google.com/workspace/chat/import-data-overview). To learn more, see [Make a space discoverable to specific users](https://developers.google.com/workspace/chat/space-target-audience). `accessSettings.audience` is not supported with `useAdminAccess`. `permissionSettings`: Supports changing the [permission settings](https://support.google.com/chat/answer/13340792) of a space. When updating permission settings, you can only specify `permissionSettings` field masks; you cannot update other field masks at the same time. The supported field masks include: - `permissionSettings.manageMembersAndGroups` - `permissionSettings.modifySpaceDetails` - `permissionSettings.toggleHistory` - `permissionSettings.useAtMentionAll` - `permissionSettings.manageApps` - `permissionSettings.manageWebhooks` - `permissionSettings.replyMessages` |
+| `useAdminAccess` | `boolean` Optional. When `true`, the method runs using the user's Google Workspace administrator privileges. The calling user must be a Google Workspace administrator with the [manage chat and spaces conversations privilege](https://support.google.com/a/answer/13369245). Requires the `chat.admin.spaces` [OAuth 2.0 scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes). Some `FieldMask` values are not supported using admin access. For details, see the description of `updateMask`. |
+
+### Request body
+
+The request body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.app.spaces`
+- `https://www.googleapis.com/auth/chat.admin.spaces`
+- `https://www.googleapis.com/auth/chat.import`
+- `https://www.googleapis.com/auth/chat.spaces`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

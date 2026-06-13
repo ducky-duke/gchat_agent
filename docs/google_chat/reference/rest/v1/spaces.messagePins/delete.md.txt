@@ -1,0 +1,42 @@
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/delete#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/delete#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/delete#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/delete#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/delete#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/delete#try-it)
+
+Deletes a message pin.
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following [authorization scopes](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.spaces.pins`
+- `https://www.googleapis.com/auth/chat.spaces`
+
+### HTTP request
+
+`DELETE https://chat.googleapis.com/v1/{name=spaces/*/messagePins/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. The resource name of the message pin to remove. Format: spaces/{space}/messagePins/{messagePin} |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, the response body is an empty JSON object.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.spaces.pins`
+- `https://www.googleapis.com/auth/chat.spaces`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

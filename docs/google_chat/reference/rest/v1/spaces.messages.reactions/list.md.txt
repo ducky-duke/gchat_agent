@@ -1,0 +1,69 @@
+# Method: spaces.messages.reactions.list
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list#body.ListReactionsResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list#try-it)
+
+Lists reactions to a message. For an example, see [List reactions for a message](https://developers.google.com/workspace/chat/list-reactions).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following [authorization scopes](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.messages.reactions.readonly`
+- `https://www.googleapis.com/auth/chat.messages.reactions`
+- `https://www.googleapis.com/auth/chat.messages.readonly`
+- `https://www.googleapis.com/auth/chat.messages`
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/{parent=spaces/*/messages/*}/reactions`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. The message users reacted to. Format: `spaces/{space}/messages/{message}` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Optional. The maximum number of reactions returned. The service can return fewer reactions than this value. If unspecified, the default value is 25. The maximum value is 200; values above 200 are changed to 200. |
+| `pageToken` | `string` Optional. (If resuming from a previous query.) A page token received from a previous list reactions call. Provide this to retrieve the subsequent page. When paginating, the filter value should match the call that provided the page token. Passing a different value might lead to unexpected results. |
+| `filter` | `string` Optional. A query filter. You can filter reactions by [emoji](https://developers.google.com/workspace/chat/api/reference/rest/v1/Emoji) (either `emoji.unicode` or `emoji.custom_emoji.uid`) and [user](https://developers.google.com/workspace/chat/api/reference/rest/v1/User) (`user.name`). To filter reactions for multiple emojis or users, join similar fields with the `OR` operator, such as `emoji.unicode = "🙂" OR emoji.unicode = "👍"` and `user.name = "users/AAAAAA" OR user.name = "users/BBBBBB"`. To filter reactions by emoji and user, use the `AND` operator, such as `emoji.unicode = "🙂" AND user.name = "users/AAAAAA"`. If your query uses both `AND` and `OR`, group them with parentheses. For example, the following queries are valid: user.name = "users/{user}" emoji.unicode = "🙂" emoji.custom_emoji.uid = "{uid}" emoji.unicode = "🙂" OR emoji.unicode = "👍" emoji.unicode = "🙂" OR emoji.custom_emoji.uid = "{uid}" emoji.unicode = "🙂" AND user.name = "users/{user}" (emoji.unicode = "🙂" OR emoji.custom_emoji.uid = "{uid}") AND user.name = "users/{user}" The following queries are invalid: emoji.unicode = "🙂" AND emoji.unicode = "👍" emoji.unicode = "🙂" AND emoji.custom_emoji.uid = "{uid}" emoji.unicode = "🙂" OR user.name = "users/{user}" emoji.unicode = "🙂" OR emoji.custom_emoji.uid = "{uid}" OR user.name = "users/{user}" emoji.unicode = "🙂" OR emoji.custom_emoji.uid = "{uid}" AND user.name = "users/{user}" Invalid queries are rejected with an `INVALID_ARGUMENT` error. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response to a list reactions request.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "reactions": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#Reaction`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `reactions[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#Reaction`)`` List of reactions in the requested (or first) page. |
+| `nextPageToken` | `string` Continuation token to retrieve the next page of results. It's empty for the last page of results. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.messages`
+- `https://www.googleapis.com/auth/chat.messages.readonly`
+- `https://www.googleapis.com/auth/chat.messages.reactions`
+- `https://www.googleapis.com/auth/chat.messages.reactions.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

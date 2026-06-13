@@ -1,0 +1,66 @@
+# Method: spaces.list
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list#body.HTTP_TEMPLATE)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list#body.ListSpacesResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list#try-it)
+
+Lists spaces the caller is a member of. Group chats and DMs aren't listed until the first message is sent. For an example, see [List spaces](https://developers.google.com/workspace/chat/list-spaces).
+
+Supports the following types of [authentication](https://developers.google.com/workspace/chat/authenticate-authorize):
+
+- [App authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app) with the authorization scope:
+
+  - `https://www.googleapis.com/auth/chat.bot`
+- [User authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following authorization scopes:
+
+  - `https://www.googleapis.com/auth/chat.spaces.readonly`
+  - `https://www.googleapis.com/auth/chat.spaces`
+
+To list all named spaces by Google Workspace organization, use the [`spaces.search()`](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search) method using Workspace administrator privileges instead.
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/spaces`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Optional. The maximum number of spaces to return. The service might return fewer than this value. If unspecified, at most 100 spaces are returned. The maximum value is 1000. If you use a value more than 1000, it's automatically changed to 1000. Negative values return an `INVALID_ARGUMENT` error. |
+| `pageToken` | `string` Optional. A page token, received from a previous list spaces call. Provide this parameter to retrieve the subsequent page. When paginating, the filter value should match the call that provided the page token. Passing a different value may lead to unexpected results. |
+| `filter` | `string` Optional. A query filter. You can filter spaces by the space type ([`spaceType`](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#spacetype)). To filter by space type, you must specify valid enum value, such as `SPACE` or `GROUP_CHAT` (the `spaceType` can't be `SPACE_TYPE_UNSPECIFIED`). To query for multiple space types, use the `OR` operator. For example, the following queries are valid: spaceType = "SPACE" spaceType = "GROUP_CHAT" OR spaceType = "DIRECT_MESSAGE" Invalid queries are rejected by the server with an `INVALID_ARGUMENT` error. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+The response for a list spaces request.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "spaces": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `spaces[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`)`` List of spaces in the requested (or first) page. Note: The `permissionSettings` field is not returned in the Space object for list requests. |
+| `nextPageToken` | `string` You can send a token as `pageToken` to retrieve the next page of results. If empty, there are no subsequent pages. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.spaces`
+- `https://www.googleapis.com/auth/chat.spaces.readonly`
+- `https://www.googleapis.com/auth/chat.bot`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

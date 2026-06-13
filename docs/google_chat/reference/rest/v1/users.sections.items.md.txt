@@ -1,0 +1,13 @@
+# REST Resource: users.sections.items
+
+- [Resource](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items#RESOURCE_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items#METHODS_SUMMARY)
+
+## Resource
+
+A user's defined [section item](https://developers.google.com/workspace/chat/api/reference/rest/v1/SectionItem). This is used to represent section items, such as spaces, grouped under a section.
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list` | Lists items in a section. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move` | Moves an item from one section to another. |

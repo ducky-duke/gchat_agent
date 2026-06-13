@@ -1,0 +1,49 @@
+# Method: users.spaces.updateSpaceReadState
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState#try-it)
+
+Updates a user's read state within a space, used to identify read and unread messages. For an example, see [Update a user's space read state](https://developers.google.com/workspace/chat/update-space-read-state).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with the [authorization scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.users.readstate`
+
+### HTTP request
+
+`PATCH https://chat.googleapis.com/v1/{spaceReadState.name=users/*/spaces/*/spaceReadState}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `spaceReadState.name` | `string` Resource name of the space read state. Format: `users/{user}/spaces/{space}/spaceReadState` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `updateMask` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#field-mask` format)`` Required. The field paths to update. Currently supported field paths: - `lastReadTime` When the `lastReadTime` is before the latest message create time, the space appears as unread in the UI. To mark the space as read, set `lastReadTime` to any value later (larger) than the latest message create time. The `lastReadTime` is coerced to match the latest message create time. Note that the space read state only affects the read state of messages that are visible in the space's top-level conversation. Replies in threads are unaffected by this timestamp, and instead rely on the thread read state. |
+
+### Request body
+
+The request body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces#SpaceReadState`.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces#SpaceReadState`.
+
+### Authorization scopes
+
+Requires the following OAuth scope:
+
+- `https://www.googleapis.com/auth/chat.users.readstate`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

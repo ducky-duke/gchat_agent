@@ -1,0 +1,25 @@
+# REST Resource: spaces.messages.reactions
+
+- [Resource: Reaction](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#Reaction)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#Reaction.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions#METHODS_SUMMARY)
+
+## Resource: Reaction
+
+A reaction to a message.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "user": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/User`) }, "emoji": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/Emoji`) } } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Identifier. The resource name of the reaction. Format: `spaces/{space}/messages/{message}/reactions/{reaction}` |
+| `user` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/User`)`` Output only. The user who created the reaction. |
+| `emoji` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/Emoji`)`` Required. The emoji used in the reaction. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/create` | Creates a reaction and adds it to a message. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/delete` | Deletes a reaction to a message. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list` | Lists reactions to a message. |

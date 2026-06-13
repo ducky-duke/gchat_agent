@@ -1,0 +1,75 @@
+# Method: users.sections.position
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#body.request_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#body.request_body.SCHEMA_REPRESENTATION)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#body.PositionSectionResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#body.aspect)
+- [Position](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#Position)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#try-it)
+
+Changes the sort order of a section. For details, see [Create and organize sections in Google Chat](https://support.google.com/chat/answer/16059854).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with the [authorization scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.users.sections`
+
+### HTTP request
+
+`POST https://chat.googleapis.com/v1/{name=users/*/sections/*}:position`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. The resource name of the section to position. Format: `users/{user}/sections/{section}` |
+
+### Request body
+
+The request body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "sortOrder": integer, "relativePosition": enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#Position`) } ``` |
+
+| Fields ||
+|---|---|
+| Union field `position`. Required. The new position of the section. `position` can be only one of the following: ||
+| `sortOrder` | `integer` Optional. The absolute position of the section in the list of sections. The position must be greater than 0. If the position is greater than the number of sections, the section will be appended to the end of the list. This operation inserts the section at the given position and shifts the original section at that position, and those below it, to the next position. |
+| `relativePosition` | ``enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position#Position`)`` Optional. The relative position of the section in the list of sections. |
+
+### Response body
+
+Response message for positioning a section.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "section": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections#Section`) } } ``` |
+
+| Fields ||
+|---|---|
+| `section` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections#Section`)`` The updated section. |
+
+### Authorization scopes
+
+Requires the following OAuth scope:
+
+- `https://www.googleapis.com/auth/chat.users.sections`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).
+
+## Position
+
+The position of the section.
+
+| Enums ||
+|---|---|
+| `POSITION_UNSPECIFIED` | Unspecified position. |
+| `START` | Start of the list of sections. |
+| `END` | End of the list of sections. |

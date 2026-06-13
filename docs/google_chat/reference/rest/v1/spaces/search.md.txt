@@ -1,0 +1,61 @@
+# Method: spaces.search
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search#body.HTTP_TEMPLATE)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search#body.SearchSpacesResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search#try-it)
+
+Returns a list of spaces in a Google Workspace organization based on an administrator's search. In the request, set `useAdminAccess` to `true`. For an example, see [Search for and manage spaces](https://developers.google.com/workspace/chat/search-manage-admin).
+
+Requires [user authentication with administrator privileges](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user#admin-privileges) and one of the following [authorization scopes](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.admin.spaces.readonly`
+- `https://www.googleapis.com/auth/chat.admin.spaces`
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/spaces:search`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `useAdminAccess` | `boolean` When `true`, the method runs using the user's Google Workspace administrator privileges. The calling user must be a Google Workspace administrator with the [manage chat and spaces conversations privilege](https://support.google.com/a/answer/13369245). Requires either the `chat.admin.spaces.readonly` or `chat.admin.spaces` [OAuth 2.0 scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes). This method currently only supports admin access, thus only `true` is accepted for this field. |
+| `pageSize` | `integer` The maximum number of spaces to return. The service may return fewer than this value. If unspecified, at most 100 spaces are returned. The maximum value is 1000. If you use a value more than 1000, it's automatically changed to 1000. |
+| `pageToken` | `string` A token, received from the previous search spaces call. Provide this parameter to retrieve the subsequent page. When paginating, all other parameters provided should match the call that provided the page token. Passing different values to the other parameters might lead to unexpected results. |
+| `query` | `string` Required. A search query. You can search by using the following parameters: - `createTime` - `customer` - `displayName` - `externalUserAllowed` - `lastActiveTime` - `spaceHistoryState` - `spaceType` `createTime` and `lastActiveTime` accept a timestamp in [RFC-3339](https://www.rfc-editor.org/rfc/rfc3339) format and the supported comparison operators are: `=`, `<`, `>`, `<=`, `>=`. `customer` is required and is used to indicate which customer to fetch spaces from. `customers/my_customer` is the only supported value. `displayName` only accepts the `HAS` (`:`) operator. The text to match is first tokenized into tokens and each token is prefix-matched case-insensitively and independently as a substring anywhere in the space's `displayName`. For example, `Fun Eve` matches `Fun event` or `The evening was fun`, but not `notFun event` or `even`. `externalUserAllowed` accepts either `true` or `false`. `spaceHistoryState` only accepts values from the [`historyState`](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space.HistoryState) field of a `space` resource. `spaceType` is required and the only valid value is `SPACE`. Across different fields, only `AND` operators are supported. A valid example is `spaceType = "SPACE" AND displayName:"Hello"` and an invalid example is `spaceType = "SPACE" OR displayName:"Hello"`. Among the same field, `spaceType` doesn't support `AND` or `OR` operators. `displayName`, 'spaceHistoryState', and 'externalUserAllowed' only support `OR` operators. `lastActiveTime` and `createTime` support both `AND` and `OR` operators. `AND` can only be used to represent an interval, such as `lastActiveTime < "2022-01-01T00:00:00+00:00" AND lastActiveTime > "2023-01-01T00:00:00+00:00"`. The following example queries are valid: customer = "customers/my_customer" AND spaceType = "SPACE" customer = "customers/my_customer" AND spaceType = "SPACE" AND displayName:"Hello World" customer = "customers/my_customer" AND spaceType = "SPACE" AND (lastActiveTime < "2020-01-01T00:00:00+00:00" OR lastActiveTime > "2022-01-01T00:00:00+00:00") customer = "customers/my_customer" AND spaceType = "SPACE" AND (displayName:"Hello World" OR displayName:"Fun event") AND (lastActiveTime > "2020-01-01T00:00:00+00:00" AND lastActiveTime < "2022-01-01T00:00:00+00:00") customer = "customers/my_customer" AND spaceType = "SPACE" AND (createTime > "2019-01-01T00:00:00+00:00" AND createTime < "2020-01-01T00:00:00+00:00") AND (externalUserAllowed = "true") AND (spaceHistoryState = "HISTORY_ON" OR spaceHistoryState = "HISTORY_OFF") |
+| `orderBy` | `string` Optional. How the list of spaces is ordered. Supported attributes to order by are: - `membershipCount.joined_direct_human_user_count` --- Denotes the count of human users that have directly joined a space. - `lastActiveTime` --- Denotes the time when last eligible item is added to any topic of this space. - `createTime` --- Denotes the time of the space creation. Valid ordering operation values are: - `ASC` for ascending. Default value. - `DESC` for descending. The supported syntax are: - `membershipCount.joined_direct_human_user_count DESC` - `membershipCount.joined_direct_human_user_count ASC` - `lastActiveTime DESC` - `lastActiveTime ASC` - `createTime DESC` - `createTime ASC` |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response with a list of spaces corresponding to the search spaces request.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "spaces": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`) } ], "nextPageToken": string, "totalSize": integer } ``` |
+
+| Fields ||
+|---|---|
+| `spaces[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`)`` A page of the requested spaces. |
+| `nextPageToken` | `string` A token that can be used to retrieve the next page. If this field is empty, there are no subsequent pages. |
+| `totalSize` | `integer` The total number of spaces that match the query, across all pages. If the result is over 10,000 spaces, this value is an estimate. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.admin.spaces`
+- `https://www.googleapis.com/auth/chat.admin.spaces.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

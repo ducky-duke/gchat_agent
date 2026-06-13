@@ -1,0 +1,152 @@
+The Google Chat API lets you build Chat apps to integrate your services with Google Chat and manage Chat resources such as spaces, members, and messages.
+
+- [REST Resource: v1.customEmojis](https://developers.google.com/workspace/chat/api/reference/rest#v1.customEmojis)
+- [REST Resource: v1.media](https://developers.google.com/workspace/chat/api/reference/rest#v1.media)
+- [REST Resource: v1.spaces](https://developers.google.com/workspace/chat/api/reference/rest#v1.spaces)
+- [REST Resource: v1.spaces.members](https://developers.google.com/workspace/chat/api/reference/rest#v1.spaces.members)
+- [REST Resource: v1.spaces.messagePins](https://developers.google.com/workspace/chat/api/reference/rest#v1.spaces.messagePins)
+- [REST Resource: v1.spaces.messages](https://developers.google.com/workspace/chat/api/reference/rest#v1.spaces.messages)
+- [REST Resource: v1.spaces.messages.attachments](https://developers.google.com/workspace/chat/api/reference/rest#v1.spaces.messages.attachments)
+- [REST Resource: v1.spaces.messages.reactions](https://developers.google.com/workspace/chat/api/reference/rest#v1.spaces.messages.reactions)
+- [REST Resource: v1.spaces.spaceEvents](https://developers.google.com/workspace/chat/api/reference/rest#v1.spaces.spaceEvents)
+- [REST Resource: v1.users.sections](https://developers.google.com/workspace/chat/api/reference/rest#v1.users.sections)
+- [REST Resource: v1.users.sections.items](https://developers.google.com/workspace/chat/api/reference/rest#v1.users.sections.items)
+- [REST Resource: v1.users.spaces](https://developers.google.com/workspace/chat/api/reference/rest#v1.users.spaces)
+- [REST Resource: v1.users.spaces.spaceNotificationSetting](https://developers.google.com/workspace/chat/api/reference/rest#v1.users.spaces.spaceNotificationSetting)
+- [REST Resource: v1.users.spaces.threads](https://developers.google.com/workspace/chat/api/reference/rest#v1.users.spaces.threads)
+
+## Service: chat.googleapis.com
+
+To call this service, we recommend that you use the Google-provided [client libraries](https://cloud.google.com/apis/docs/client-libraries-explained). If your application needs to use your own libraries to call this service, use the following information when you make the API requests.
+
+### Discovery document
+
+A [Discovery Document](https://developers.google.com/discovery/v1/reference/apis) is a machine-readable specification for describing and consuming REST APIs. It is used to build client libraries, IDE plugins, and other tools that interact with Google APIs. One service may provide multiple discovery documents. This service provides the following discovery document:
+
+- <https://chat.googleapis.com/$discovery/rest?version=v1>
+
+### Service endpoint
+
+A [service endpoint](https://cloud.google.com/apis/design/glossary#api_service_endpoint) is a base URL that specifies the network address of an API service. One service might have multiple service endpoints. This service has the following service endpoint and all URIs below are relative to this service endpoint:
+
+- `https://chat.googleapis.com`
+
+## REST Resource: [v1.customEmojis](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/create` | `POST /v1/customEmojis` Creates a custom emoji. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/delete` | `DELETE /v1/{name=customEmojis/*}` Deletes a custom emoji. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/get` | `GET /v1/{name=customEmojis/*}` Returns details about a custom emoji. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list` | `GET /v1/customEmojis` Lists custom emojis visible to the authenticated user. |
+
+## REST Resource: [v1.media](https://developers.google.com/workspace/chat/api/reference/rest/v1/media)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download` | `GET /v1/media/{resourceName=**}` Downloads media. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload` | `POST /upload/v1/{parent=spaces/*}/attachments:upload` Uploads an attachment. |
+
+## REST Resource: [v1.spaces](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/completeImport` | `POST /v1/{name=spaces/*}:completeImport` Completes the [import process](https://developers.google.com/workspace/chat/import-data) for the specified space and makes it visible to users. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/create` | `POST /v1/spaces` Creates a space. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/delete` | `DELETE /v1/{name=spaces/*}` Deletes a named space. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/findDirectMessage` | `GET /v1/spaces:findDirectMessage` Returns the existing direct message with the specified user. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/findGroupChats` | `GET /v1/spaces:findGroupChats` Returns all spaces with `spaceType == GROUP_CHAT`, whose human memberships contain exactly the calling user, and the users specified in `FindGroupChatsRequest.users`. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/get` | `GET /v1/{name=spaces/*}` Returns details about a space. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/list` | `GET /v1/spaces` Lists spaces the caller is a member of. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch` | `PATCH /v1/{space.name=spaces/*}` Updates a space. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search` | `GET /v1/spaces:search` Returns a list of spaces in a Google Workspace organization based on an administrator's search. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/setup` | `POST /v1/spaces:setup` Creates a space and adds specified users to it. |
+
+## REST Resource: [v1.spaces.members](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create` | `POST /v1/{parent=spaces/*}/members` Creates a membership for the calling Chat app, a user, or a Google Group. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/delete` | `DELETE /v1/{name=spaces/*/members/*}` Deletes a membership. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/get` | `GET /v1/{name=spaces/*/members/*}` Returns details about a membership. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/list` | `GET /v1/{parent=spaces/*}/members` Lists memberships in a space. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/patch` | `PATCH /v1/{membership.name=spaces/*/members/*}` Updates a membership. |
+
+## REST Resource: [v1.spaces.messagePins](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/create` | `POST /v1/{parent=spaces/*}/messagePins` Creates a message pin. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/delete` | `DELETE /v1/{name=spaces/*/messagePins/*}` Deletes a message pin. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messagePins/list` | `GET /v1/{parent=spaces/*}/messagePins` Lists message pins in a space. |
+
+## REST Resource: [v1.spaces.messages](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create` | `POST /v1/{parent=spaces/*}/messages` Creates a message in a Google Chat space. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/delete` | `DELETE /v1/{name=spaces/*/messages/*}` Deletes a message. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/get` | `GET /v1/{name=spaces/*/messages/*}` Returns details about a message. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list` | `GET /v1/{parent=spaces/*}/messages` Lists messages in a space that the caller is a member of, including messages from blocked members and spaces. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/patch` | `PATCH /v1/{message.name=spaces/*/messages/*}` Updates a message. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/replaceCards` | `POST /v1/{name=spaces/*/messages/*}:replaceCards` > [!WARNING] > **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features. Replaces the cards included in a message. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/search` | `POST /v1/{parent=spaces/*}/messages:search` > [!WARNING] > **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features. Searches for messages in Google Chat that the calling user has access to. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/update` | `PUT /v1/{message.name=spaces/*/messages/*}` Updates a message. |
+
+## REST Resource: [v1.spaces.messages.attachments](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments/get` | `GET /v1/{name=spaces/*/messages/*/attachments/*}` Gets the metadata of a message attachment. |
+
+## REST Resource: [v1.spaces.messages.reactions](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/create` | `POST /v1/{parent=spaces/*/messages/*}/reactions` Creates a reaction and adds it to a message. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/delete` | `DELETE /v1/{name=spaces/*/messages/*/reactions/*}` Deletes a reaction to a message. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.reactions/list` | `GET /v1/{parent=spaces/*/messages/*}/reactions` Lists reactions to a message. |
+
+## REST Resource: [v1.spaces.spaceEvents](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents/get` | `GET /v1/{name=spaces/*/spaceEvents/*}` Returns an event from a Google Chat space. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents/list` | `GET /v1/{parent=spaces/*}/spaceEvents` Lists events from a Google Chat space. |
+
+## REST Resource: [v1.users.sections](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/create` | `POST /v1/{parent=users/*}/sections` Creates a section in Google Chat. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/delete` | `DELETE /v1/{name=users/*/sections/*}` Deletes a section of type `CUSTOM_SECTION`. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/list` | `GET /v1/{parent=users/*}/sections` Lists sections available to the Chat user. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/patch` | `PATCH /v1/{section.name=users/*/sections/*}` Updates a section. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections/position` | `POST /v1/{name=users/*/sections/*}:position` Changes the sort order of a section. |
+
+## REST Resource: [v1.users.sections.items](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list` | `GET /v1/{parent=users/*/sections/*}/items` Lists items in a section. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move` | `POST /v1/{name=users/*/sections/*/items/*}:move` Moves an item from one section to another. |
+
+## REST Resource: [v1.users.spaces](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/getSpaceReadState` | `GET /v1/{name=users/*/spaces/*/spaceReadState}` Returns details about a user's read state within a space, used to identify read and unread messages. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState` | `PATCH /v1/{spaceReadState.name=users/*/spaces/*/spaceReadState}` Updates a user's read state within a space, used to identify read and unread messages. |
+
+## REST Resource: [v1.users.spaces.spaceNotificationSetting](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/get` | `GET /v1/{name=users/*/spaces/*/spaceNotificationSetting}` Gets the space notification setting. |
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/patch` | `PATCH /v1/{spaceNotificationSetting.name=users/*/spaces/*/spaceNotificationSetting}` Updates the space notification setting. |
+
+## REST Resource: [v1.users.spaces.threads](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads)
+
+| Methods ||
+|---|---|
+| `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.threads/getThreadReadState` | `GET /v1/{name=users/*/spaces/*/threads/*/threadReadState}` Returns details about a user's read state within a thread, used to identify read and unread messages. |

@@ -1,0 +1,43 @@
+# REST Resource: customEmojis
+
+- [Resource: CustomEmoji](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji.SCHEMA_REPRESENTATION)
+  - [CustomEmojiPayload](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji.CustomEmojiPayload)
+    - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji.CustomEmojiPayload.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#METHODS_SUMMARY)
+
+## Resource: CustomEmoji
+
+Represents a [custom emoji](https://support.google.com/chat/answer/12800149).
+
+| JSON representation |
+|---|
+| ``` { "name": string, "uid": string, "emojiName": string, "temporaryImageUri": string, "payload": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji.CustomEmojiPayload`) } } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Identifier. The resource name of the custom emoji, assigned by the server. Format: `customEmojis/{customEmoji}` |
+| `uid` | `string` Output only. Unique key for the custom emoji resource. |
+| `emojiName` | `string` Optional. Immutable. User-provided name for the custom emoji, which is unique within the organization. Required when the custom emoji is created, output only otherwise. Emoji names must start and end with colons, must be lowercase and can only contain alphanumeric characters, hyphens, and underscores. Hyphens and underscores should be used to separate words and cannot be used consecutively. Example: `:valid-emoji-name:` |
+| `temporaryImageUri` | `string` Output only. A temporary image URL for the custom emoji, valid for at least 10 minutes. Note that this is not populated in the response when the custom emoji is created. |
+| `payload` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji.CustomEmojiPayload`)`` Optional. Input only. Payload data. Required when the custom emoji is created. |
+
+### CustomEmojiPayload
+
+Payload data for the custom emoji.
+
+| JSON representation |
+|---|
+| ``` { "fileContent": string, "filename": string } ``` |
+
+| Fields ||
+|---|---|
+| `fileContent` | `string (https://developers.google.com/discovery/v1/type-format format)` Required. Input only. The image used for the custom emoji. The payload must be under 256 KB and the dimension of the image must be square and between 64 and 500 pixels. The restrictions are subject to change. |
+| `filename` | `string` Required. Input only. The image file name. Supported file extensions: `.png`, `.jpg`, `.gif`. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/create` | Creates a custom emoji. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/delete` | Deletes a custom emoji. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/get` | Returns details about a custom emoji. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list` | Lists custom emojis visible to the authenticated user. |

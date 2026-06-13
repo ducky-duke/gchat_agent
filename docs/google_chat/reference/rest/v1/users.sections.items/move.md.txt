@@ -1,0 +1,62 @@
+# Method: users.sections.items.move
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move#body.request_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move#body.request_body.SCHEMA_REPRESENTATION)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move#body.MoveSectionItemResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/move#try-it)
+
+Moves an item from one section to another. For example, if a section contains spaces, this method can be used to move a space to a different section. For details, see [Create and organize sections in Google Chat](https://support.google.com/chat/answer/16059854).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with the [authorization scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.users.sections`
+
+### HTTP request
+
+`POST https://chat.googleapis.com/v1/{name=users/*/sections/*/items/*}:move`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. The resource name of the section item to move. Format: `users/{user}/sections/{section}/items/{item}` |
+
+### Request body
+
+The request body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "targetSection": string } ``` |
+
+| Fields ||
+|---|---|
+| `targetSection` | `string` Required. The resource name of the section to move the section item to. Format: `users/{user}/sections/{section}` |
+
+### Response body
+
+Response message for moving a section item.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "sectionItem": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/SectionItem`) } } ``` |
+
+| Fields ||
+|---|---|
+| `sectionItem` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/SectionItem`)`` The updated section item. |
+
+### Authorization scopes
+
+Requires the following OAuth scope:
+
+- `https://www.googleapis.com/auth/chat.users.sections`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

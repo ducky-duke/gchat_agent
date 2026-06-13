@@ -1,0 +1,67 @@
+# Method: users.sections.items.list
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list#body.ListSectionItemsResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.sections.items/list#try-it)
+
+Lists items in a section.
+
+Only spaces can be section items. For details, see [Create and organize sections in Google Chat](https://support.google.com/chat/answer/16059854).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with the [authorization scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.users.sections`
+- `https://www.googleapis.com/auth/chat.users.sections.readonly`
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/{parent=users/*/sections/*}/items`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. The parent, which is the section resource name that owns this collection of section items. Only supports listing section items for the calling user. When you're filtering by space, use the wildcard `-` to search across all sections. For example, `users/{user}/sections/-`. Format: `users/{user}/sections/{section}` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Optional. The maximum number of section items to return. The service may return fewer than this value. If unspecified, at most 10 section items will be returned. The maximum value is 100. If you use a value more than 100, it's automatically changed to 100. Negative values return an `INVALID_ARGUMENT` error. |
+| `pageToken` | `string` Optional. A page token, received from a previous list section items call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided should match the call that provided the page token. Passing different values to the other parameters might lead to unexpected results. |
+| `filter` | `string` Optional. A query filter. Currently only supports filtering by space. For example, `space = spaces/{space}`. Invalid queries are rejected with an `INVALID_ARGUMENT` error. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response message for listing section items.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "sectionItems": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/SectionItem`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `sectionItems[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/SectionItem`)`` The section items from the specified section. |
+| `nextPageToken` | `string` A token, which can be sent as `pageToken` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.users.sections`
+- `https://www.googleapis.com/auth/chat.users.sections.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

@@ -1,0 +1,48 @@
+# REST Resource: users.spaces.spaceNotificationSetting
+
+- [Resource: SpaceNotificationSetting](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#SpaceNotificationSetting)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#SpaceNotificationSetting.SCHEMA_REPRESENTATION)
+- [NotificationSetting](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#NotificationSetting)
+- [MuteSetting](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#MuteSetting)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#METHODS_SUMMARY)
+
+## Resource: SpaceNotificationSetting
+
+The notification setting of a user in a space.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "notificationSetting": enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#NotificationSetting`), "muteSetting": enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#MuteSetting`) } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Identifier. The resource name of the space notification setting. Format: `users/{user}/spaces/{space}/spaceNotificationSetting`. |
+| `notificationSetting` | ``enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#NotificationSetting`)`` The notification setting. |
+| `muteSetting` | ``enum (`https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting#MuteSetting`)`` The space notification mute setting. |
+
+## NotificationSetting
+
+The notification setting types. Other types might be supported in the future.
+
+| Enums ||
+|---|---|
+| `NOTIFICATION_SETTING_UNSPECIFIED` | Reserved. |
+| `ALL` | Notifications are triggered by @mentions, followed threads, first message of new threads. All new threads are automatically followed, unless manually unfollowed by the user. |
+| `MAIN_CONVERSATIONS` | The notification is triggered by @mentions, followed threads, first message of new threads. Not available for 1:1 direct messages. |
+| `FOR_YOU` | The notification is triggered by @mentions, followed threads. Not available for 1:1 direct messages. |
+| `OFF` | Notification is off. |
+
+## MuteSetting
+
+The space notification mute setting types.
+
+| Enums ||
+|---|---|
+| `MUTE_SETTING_UNSPECIFIED` | Reserved. |
+| `UNMUTED` | The user will receive notifications for the space based on the notification setting. |
+| `MUTED` | The user will not receive any notifications for the space, regardless of the notification setting. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/get` | Gets the space notification setting. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces.spaceNotificationSetting/patch` | Updates the space notification setting. |

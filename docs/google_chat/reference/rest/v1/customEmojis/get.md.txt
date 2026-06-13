@@ -1,0 +1,46 @@
+# Method: customEmojis.get
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/get#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/get#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/get#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/get#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/get#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/get#try-it)
+
+Returns details about a custom emoji.
+
+Custom emojis are only available for Google Workspace accounts, and the administrator must turn custom emojis on for the organization. For more information, see [Learn about custom emojis in Google Chat](https://support.google.com/chat/answer/12800149) and [Manage custom emoji permissions](https://support.google.com/a/answer/12850085).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following [authorization scopes](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.customemojis.readonly`
+- `https://www.googleapis.com/auth/chat.customemojis`
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/{name=customEmojis/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. Resource name of the custom emoji. Format: `customEmojis/{customEmoji}` You can use the emoji name as an alias for `{customEmoji}`. For example, `customEmojis/:example-emoji:` where `:example-emoji:` is the emoji name for a custom emoji. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.customemojis`
+- `https://www.googleapis.com/auth/chat.customemojis.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

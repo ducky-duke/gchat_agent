@@ -1,0 +1,23 @@
+# REST Resource: users.spaces
+
+- [Resource: SpaceReadState](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces#SpaceReadState)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces#SpaceReadState.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces#METHODS_SUMMARY)
+
+## Resource: SpaceReadState
+
+A user's read state within a space, used to identify read and unread messages.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "lastReadTime": string } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Resource name of the space read state. Format: `users/{user}/spaces/{space}/spaceReadState` |
+| `lastReadTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Optional. The time when the user's space read state was updated. Usually this corresponds with either the timestamp of the last read message, or a timestamp specified by the user to mark the last read position in a space. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/getSpaceReadState` | Returns details about a user's read state within a space, used to identify read and unread messages. |
+| ### `https://developers.google.com/workspace/chat/api/reference/rest/v1/users.spaces/updateSpaceReadState` | Updates a user's read state within a space, used to identify read and unread messages. |

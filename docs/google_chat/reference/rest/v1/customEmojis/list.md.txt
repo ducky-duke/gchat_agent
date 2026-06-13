@@ -1,0 +1,60 @@
+# Method: customEmojis.list
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list#body.HTTP_TEMPLATE)
+- [Query parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list#body.ListCustomEmojisResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis/list#try-it)
+
+Lists custom emojis visible to the authenticated user.
+
+Custom emojis are only available for Google Workspace accounts, and the administrator must turn custom emojis on for the organization. For more information, see [Learn about custom emojis in Google Chat](https://support.google.com/chat/answer/12800149) and [Manage custom emoji permissions](https://support.google.com/a/answer/12850085).
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) with one of the following [authorization scopes](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.customemojis.readonly`
+- `https://www.googleapis.com/auth/chat.customemojis`
+
+### HTTP request
+
+`GET https://chat.googleapis.com/v1/customEmojis`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Optional. The maximum number of custom emojis returned. The service can return fewer custom emojis than this value. If unspecified, the default value is 25. The maximum value is 200; values above 200 are changed to 200. |
+| `pageToken` | `string` Optional. (If resuming from a previous query.) A page token received from a previous list custom emoji call. Provide this to retrieve the subsequent page. When paginating, the filter value should match the call that provided the page token. Passing a different value might lead to unexpected results. |
+| `filter` | `string` Optional. A query filter. Supports filtering by creator. To filter by creator, you must specify a valid value. Currently only `creator("users/me")` and `NOT creator("users/me")` are accepted to filter custom emojis by whether they were created by the calling user or not. For example, the following query returns custom emojis created by the caller: creator("users/me") Invalid queries are rejected with an `INVALID_ARGUMENT` error. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+A response to list custom emojis.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "customEmojis": [ { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `customEmojis[]` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/customEmojis#CustomEmoji`)`` Unordered list. List of custom emojis. |
+| `nextPageToken` | `string` A token that you can send as `pageToken` to retrieve the next page of results. If empty, there are no subsequent pages. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/chat.customemojis`
+- `https://www.googleapis.com/auth/chat.customemojis.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).

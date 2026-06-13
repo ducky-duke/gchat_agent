@@ -1,0 +1,54 @@
+# Method: spaces.completeImport
+
+- [HTTP request](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/completeImport#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/completeImport#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/completeImport#body.request_body)
+- [Response body](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/completeImport#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/completeImport#body.CompleteImportSpaceResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/completeImport#body.aspect)
+
+Completes the [import process](https://developers.google.com/workspace/chat/import-data) for the specified space and makes it visible to users.
+
+Requires [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-user) and domain-wide delegation with the [authorization scope](https://developers.google.com/workspace/chat/authenticate-authorize#chat-api-scopes):
+
+- `https://www.googleapis.com/auth/chat.import`
+
+For more information, see [Authorize Google Chat apps to import data](https://developers.google.com/workspace/chat/authorize-import).
+
+### HTTP request
+
+`POST https://chat.googleapis.com/v1/{name=spaces/*}:completeImport`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. Resource name of the import mode space. Format: `spaces/{space}` |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response message for completing the import process for a space.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "space": { object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`) } } ``` |
+
+| Fields ||
+|---|---|
+| `space` | ``object (`https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces#Space`)`` The import mode space. |
+
+### Authorization scopes
+
+Requires the following OAuth scope:
+
+- `https://www.googleapis.com/auth/chat.import`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/chat/authenticate-authorize).
