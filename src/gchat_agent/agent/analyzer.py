@@ -133,6 +133,7 @@ class Analyzer:
 
         root_message_id = source_ids[0]  # earliest in transcript order
         thread_id = by_id[root_message_id].thread_id
+        reporter_id = by_id[root_message_id].sender or None
         category = str(raw.get("category", "") or "").strip() or "issue"
         severity = _SEVERITY_BY_VALUE.get(
             str(raw.get("severity", "") or "").strip().lower(), Severity.MEDIUM
@@ -157,6 +158,7 @@ class Analyzer:
             status=Status.OPEN,
             thread_id=thread_id,
             root_message_id=root_message_id,
+            reporter_id=reporter_id,
             source_message_ids=source_ids,
             missing_info=missing_info,
             created_at=latest_create_time or "",

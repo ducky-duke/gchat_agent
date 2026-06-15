@@ -516,5 +516,262 @@ class RunOnceLockTest(unittest.TestCase):
             self.assertFalse(os.path.exists(runner._lock_path()))
 
 
+class OutOfThreadCaptureTest(unittest.TestCase):
+    """A reporter who answers at the space TOP LEVEL (a fresh thread), not as a
+    reply inside the bot's thread, is still heard: the answer is captured as Q&A
+    and resolves the issue instead of idling to stale (§ out-of-thread capture)."""
+
+    def test_top_level_reply_is_captured_and_resolves(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = _config(tmp, ESCALATE_AFTER_IDLE_CYCLES=0,
+                             STALE_AFTER_IDLE_CYCLES=3, MAX_CLARIFY_ROUNDS=3)
+            chat = FakeChatClient(me=BOT_ID)
+            chat.inject(STAFF_ID, SEED_TEXT)
+            store = IssueStore(config.STATE_FILE)
+            runner = Runner(chat, _analyzer(), store, config)
+
+            runner.run_cycle()  # detect + first-contact ask
+            issue = store.open_issues()[0]
+            self.assertEqual(issue.reporter_id, STAFF_ID)
+            thread_id = issue.thread_id
+
+            # The reporter answers, but at the space top level (no thread_id ⇒ a
+            # NEW thread), NOT as a reply in the bot's thread.
+            ans = chat.inject(STAFF_ID, "I'll own it, target tomorrow EOD, scaling to 4 nodes")
+            self.assertNotEqual(ans.thread_id, thread_id, "answer must be out-of-thread")
+
+            runner.run_cycle()  # must see + capture the out-of-thread answer
+
+            resolved = [i for i in store.all_issues() if i.status == Status.RESOLVED]
+            self.assertEqual(len(resolved), 1, "out-of-thread answer must resolve, not stale")
+            self.assertTrue(resolved[0].qa, "the out-of-thread answer must be captured as Q&A")
+            self.assertIn(
+                ans.id, [mid for p in resolved[0].qa for mid in p.answer_message_ids],
+                "the exact out-of-thread message id must be recorded as the answer",
+            )
+
+            # Follow the reporter: the resolution confirmation lands in the thread
+            # they actually replied in (the top-level answer's thread), not the
+            # original issue thread — and via a REAL anchor, never a re-tagged copy.
+            confirmations = [
+                m for m in chat.messages
+                if m.sender == BOT_ID and "resolved" in m.text.lower()
+            ]
+            self.assertEqual(len(confirmations), 1)
+            self.assertEqual(
+                confirmations[0].thread_id, ans.thread_id,
+                "confirmation must follow the reporter to their reply thread",
+            )
+            self.assertNotEqual(confirmations[0].thread_id, thread_id)
+
+
+class FollowReporterThreadTest(unittest.TestCase):
+    """The bot posts its follow-up into whatever thread the reporter replied in
+    (here: a top-level thread), not always the original issue thread — and tracks
+    that as `active_thread_id` (§ follow-the-reporter)."""
+
+    def test_followup_lands_in_the_reporters_reply_thread(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = _config(tmp, ESCALATE_AFTER_IDLE_CYCLES=0,
+                             STALE_AFTER_IDLE_CYCLES=5, MAX_CLARIFY_ROUNDS=5)
+            chat = FakeChatClient(me=BOT_ID)
+            chat.inject(STAFF_ID, SEED_TEXT)
+            store = IssueStore(config.STATE_FILE)
+            # Never clears + always asks, so we can observe WHERE the next question
+            # lands rather than the issue resolving in one cycle.
+            analyzer = _ClaritySpyAnalyzer(MockLLM(), retriever=None, top_k=0)
+            runner = Runner(chat, analyzer, store, config)
+
+            runner.run_cycle()  # detect + first-contact ask (the issue thread)
+            issue = store.open_issues()[0]
+            issue_thread = issue.thread_id
+            first_q = [m for m in chat.messages if m.sender == BOT_ID][-1]
+            self.assertEqual(first_q.thread_id, issue_thread,
+                             "the first question opens in the issue thread")
+
+            # The reporter answers at the space TOP LEVEL (a fresh thread).
+            ans = chat.inject(STAFF_ID, "here's some context on the outage")
+            self.assertNotEqual(ans.thread_id, issue_thread, "answer is out-of-thread")
+
+            runner.run_cycle()  # capture the reply, then ask the NEXT question
+            issue = store.open_issues()[0]
+            self.assertEqual(issue.active_thread_id, ans.thread_id,
+                             "the active thread follows the reporter's reply")
+            last_q = [m for m in chat.messages if m.sender == BOT_ID][-1]
+            self.assertEqual(
+                last_q.thread_id, ans.thread_id,
+                "the follow-up question must land in the reporter's reply thread",
+            )
+
+
+class EscalateBeforeStaleTest(unittest.TestCase):
+    """An unanswered clarification escalates ONCE with a top-level @mention nudge
+    before going stale, instead of silently giving up (§ escalate)."""
+
+    def test_idle_clarification_escalates_once_then_stales(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = _config(tmp, ESCALATE_AFTER_IDLE_CYCLES=1,
+                             STALE_AFTER_IDLE_CYCLES=3, MAX_CLARIFY_ROUNDS=3)
+            chat = FakeChatClient(me=BOT_ID)
+            chat.inject(STAFF_ID, SEED_TEXT)
+            store = IssueStore(config.STATE_FILE)
+            runner = Runner(chat, _analyzer(), store, config)
+
+            runner.run_cycle()  # detect + first-contact ask
+            issue = store.open_issues()[0]
+            thread_id = issue.thread_id
+            self.assertEqual(issue.reporter_id, STAFF_ID)
+
+            s2 = runner.run_cycle()  # no reply ⇒ idle reaches the escalate threshold
+            self.assertEqual(s2["escalated"], 1)
+            issue = store.open_issues()[0]
+            self.assertTrue(issue.escalated)
+            self.assertEqual(issue.status, Status.CLARIFYING, "escalate is not stale")
+            self.assertEqual(issue.idle_cycles, 0, "idle budget resets after the nudge")
+
+            def nudges():
+                return [
+                    m for m in chat.messages
+                    if m.sender == BOT_ID
+                    and m.thread_id != thread_id  # top level, not the issue thread
+                    and f"<{STAFF_ID}>" in m.text  # @mentions the reporter
+                ]
+
+            self.assertEqual(len(nudges()), 1, "exactly one top-level @mention nudge")
+
+            # Keep cycling: it must NOT escalate again and must eventually stale.
+            extra_escalations = stale = 0
+            for _ in range(6):
+                s = runner.run_cycle()
+                extra_escalations += s["escalated"]
+                stale += s["stale"]
+                if not store.open_issues():
+                    break
+
+            self.assertEqual(extra_escalations, 0, "escalates at most once per issue")
+            self.assertEqual(stale, 1, "still goes stale after the grace window")
+            self.assertEqual(store.open_issues(), [])
+            self.assertEqual(len(nudges()), 1, "still exactly one nudge total")
+
+
+class EffectiveConversationGuardTest(unittest.TestCase):
+    """`_effective_conversation` pulls a reporter's out-of-thread messages in
+    only when attribution is unambiguous (§ out-of-thread capture)."""
+
+    def _runner(self, tmp: str) -> Runner:
+        config = _config(tmp)
+        return Runner(FakeChatClient(me=BOT_ID), _analyzer(),
+                      IssueStore(config.STATE_FILE), config)
+
+    @staticmethod
+    def _awaiting(thread: str, reporter: str, esc: str | None = None) -> Issue:
+        fp = issue_fingerprint(thread, "root-" + thread, "incident")
+        return Issue(
+            id=fp, fingerprint=fp, title="t", summary="s", category="incident",
+            severity=Severity.HIGH, status=Status.CLARIFYING, thread_id=thread,
+            root_message_id="root-" + thread, reporter_id=reporter,
+            source_message_ids=["root-" + thread], questions_asked=["q?"],
+            last_bot_message_id="botq-" + thread,
+            last_bot_create_time="2026-06-13T10:00:00.000000Z",
+            escalation_thread_id=esc,
+        )
+
+    def test_single_awaiting_issue_pulls_and_retags_reporter_reply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            issue = self._awaiting("spaces/x/threads/tA", STAFF_ID)
+            r.store.state.issues = [issue]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botq-spaces/x/threads/tA", "spaces/x/threads/tA", BOT_ID, "q?",
+                     "2026-06-13T10:00:00.000000Z"),
+                _msg("ans1", "spaces/x/threads/tZ", STAFF_ID, "owner is Jane",
+                     "2026-06-13T10:00:05.000000Z"),
+            ])
+            eff = r._effective_conversation(issue, BOT_ID)
+            self.assertIn("ans1", [m.id for m in eff.messages], "reporter reply pulled in")
+            pulled = next(m for m in eff.messages if m.id == "ans1")
+            self.assertEqual(
+                pulled.thread_id, "spaces/x/threads/tA",
+                "out-of-thread copy must be re-tagged to the issue thread",
+            )
+
+    def test_two_awaiting_issues_same_reporter_is_ambiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            a = self._awaiting("spaces/x/threads/tA", STAFF_ID)
+            b = self._awaiting("spaces/x/threads/tB", STAFF_ID)
+            r.store.state.issues = [a, b]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botqA", "spaces/x/threads/tA", BOT_ID, "qA?",
+                     "2026-06-13T10:00:00.000000Z"),
+                _msg("ans1", "spaces/x/threads/tZ", STAFF_ID, "owner is Jane",
+                     "2026-06-13T10:00:05.000000Z"),
+            ])
+            eff = r._effective_conversation(a, BOT_ID)
+            self.assertNotIn(
+                "ans1", [m.id for m in eff.messages],
+                "an ambiguous top-level reply must not be pulled into either issue",
+            )
+
+    def test_nudge_thread_reply_pulled_even_when_two_awaiting(self) -> None:
+        """A reply in issue A's *nudge* thread attributes to A unambiguously even
+        when the reporter has TWO open awaiting issues — the nudge thread is a 1:1
+        home for A, so it bypasses the ambiguity guard that drops a bare top-level
+        reply — and it must never bleed into B (§ out-of-thread capture, A)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            a = self._awaiting("spaces/x/threads/tA", STAFF_ID,
+                               esc="spaces/x/threads/tEscA")
+            b = self._awaiting("spaces/x/threads/tB", STAFF_ID)
+            r.store.state.issues = [a, b]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botqA", "spaces/x/threads/tA", BOT_ID, "qA?",
+                     "2026-06-13T10:00:00.000000Z"),
+                _msg("nudgeA", "spaces/x/threads/tEscA", BOT_ID, "take a look?",
+                     "2026-06-13T10:00:03.000000Z"),
+                _msg("ansEsc", "spaces/x/threads/tEscA", STAFF_ID, "owner is Jane",
+                     "2026-06-13T10:00:05.000000Z"),
+            ])
+            eff_a = r._effective_conversation(a, BOT_ID)
+            ids_a = [m.id for m in eff_a.messages]
+            self.assertIn(
+                "ansEsc", ids_a,
+                "a nudge-thread reply must attribute to its issue even when ambiguous",
+            )
+            self.assertNotIn(
+                "nudgeA", ids_a, "the bot's own nudge message must not be pulled in"
+            )
+            self.assertEqual(
+                next(m for m in eff_a.messages if m.id == "ansEsc").thread_id,
+                "spaces/x/threads/tA", "the nudge-thread reply must be re-tagged to A",
+            )
+            eff_b = r._effective_conversation(b, BOT_ID)
+            self.assertNotIn(
+                "ansEsc", [m.id for m in eff_b.messages],
+                "A's nudge-thread reply must not bleed into the other open issue",
+            )
+
+    def test_non_reporter_out_of_thread_message_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            issue = self._awaiting("spaces/x/threads/tA", STAFF_ID)
+            r.store.state.issues = [issue]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botq-spaces/x/threads/tA", "spaces/x/threads/tA", BOT_ID, "q?",
+                     "2026-06-13T10:00:00.000000Z"),
+                _msg("other", "spaces/x/threads/tZ", "users/someone-else", "unrelated chatter",
+                     "2026-06-13T10:00:05.000000Z"),
+            ])
+            eff = r._effective_conversation(issue, BOT_ID)
+            self.assertNotIn(
+                "other", [m.id for m in eff.messages],
+                "only the reporter's own out-of-thread messages are collected",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -156,10 +156,30 @@ class Issue:
     status: Status
     thread_id: str
     root_message_id: str
+    # The reporter's `users/<id>` (sender of `root_message_id`), captured at
+    # detection. Persisted so two things survive a restart: the escalation
+    # @mention target (§ escalate), and the author filter that lets us collect
+    # the reporter's *out-of-thread* answers (the working view, rebuilt from only
+    # unseen messages, no longer holds the root message to read the sender from).
+    reporter_id: str | None = None
     source_message_ids: list[str] = field(default_factory=list)
     missing_info: list[str] = field(default_factory=list)
     questions_asked: list[str] = field(default_factory=list)
     qa: list[QAPair] = field(default_factory=list)
+    # Set once the bot has posted a top-level @mention nudge for an idle
+    # clarification, so it escalates at most once before going stale.
+    escalated: bool = False
+    # The thread the top-level nudge opened (a top-level post starts a NEW
+    # thread). It belongs 1:1 to this issue, so it is a SECOND unambiguous "home":
+    # a reporter reply there attributes cleanly even when they have several open
+    # issues — `_effective_conversation` collects it without the ambiguity guard.
+    escalation_thread_id: str | None = None
+    # The thread the conversation has moved to — the real thread of the reporter's
+    # most recent reply. The bot follows it: the next question and the resolution
+    # confirmation are posted here, not always the original issue thread (so a
+    # reporter who answered in the nudge thread keeps the back-and-forth there).
+    # Also a collection home (like the nudge thread). None ⇒ the issue thread.
+    active_thread_id: str | None = None
     last_bot_message_id: str | None = None
     # Server `create_time` of the last bot question (RFC-3339). Lets `_new_replies`
     # recover replies after a restart, when the working conversation — rebuilt from
@@ -190,10 +210,14 @@ class Issue:
             status=Status(data.get("status", Status.OPEN.value)),
             thread_id=data.get("thread_id", ""),
             root_message_id=data.get("root_message_id", ""),
+            reporter_id=data.get("reporter_id"),
             source_message_ids=list(data.get("source_message_ids", [])),
             missing_info=list(data.get("missing_info", [])),
             questions_asked=list(data.get("questions_asked", [])),
             qa=[QAPair.from_dict(item) for item in data.get("qa", [])],
+            escalated=_coerce_bool(data.get("escalated", False)),
+            escalation_thread_id=data.get("escalation_thread_id"),
+            active_thread_id=data.get("active_thread_id"),
             last_bot_message_id=data.get("last_bot_message_id"),
             last_bot_create_time=data.get("last_bot_create_time"),
             last_question_at=data.get("last_question_at"),

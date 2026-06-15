@@ -18,6 +18,7 @@ lazy modules — this file imports neither `openai` nor `langfuse` directly.
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
@@ -46,6 +47,15 @@ _CURSOR_SKEW_SECONDS = 2
 def _now() -> str:
     """A UTC RFC-3339 timestamp string (consistent `now` across the cycle)."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def _mention(reporter_id: str | None) -> str:
+    """A Google Chat text @mention for a `users/<id>` resource name.
+
+    Chat renders `<users/{id}>` in a message's `text` as a real user mention
+    (see docs/google_chat … spaces.messages `formattedText`), which notifies the
+    user even when they aren't following the thread. Empty string if unknown."""
+    return f"<{reporter_id}>" if reporter_id else ""
 
 
 def _minus_seconds(ts: str, seconds: int) -> str:
@@ -92,7 +102,7 @@ class Runner:
 
         fetched = self._fetch_new_messages()
         detected = self._detect(own_id)
-        asked, resolved, stale = self._process_open_issues(own_id)
+        asked, resolved, stale, escalated = self._process_open_issues(own_id)
 
         # Persist a freshly-learned bot id (the client may have learned its own
         # users/<id> from a post this cycle) so a restart self-filters at once.
@@ -107,6 +117,7 @@ class Runner:
             "asked": asked,
             "resolved": resolved,
             "stale": stale,
+            "escalated": escalated,
         }
 
     # --- step 1: identity ---------------------------------------------------
@@ -200,9 +211,9 @@ class Runner:
         return detected
 
     # --- step 5: the clarify / resolve loop ---------------------------------
-    def _process_open_issues(self, own_id: str | None) -> tuple[int, int, int]:
-        """Drive each open issue one step; return (asked, resolved, stale)."""
-        asked = resolved = stale = 0
+    def _process_open_issues(self, own_id: str | None) -> tuple[int, int, int, int]:
+        """Drive each open issue one step; return (asked, resolved, stale, escalated)."""
+        asked = resolved = stale = escalated = 0
         for issue in self.store.open_issues():
             with observability.trace("issue", issue_id=issue.id):
                 outcome = self._step_issue(issue, own_id)
@@ -212,28 +223,59 @@ class Runner:
                 resolved += 1
             elif outcome == "stale":
                 stale += 1
-        return asked, resolved, stale
+            elif outcome == "escalated":
+                escalated += 1
+        return asked, resolved, stale, escalated
 
     def _step_issue(self, issue, own_id: str | None) -> str | None:
         """Advance one open issue by a single cycle. Returns a short outcome tag
-        ("asked"|"resolved"|"stale"|None) for the summary counts."""
-        thread_conv = self._conversation.for_thread(issue.thread_id)
+        ("asked"|"resolved"|"stale"|"escalated"|None) for the summary counts.
+
+        `thread_conv` is the issue's *effective* conversation — its own thread,
+        the nudge thread the escalation opened, and the reporter's answers that
+        landed in some other fresh thread (§ out-of-thread capture) — so a reply
+        typed in the nudge thread or at the space top level still resolves the
+        issue. Posting still targets the real thread (every message in the
+        effective view carries the issue's thread_id)."""
+        thread_conv = self._effective_conversation(issue, own_id)
         replies = self._new_replies(issue, thread_conv, own_id)
 
+        # Follow the reporter: the next question / confirmation is posted into
+        # whatever thread they last replied in (the issue thread, the nudge
+        # thread, or any other). The replies in `thread_conv` are re-tagged copies,
+        # so resolve the latest reply's REAL thread from `self._conversation`.
+        if replies:
+            by_id = {m.id: m for m in self._conversation.messages}
+            latest = max(replies, key=lambda m: (m.create_time or "", m.id))
+            real = by_id.get(latest.id)
+            if real and real.thread_id:
+                issue.active_thread_id = real.thread_id
+
         # Capture the latest Q→A before re-assessing (report evidence, §6).
+        # Dedupe by message id across prior Q&A so a reply isn't recorded twice if
+        # it is re-seen on a later cycle (e.g. an `_ask` that produced no questions
+        # left the anchor unadvanced, so `_new_replies` returns the same message).
         if replies and issue.questions_asked:
-            issue.qa.append(
-                QAPair(
-                    question=issue.questions_asked[-1],
-                    answer_message_ids=[r.id for r in replies],
-                    text=" ".join(r.text for r in replies),
+            already = {mid for pair in issue.qa for mid in pair.answer_message_ids}
+            fresh = [r for r in replies if r.id not in already]
+            if fresh:
+                issue.qa.append(
+                    QAPair(
+                        question=issue.questions_asked[-1],
+                        answer_message_ids=[r.id for r in fresh],
+                        text=" ".join(r.text for r in fresh),
+                    )
                 )
-            )
 
         # Anti-spam: while clarifying with no fresh reply, wait (don't re-ask).
         if issue.status == Status.CLARIFYING and not replies:
             issue.idle_cycles += 1
             issue.updated_at = _now()
+            # Before giving up, surface the unanswered question at the space top
+            # level with an @mention — the reporter may simply not be watching the
+            # thread — and grant a fresh idle budget. Escalates at most once.
+            if self._should_escalate(issue):
+                return self._escalate(issue)
             if issue.idle_cycles >= self.config.STALE_AFTER_IDLE_CYCLES:
                 return self._mark_stale(issue)
             return None
@@ -292,6 +334,135 @@ class Runner:
         self.store.tombstone(issue)
         return "stale"
 
+    # --- escalation ---------------------------------------------------------
+    def _should_escalate(self, issue) -> bool:
+        """Whether to post a top-level @mention nudge this cycle: an idle
+        CLARIFYING issue (the caller already incremented `idle_cycles`) that has
+        a known reporter, hasn't been escalated yet, and has reached the
+        escalation threshold but not yet the stale threshold. Disabled when
+        `ESCALATE_AFTER_IDLE_CYCLES <= 0`."""
+        cfg = self.config
+        return (
+            not issue.escalated
+            and cfg.ESCALATE_AFTER_IDLE_CYCLES > 0
+            and bool(issue.reporter_id)
+            and bool(issue.questions_asked)
+            and issue.idle_cycles >= cfg.ESCALATE_AFTER_IDLE_CYCLES
+            and issue.idle_cycles < cfg.STALE_AFTER_IDLE_CYCLES
+        )
+
+    def _escalate(self, issue) -> str:
+        """Post one top-level (NOT threaded) @mention nudge so the reporter, who
+        may not be watching the thread, is pulled back to the unanswered
+        question; then keep the issue CLARIFYING with a fresh idle budget.
+
+        Idempotent: a stable `request_id` means a crash between the post and the
+        state save never double-nudges (the same post is returned), and
+        `escalated` (persisted) bars a second escalation once saved."""
+        title = issue.title or "an issue"
+        text = (
+            f"{_mention(issue.reporter_id)} I asked a couple of clarifying "
+            f"questions about “{title}” in a thread above — could "
+            f"you take a look when you get a chance? \U0001f64f"
+        ).strip()
+        posted = self.chat.post_message(
+            text, thread_id=None, request_id=f"client-issue-{issue.id}-escalate"
+        )
+        # Remember the thread the nudge opened: it is a second unambiguous home for
+        # this issue, so a reporter reply there is collected even when they have
+        # several open issues (§ out-of-thread capture, section A). Stable across a
+        # retry (same `request_id` ⇒ same Message ⇒ same thread_id).
+        issue.escalation_thread_id = posted.thread_id or None
+        issue.escalated = True
+        issue.idle_cycles = 0  # grant a fresh stale window after the nudge
+        issue.updated_at = _now()
+        return "escalated"
+
+    # --- effective (thread + out-of-thread) conversation --------------------
+    def _effective_conversation(self, issue, own_id: str | None) -> Conversation:
+        """The issue's own thread PLUS replies that landed outside it but still
+        belong to this issue (§ out-of-thread capture). Two sources, in order of
+        confidence:
+
+        **(A) The issue's "home" threads beyond its own — an unambiguous source.**
+        Two threads belong 1:1 to this issue: the nudge thread the escalation
+        opened, and the thread the conversation has since moved to (where the bot
+        now follows the reporter — `active_thread_id`). *Any* non-bot reply in
+        either attributes cleanly — even when the reporter has several open issues
+        — so both are collected without the ambiguity guard below. (This is the
+        "reply in the issue thread OR the nudge thread, collect both" contract,
+        plus the follow-the-reporter thread.)
+
+        **(B) A reporter reply that landed in some OTHER fresh thread.**
+        A top-level reply with no nudge to anchor it can't be tied to a specific
+        issue by thread, so this source is conservative:
+
+        - **reporter only** — never other in-thread senders; staff personas reply
+          in-thread, so widening the author set would just ingest their unrelated
+          top-level chatter;
+        - **unambiguous only** — if the reporter has more than one open issue
+          awaiting a reply, a bare top-level message can't be attributed to one of
+          them; we fall back to in-thread + nudge-thread replies, which are;
+        - **newer than the last bot question**, and never from a thread owned by
+          another open issue (nor the nudge thread, already covered by A).
+
+        Out-of-thread messages are returned as COPIES re-tagged to the issue's
+        thread_id so the analyzer's thread-scoped clarity check treats them as
+        part of this discussion; originals in `self._conversation` are untouched,
+        and posting always resolves the real thread via `_thread_anchor`."""
+        strict = self._conversation.for_thread(issue.thread_id)
+        in_thread_ids = {m.id for m in strict.messages}
+        extra: list[Message] = []
+        seen_extra: set[str] = set()
+
+        # (A) The issue's home threads beyond its own (nudge thread + the thread
+        # the conversation moved to): each belongs 1:1 to this issue, so collect
+        # every non-bot message in them, re-tagged, with no ambiguity guard (the
+        # bot's own posts are dropped as their author == own_id).
+        home_threads = {
+            t for t in (issue.escalation_thread_id, issue.active_thread_id)
+            if t and t != issue.thread_id
+        }
+        for tid in home_threads:
+            for m in self._conversation.for_thread(tid).messages:
+                if m.sender == own_id or m.id in in_thread_ids or m.id in seen_extra:
+                    continue
+                extra.append(replace(m, thread_id=issue.thread_id))
+                seen_extra.add(m.id)
+
+        # (B) The reporter's answers in some other fresh thread (guarded).
+        cutoff = issue.last_bot_create_time
+        reporter = issue.reporter_id
+        if cutoff and reporter and reporter != own_id:
+            awaiting = [
+                i for i in self.store.open_issues()
+                if i.reporter_id == reporter and i.last_bot_create_time
+            ]
+            if len(awaiting) <= 1:  # else ambiguous: which issue does it answer?
+                other_threads = {
+                    i.thread_id
+                    for i in self.store.open_issues()
+                    if i.thread_id and i.thread_id != issue.thread_id
+                }
+                for m in self._conversation.messages:
+                    if m.thread_id == issue.thread_id or m.id in in_thread_ids:
+                        continue  # already in the strict thread
+                    if m.id in seen_extra:
+                        continue  # already pulled from a home thread (A)
+                    if m.thread_id and (m.thread_id in home_threads or m.thread_id in other_threads):
+                        continue  # home thread (A) / another open issue's thread
+                    if m.sender != reporter:
+                        continue  # only the reporter's own out-of-thread answers
+                    if not m.create_time or m.create_time <= cutoff:
+                        continue  # not newer than the last bot question
+                    extra.append(replace(m, thread_id=issue.thread_id))
+                    seen_extra.add(m.id)
+
+        if not extra:
+            return strict
+        merged = sorted(strict.messages + extra, key=lambda m: (m.create_time or "", m.id))
+        return Conversation(messages=merged)
+
     def _new_replies(self, issue, thread_conv: Conversation, own_id: str | None) -> list[Message]:
         """Messages in the issue's thread after the last bot question, authored by
         anyone but the bot (any sender ≠ bot, §6).
@@ -327,13 +498,16 @@ class Runner:
 
     def _ask(self, issue, thread_conv: Conversation, missing_info: list[str]) -> bool:
         """Generate + post the next clarifying-question batch into the thread.
-        Returns True if a batch was posted, False if the model produced none."""
+        Returns True if a batch was posted, False if the model produced none.
+
+        `thread_conv` (the effective view) feeds question *generation* only;
+        the post is routed to the issue's real thread via `_post_to_thread`."""
         questions = self.analyzer.generate_questions(issue, thread_conv, missing_info)
         if not questions:
             return False
         text = "\n".join(questions)
         request_id = f"client-issue-{issue.id}-r{issue.rounds + 1}"
-        posted = self._post_to_thread(issue, thread_conv, text, request_id)
+        posted = self._post_to_thread(issue, text, request_id)
 
         now = _now()
         issue.questions_asked.append(text)
@@ -366,7 +540,6 @@ class Runner:
                 report_mod.write_report(report, self.reports_dir)
             self._post_to_thread(
                 issue,
-                thread_conv,
                 report_mod.confirmation_line(report),
                 request_id=f"client-issue-{issue.id}-report",
             )
@@ -376,28 +549,32 @@ class Runner:
         self.store.tombstone(issue)
 
     # --- posting helper -----------------------------------------------------
-    def _post_to_thread(
-        self,
-        issue,
-        thread_conv: Conversation,
-        text: str,
-        request_id: str,
-    ) -> Message:
-        """Post `text` into the issue's thread. Prefer a threaded reply to a real
-        Message we hold (root/most-recent in the thread); fall back to
-        `post_message(thread_id=...)` when we have no Message object to reply to."""
-        anchor = self._thread_anchor(issue, thread_conv)
+    def _post_to_thread(self, issue, text: str, request_id: str) -> Message:
+        """Post `text` into the issue's *active* thread — where the reporter last
+        replied (`active_thread_id`, else the issue thread). Prefer a threaded
+        reply to a real Message we hold there; fall back to
+        `post_message(thread_id=...)` when we have no Message object to reply to.
+
+        The anchor is resolved from `self._conversation` (a real thread), never
+        the effective view — a re-tagged out-of-thread copy must never become the
+        reply target and redirect the post (§ out-of-thread capture)."""
+        anchor = self._thread_anchor(issue)
         if anchor is not None:
             return self.chat.post_reply(anchor, text, request_id=request_id)
         return self.chat.post_message(
-            text, thread_id=issue.thread_id, request_id=request_id
+            text, thread_id=issue.active_thread_id or issue.thread_id, request_id=request_id
         )
 
-    def _thread_anchor(self, issue, thread_conv: Conversation) -> Message | None:
-        """A Message in the issue's thread to reply to: prefer the most recent
-        thread message, else the issue's root message id, else None."""
-        if thread_conv.messages:
-            return thread_conv.messages[-1]
+    def _thread_anchor(self, issue) -> Message | None:
+        """A real Message in the issue's *active* thread to reply to (where the
+        reporter last spoke — `active_thread_id`, else the issue thread): prefer
+        the most recent message there, else the issue's root/source message, else
+        None. Resolved from `self._conversation` so it is always a genuine
+        in-thread parent, never a re-tagged effective-view copy."""
+        target = issue.active_thread_id or issue.thread_id
+        in_target = self._conversation.for_thread(target)
+        if in_target.messages:
+            return in_target.messages[-1]
         by_id = {m.id: m for m in self._conversation.messages}
         for mid in (issue.last_bot_message_id, issue.root_message_id, *issue.source_message_ids):
             if mid and mid in by_id:

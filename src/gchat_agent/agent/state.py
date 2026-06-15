@@ -161,6 +161,10 @@ class IssueStore:
             target.source_message_ids, candidate.source_message_ids
         )
         target.missing_info = _merge_unique(target.missing_info, candidate.missing_info)
+        # Backfill the reporter only if the tracked issue never had one (e.g. state
+        # written before this field existed); never overwrite the original reporter.
+        if not target.reporter_id and candidate.reporter_id:
+            target.reporter_id = candidate.reporter_id
         # Keep the freshest timestamp; never clobber an existing title/summary
         # with empty drift from a re-detection.
         if candidate.updated_at and (

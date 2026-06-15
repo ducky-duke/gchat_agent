@@ -125,6 +125,11 @@ class Config:
     # --- Agent loop ---
     MAX_CLARIFY_ROUNDS: int = 3
     STALE_AFTER_IDLE_CYCLES: int = 3
+    # After this many idle cycles on a CLARIFYING issue (no in-thread reply), the
+    # bot posts one top-level @mention nudge to the reporter before it keeps
+    # counting toward STALE. Must be < STALE_AFTER_IDLE_CYCLES to fire at all; set
+    # to 0 to disable escalation entirely.
+    ESCALATE_AFTER_IDLE_CYCLES: int = 2
     RESOLVE_CONFIDENCE_THRESHOLD: float = 0.8
     DETECT_WINDOW_MESSAGES: int = 50
     STATE_FILE: str = ".state/issues.json"
@@ -149,6 +154,7 @@ _INT_KEYS: Final[frozenset[str]] = frozenset({
     "RAG_TOP_K",
     "MAX_CLARIFY_ROUNDS",
     "STALE_AFTER_IDLE_CYCLES",
+    "ESCALATE_AFTER_IDLE_CYCLES",
     "DETECT_WINDOW_MESSAGES",
     "POLL_INTERVAL_SECONDS",
     "WEBHOOK_PORT",
