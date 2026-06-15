@@ -82,7 +82,7 @@ flowchart TB
 
     BLLM --> OR & MOCK
     RSTORE --> BM25R & FUSED
-    OR -.lazy openai / langfuse.openai.-> OBS
+    OR -.->|"lazy openai / langfuse.openai"| OBS
 
     GREST --> OAUTH
     GREST <--> GOOGLE
@@ -250,9 +250,9 @@ flowchart TD
     UPSERT --> LOOP{for each open issue}
 
     subgraph procgrp["3. process open issues (§6) — observability.trace('issue', issue_id)"]
-        LOOP --> QA["capture new replies after last bot Q<br/>(any sender ≠ bot) → QAPair"]
+        LOOP --> QA["capture new replies after last bot Q<br/>(issue thread + nudge thread + reporter's out-of-thread answers, any sender ≠ bot) → QAPair"]
         QA --> GATE{CLARIFYING<br/>and no fresh reply?}
-        GATE -- yes --> IDLE["idle_cycles += 1<br/>→ STALE if ≥ STALE_AFTER_IDLE_CYCLES<br/>else wait (anti-spam)"]
+        GATE -- yes --> IDLE["idle_cycles += 1<br/>→ ESCALATE (top-level @mention) once at ESCALATE_AFTER_IDLE_CYCLES<br/>→ STALE if ≥ STALE_AFTER_IDLE_CYCLES<br/>else wait (anti-spam)"]
         GATE -- no --> ASSESS["analyzer.assess_clarity"]
         ASSESS --> CLEAR{is_clear AND<br/>confidence ≥ RESOLVE_CONFIDENCE_THRESHOLD<br/>AND no missing_info?}
         CLEAR -- yes --> RESOLVE["RESOLVE: write report once + post confirmation,<br/>mark RESOLVED, tombstone"]
@@ -267,7 +267,7 @@ flowchart TD
     STALE2 --> NEXT
     NEXT --> LOOP
     LOOP -- done --> PERSIST["persist freshly-learned bot id<br/>+ store.save() (atomic)"]
-    PERSIST --> SUMMARY([return summary:<br/>fetched / detected / asked / resolved / stale])
+    PERSIST --> SUMMARY([return summary:<br/>fetched / detected / asked / resolved / stale / escalated])
 ```
 
 ### Step 1 — fetch + cursor (`_fetch_new_messages`, `_since`)
@@ -305,11 +305,30 @@ into a matching open issue).
 
 For each open issue (wrapped in an `observability.trace("issue", issue_id=…)` span):
 
-1. **Capture Q&A** — replies in the issue's thread after the last bot question
-   (authored by anyone ≠ bot) are recorded as a `QAPair` for report evidence.
+1. **Capture Q&A** — replies after the last bot question (authored by anyone ≠ bot)
+   are recorded as a `QAPair` (deduped by message id) for report evidence. The
+   issue's *effective conversation* is its own thread **plus replies that landed
+   outside it but still belong to this issue**: in a threaded space a top-level
+   reply opens a *new* thread, so a reporter who answers without opening the bot's
+   thread would otherwise be invisible. Two sources, by confidence: **(A) the
+   issue's home threads** beyond its own — the nudge thread the escalation opened
+   *and* the thread the conversation moved to (`active_thread_id`, see below);
+   each belongs 1:1 to this issue, so any non-bot reply there attributes cleanly
+   and is collected *unconditionally* (this is the "reply in the issue thread
+   **or** the nudge thread, collect both" contract); **(B)** a reporter reply that
+   landed in some *other* fresh thread, pulled in conservatively — reporter only,
+   newer than the last bot question, and only when attribution is unambiguous
+   (skipped if the reporter has >1 open issue awaiting a reply). All such messages
+   are re-tagged to the issue thread so the analyzer's thread-scoped clarity check
+   treats them as part of this discussion. **Follow-the-reporter:** the issue's
+   `active_thread_id` tracks the real thread of the reporter's latest reply, so
+   the next question and the confirmation are posted *there* — wherever they chose
+   to answer — not always the original issue thread.
 2. **Anti-spam gate** — if the issue is `CLARIFYING` and there is **no fresh reply**,
-   the bot does not re-ask: it increments `idle_cycles` and waits, going `STALE`
-   once `idle_cycles ≥ STALE_AFTER_IDLE_CYCLES`.
+   the bot does not re-ask: it increments `idle_cycles` and waits. At
+   `ESCALATE_AFTER_IDLE_CYCLES` it posts **one** top-level `<users/…>` @mention nudge
+   (the reporter may not be watching the thread) and resets the idle budget;
+   escalates at most once. It goes `STALE` once `idle_cycles ≥ STALE_AFTER_IDLE_CYCLES`.
 3. **Assess** — `analyzer.assess_clarity`. If `is_clear` **and** `confidence ≥
    RESOLVE_CONFIDENCE_THRESHOLD` **and** no `missing_info`, the issue **resolves**.
 4. **Resolve** (`_resolve`) — gated on `report_written_at` (persisted) for
@@ -321,8 +340,13 @@ For each open issue (wrapped in an `observability.trace("issue", issue_id=…)` 
    (`_ask` → `CLARIFYING`); if the model produces no questions, or rounds are
    exhausted, the issue goes **stale**.
 
-Posting prefers a threaded reply to a real `Message` the runner holds, falling back
-to `post_message(thread_id=…)`.
+Posting prefers a threaded reply to a real `Message` in the issue's **active**
+thread (`active_thread_id`, else the issue thread) — always resolved from
+`self._conversation`, never the effective view, so a re-tagged out-of-thread copy
+can never redirect the reply — falling back to `post_message(thread_id=…)`. The
+escalation nudge is the one exception: it is posted **top-level**
+(`thread_id=None`) so it surfaces in the main space (and its new thread becomes a
+home + the active thread once the reporter answers there).
 
 ---
 
@@ -353,7 +377,9 @@ defaults — so the mock/CI path needs no configuration. Every key is documented
 `.env.example`. Notable defaults: `LLM_PROVIDER=openrouter`,
 `STATE_FILE=.state/issues.json`, `REPORTS_DIR=reports`,
 `KB_DIR=data/knowledge_base`, `DETECT_WINDOW_MESSAGES=50`, `MAX_CLARIFY_ROUNDS=3`,
-`STALE_AFTER_IDLE_CYCLES=3`, `RESOLVE_CONFIDENCE_THRESHOLD=0.8`,
+`STALE_AFTER_IDLE_CYCLES=3`, `ESCALATE_AFTER_IDLE_CYCLES=2` (idle cycles before a
+one-time top-level @mention nudge; must be `< STALE_AFTER_IDLE_CYCLES` to fire, `0`
+disables), `RESOLVE_CONFIDENCE_THRESHOLD=0.8`,
 `POLL_INTERVAL_SECONDS=15`, `OPENROUTER_REASONING=true` (sends
 `extra_body={"reasoning": {"enabled": True}}` on every completion; set `false`
 to skip it for lower latency/cost), `OPENROUTER_QUANTIZATIONS=fp8` (comma-separated;
