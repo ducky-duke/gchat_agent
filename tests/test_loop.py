@@ -45,7 +45,7 @@ from gchat_agent.config import load_config
 from gchat_agent.llm.mock import MockLLM
 from gchat_agent.models import Message, Status
 from gchat_agent.runner import Runner
-from tests.fakes import FakeChatClient
+from tests.fakes import FakeChatClient, StaffChatView
 
 BOT_ID = "users/bot"
 STAFF_ID = "users/staff-ops"
@@ -68,47 +68,6 @@ PERSONA = {
     "withholding_policy": "Reveal details only when directly asked.",
     "seed_messages": [SEED_TEXT],
 }
-
-
-class StaffChatView:
-    """A :class:`ChatClient` view over a *shared* :class:`FakeChatClient`.
-
-    Mirrors the live demo, where each participant has its own client/account
-    pointed at one shared space. The view delegates reads/writes to the bot's
-    backend store so every message is mutually visible, but authors posts as
-    ``STAFF_ID`` — so the bot detects them (a distinct human) and never filters
-    them as its own (§5.7/§6). Honors ``request_id`` idempotency like the real
-    adapter so a retry never double-posts.
-    """
-
-    def __init__(self, backend: FakeChatClient, me: str) -> None:
-        self._backend = backend
-        self._me = me
-        self._by_request: dict[str, Message] = {}
-
-    def me(self) -> str | None:
-        return self._me
-
-    def fetch_messages(self, since: str | None) -> list[Message]:
-        return self._backend.fetch_messages(since)
-
-    def post_message(
-        self,
-        text: str,
-        thread_id: str | None = None,
-        request_id: str | None = None,
-    ) -> Message:
-        if request_id is not None and request_id in self._by_request:
-            return self._by_request[request_id]
-        message = self._backend.inject(self._me, text, thread_id=thread_id)
-        if request_id is not None:
-            self._by_request[request_id] = message
-        return message
-
-    def post_reply(
-        self, message: Message, text: str, request_id: str | None = None
-    ) -> Message:
-        return self.post_message(text, thread_id=message.thread_id, request_id=request_id)
 
 
 class _DemoAnalyzer(Analyzer):

@@ -193,6 +193,51 @@ class IssueStoreTombstoneTest(unittest.TestCase):
         self.assertEqual(len(store.all_issues()), 1)
         self.assertEqual(store.all_issues()[0].source_message_ids, ["m1"])
 
+    def test_category_drift_after_tombstone_is_suppressed(self) -> None:
+        """A resolved+tombstoned issue re-detected under a *drifted* category
+        (so a fresh fingerprint the exact-match tombstone set misses) must still
+        be suppressed via the closed-issue similarity guard (review MED)."""
+        store = IssueStore(state_file="/unused")
+        issue = store.upsert(_make_issue(category="billing"))
+        assert issue is not None
+        issue.status = Status.RESOLVED
+        store.tombstone(issue)
+
+        # Same thread/root/title/summary, but the LLM flipped the category, so
+        # the fingerprint genuinely differs and isn't in the tombstone set.
+        drifted = _make_issue(category="payments")
+        self.assertNotEqual(drifted.fingerprint, issue.fingerprint)
+        self.assertFalse(store.is_tombstoned(drifted.fingerprint))
+
+        result = store.upsert(drifted)
+        self.assertIs(result, TOMBSTONED)
+        self.assertEqual(len(store.all_issues()), 1)
+
+    def test_distinct_issue_same_thread_after_tombstone_still_raised(self) -> None:
+        """The closed-similarity guard must not over-suppress: a genuinely new
+        issue in the same thread (distinct title/summary, low overlap) is still
+        tracked even though a different issue there was tombstoned."""
+        store = IssueStore(state_file="/unused")
+        issue = store.upsert(
+            _make_issue(category="billing", title="Payouts stuck",
+                        summary="Withdrawals are not completing for VIP players.")
+        )
+        assert issue is not None
+        issue.status = Status.RESOLVED
+        store.tombstone(issue)
+
+        other = store.upsert(
+            _make_issue(
+                category="auth",
+                root_message_id="spaces/FAKE/messages/m2",
+                title="Login page times out",
+                summary="Players cannot sign in; the auth service latency spiked.",
+            )
+        )
+        self.assertIsNotNone(other)
+        self.assertIsNot(other, TOMBSTONED)
+        self.assertEqual(len(store.all_issues()), 2)
+
 
 class IssueStoreCursorIdentityTest(unittest.TestCase):
     """Cursor + bot-identity get/set round-trips (§5.4/§5.7)."""

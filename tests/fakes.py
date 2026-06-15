@@ -155,3 +155,44 @@ class FakeChatClient:
     ) -> Message:
         """Alias for `inject` (seed a message from an arbitrary sender)."""
         return self.inject(sender, text, thread_id=thread_id, sender_type=sender_type)
+
+
+class StaffChatView:
+    """A `ChatClient` view over a *shared* `FakeChatClient` (per-participant
+    identity). Mirrors the live demo where each account points at one Space:
+    reads/writes delegate to the shared backend so every message is mutually
+    visible, but posts are authored as `me` — so the bot sees a distinct human
+    and never self-filters them (§5.7/§6). Honors `request_id` idempotency like
+    the real adapter so a retry never double-posts.
+
+    Shared by the end-to-end loop test and the local demo script (single source
+    of truth — the two previously carried verbatim copies that could drift)."""
+
+    def __init__(self, backend: FakeChatClient, me: str) -> None:
+        self._backend = backend
+        self._me = me
+        self._by_request: dict[str, Message] = {}
+
+    def me(self) -> str | None:
+        return self._me
+
+    def fetch_messages(self, since: str | None) -> list[Message]:
+        return self._backend.fetch_messages(since)
+
+    def post_message(
+        self,
+        text: str,
+        thread_id: str | None = None,
+        request_id: str | None = None,
+    ) -> Message:
+        if request_id is not None and request_id in self._by_request:
+            return self._by_request[request_id]
+        message = self._backend.inject(self._me, text, thread_id=thread_id)
+        if request_id is not None:
+            self._by_request[request_id] = message
+        return message
+
+    def post_reply(
+        self, message: Message, text: str, request_id: str | None = None
+    ) -> Message:
+        return self.post_message(text, thread_id=message.thread_id, request_id=request_id)

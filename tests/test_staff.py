@@ -211,5 +211,16 @@ class StaffAnswerTest(unittest.TestCase):
         self.assertIn(agent.withholding_policy, prompt)
 
 
+class DedupeRepeatTest(unittest.TestCase):
+    """A verbatim doubled model reply collapses to a single copy (minimax quirk)."""
+
+    def test_collapses_exact_and_separated_doubles(self) -> None:
+        d = StaffAgent._dedupe_repeat
+        self.assertEqual(d("Owner is Sam.Owner is Sam."), "Owner is Sam.")
+        self.assertEqual(d("Owner is Sam. Owner is Sam."), "Owner is Sam.")
+        self.assertEqual(d("Just once."), "Just once.")  # not doubled, untouched
+        self.assertEqual(d(""), "")
+
+
 if __name__ == "__main__":
     unittest.main()

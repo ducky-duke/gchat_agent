@@ -126,6 +126,94 @@ class DetectIssuesTest(unittest.TestCase):
         self.assertEqual(self.analyzer._retrieve_context("anything"), "")
 
 
+class _HashCitingLLM:
+    """An `LLMClient` stub whose detection cites `source_message_ids` WITH the
+    transcript's leading `#` marker (as glm-5.1 does), to prove the analyzer
+    strips it instead of dropping the whole issue."""
+
+    def complete_json(self, system, user, schema_hint=None):  # noqa: ARG002
+        return {
+            "issues": [
+                {
+                    "title": "Gateway down",
+                    "summary": "Payments gateway failing",
+                    "category": "incident",
+                    "severity": "high",
+                    "source_message_ids": ["#spaces/S/messages/m1", " #spaces/S/messages/m2"],
+                    "missing_info": ["owner"],
+                }
+            ]
+        }
+
+    def chat(self, system, messages):  # noqa: ARG002
+        return ""
+
+
+class _ShortCitingLLM:
+    """An `LLMClient` stub whose detection cites only the trailing id segment
+    ("m1" instead of "spaces/S/messages/m1"), as minimax-m3 does."""
+
+    def complete_json(self, system, user, schema_hint=None):  # noqa: ARG002
+        return {
+            "issues": [
+                {
+                    "title": "Gateway down",
+                    "summary": "Payments gateway failing",
+                    "category": "incident",
+                    "severity": "high",
+                    "source_message_ids": ["m1", "m2"],
+                    "missing_info": ["owner"],
+                }
+            ]
+        }
+
+    def chat(self, system, messages):  # noqa: ARG002
+        return ""
+
+
+class CitedIdMarkerTest(unittest.TestCase):
+    """Models cite source ids inconsistently (full id, `#<id>` marker, or just the
+    trailing segment). Every form must resolve to the real id — not get the whole
+    issue silently dropped (glm / minimax regression)."""
+
+    def test_strip_id_marker_normalizes(self) -> None:
+        self.assertEqual(Analyzer._strip_id_marker("#abc"), "abc")
+        self.assertEqual(Analyzer._strip_id_marker("  #abc "), "abc")
+        self.assertEqual(Analyzer._strip_id_marker("abc"), "abc")  # no marker, untouched
+
+    def test_resolve_cited_id_forms(self) -> None:
+        present = ["spaces/S/messages/m1", "spaces/S/messages/m2"]
+        self.assertEqual(  # exact
+            Analyzer._resolve_cited_id("spaces/S/messages/m1", present),
+            "spaces/S/messages/m1",
+        )
+        self.assertEqual(  # '#'-prefixed full id
+            Analyzer._resolve_cited_id("#spaces/S/messages/m2", present),
+            "spaces/S/messages/m2",
+        )
+        self.assertEqual(  # trailing segment only
+            Analyzer._resolve_cited_id("m1", present), "spaces/S/messages/m1"
+        )
+        self.assertIsNone(Analyzer._resolve_cited_id("nope", present))
+        self.assertIsNone(Analyzer._resolve_cited_id("#", present))
+
+    def _assert_two_real_sources(self, llm) -> None:
+        conv = _incident_conversation()
+        issues = Analyzer(llm, retriever=None).detect_issues(conv)
+        self.assertEqual(len(issues), 1)
+        present = {m.id for m in conv.messages}
+        self.assertTrue(issues[0].source_message_ids)
+        for sid in issues[0].source_message_ids:
+            self.assertIn(sid, present)  # stored as the real, full id
+        self.assertEqual(issues[0].root_message_id, conv.messages[0].id)
+
+    def test_hash_prefixed_citations_still_resolve(self) -> None:
+        self._assert_two_real_sources(_HashCitingLLM())  # glm form
+
+    def test_short_segment_citations_still_resolve(self) -> None:
+        self._assert_two_real_sources(_ShortCitingLLM())  # minimax form
+
+
 class ClarityFlowTest(unittest.TestCase):
     """assess_clarity / generate_questions flow (§6) with MockLLM + retriever=None."""
 
