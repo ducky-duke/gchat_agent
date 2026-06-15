@@ -27,7 +27,13 @@ def _clean_value(val: str) -> str:
     Quoting wins: a value wrapped in matching quotes is taken verbatim (any `#`
     inside is literal; trailing content after the closing quote is dropped). For
     an unquoted value a `#` that follows whitespace begins an inline comment, so
-    `http://x#frag` or a leading `#fff` survive intact."""
+    `http://x#frag` or a leading `#fff` survive intact.
+
+    A value that is only whitespace then a `#` comment (`KEY=   # note`) is an
+    empty value — caught BEFORE the strip below, because stripping would make the
+    `#` look like a leading literal (`KEY=#fff`) and slip past the `i > 0` guard."""
+    if val[:1] in (" ", "\t") and val.lstrip().startswith("#"):
+        return ""
     val = val.strip()
     if not val:
         return val
@@ -94,6 +100,16 @@ class Config:
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "deepseek/deepseek-v4-flash"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # Send `extra_body={"reasoning": {"enabled": True}}` on every completion so
+    # reasoning-capable models (e.g. deepseek-v4-flash) think before answering.
+    # Set OPENROUTER_REASONING=false to disable (lower latency/cost).
+    OPENROUTER_REASONING: bool = True
+    # Comma-separated provider quantizations OpenRouter may route to (it skips
+    # endpoints serving other quants), e.g. "fp8" or "fp8,bf16". Default empty =
+    # no constraint (OpenRouter auto-routes) — a hard pin like "fp8" 404s on any
+    # model with no endpoint at that quant, which breaks swapping models. Opt in
+    # via .env. Sent as `extra_body={"provider": {"quantizations": [...]}}`.
+    OPENROUTER_QUANTIZATIONS: str = ""
 
     # --- Observability (optional [observability] extra) ---
     OBSERVABILITY: str = "none"  # or: langfuse
@@ -128,7 +144,7 @@ class Config:
 
 
 # Which fields need non-string coercion (everything else stays a str).
-_BOOL_KEYS: Final[frozenset[str]] = frozenset({"RAG_DENSE"})
+_BOOL_KEYS: Final[frozenset[str]] = frozenset({"RAG_DENSE", "OPENROUTER_REASONING"})
 _INT_KEYS: Final[frozenset[str]] = frozenset({
     "RAG_TOP_K",
     "MAX_CLARIFY_ROUNDS",

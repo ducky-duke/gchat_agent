@@ -113,14 +113,21 @@ class Analyzer:
     ) -> Issue | None:
         """Turn one raw candidate dict into a fully-formed OPEN `Issue`, or
         `None` when it cites no message id present in the transcript."""
-        # Keep only cited ids that actually exist, preserving transcript order.
-        cited = [str(i) for i in self._as_list(raw.get("source_message_ids"))]
+        # Resolve cited ids to real transcript ids, preserving transcript order.
+        # Models cite ids inconsistently — full id, `#<id>` marker copied verbatim,
+        # or just the trailing segment ("m1" for "spaces/X/messages/m1"). Resolve
+        # all of these so a citation-format quirk never silently drops the issue.
         present = [m.id for m in by_id.values()]
         order = {mid: idx for idx, mid in enumerate(present)}
-        source_ids = sorted(
-            {i for i in cited if i in by_id},
-            key=lambda i: order[i],
-        )
+        resolved = [
+            real
+            for real in (
+                self._resolve_cited_id(c, present)
+                for c in self._as_list(raw.get("source_message_ids"))
+            )
+            if real is not None
+        ]
+        source_ids = sorted(set(resolved), key=lambda i: order[i])
         if not source_ids:
             return None
 
@@ -259,6 +266,35 @@ class Analyzer:
         lexicographically), or `""` if none carry a timestamp."""
         times = [m.create_time for m in messages if m.create_time]
         return max(times) if times else ""
+
+    @staticmethod
+    def _strip_id_marker(value: object) -> str:
+        """Normalize a cited message id: drop surrounding whitespace and a single
+        leading '#'. The transcript renders each line as `#<id> ...`; some models
+        (e.g. glm) copy that '#' marker into `source_message_ids`, which would
+        otherwise fail the exact-id match and drop the issue."""
+        text = str(value).strip()
+        return text[1:].strip() if text.startswith("#") else text
+
+    @staticmethod
+    def _resolve_cited_id(value: object, present_ids: list[str]) -> str | None:
+        """Resolve a model-cited id to a real transcript message id, or None.
+
+        Tolerates the citation-format quirks seen across models: the `#` marker
+        (glm), the full resource name, and trailing-segment truncation (minimax
+        cites "m1" for "spaces/X/messages/m1"). Tries, in order: exact match, a
+        real id ending in "/<cited>", then last-path-segment equality (message
+        id segments are unique within a space, so this won't cross-match)."""
+        cited = Analyzer._strip_id_marker(value)
+        if not cited:
+            return None
+        if cited in present_ids:
+            return cited
+        tail = cited.rsplit("/", 1)[-1]
+        for real in present_ids:
+            if real.endswith("/" + cited) or real.rsplit("/", 1)[-1] == tail:
+                return real
+        return None
 
     @staticmethod
     def _as_list(value: object) -> list:

@@ -172,8 +172,28 @@ class StaffAgent:
         fact_value = str(self.facts.get(key, "")).strip()
         llm_text = self._llm_phrasing(question_text, fact_value)
         if llm_text and self._mentions_fact(llm_text, fact_value):
-            return llm_text
+            return self._dedupe_repeat(llm_text)
         return fact_value or "Let me check and get back to you."
+
+    @staticmethod
+    def _dedupe_repeat(text: str) -> str:
+        """Collapse a verbatim doubled reply to a single copy. Some models (e.g.
+        minimax) echo the whole answer twice — 'Sentence.Sentence.' — which would
+        otherwise land doubled in the transcript and the resolution report."""
+        s = (text or "").strip()
+        n = len(s)
+        if n < 2:
+            return s
+        # Exact 'XX' with no separator (the observed behavior).
+        if n % 2 == 0 and s[: n // 2] == s[n // 2:]:
+            return s[: n // 2].strip()
+        # 'X<sep>X' with a small whitespace separator near the midpoint.
+        half = n // 2
+        for i in range(max(1, half - 1), half + 2):
+            a, b = s[:i].strip(), s[i:].strip()
+            if a and a == b:
+                return a
+        return s
 
     def _llm_phrasing(self, question_text: str, fact_value: str) -> str:
         """Ask the LLM to phrase the answer in character; tolerate any failure.

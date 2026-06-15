@@ -8,7 +8,7 @@ handling) is ported from `smoke/smoke_test_chat.py`; the bearer comes from
 `chat.oauth.get_access_token`.
 
 Reads via `spaces.messages.list` with a double-quoted `createTime >` filter,
-`orderBy=ASC`, `pageSize=1000`, following `nextPageToken` until empty. Posts via
+`orderBy=createTime asc`, `pageSize=1000`, following `nextPageToken` until empty. Posts via
 `spaces.messages.create` as a threaded reply (`thread.name` +
 `messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD`) with a stable
 `requestId` for idempotency. Exponential backoff on `429 / RESOURCE_EXHAUSTED`.
@@ -33,6 +33,11 @@ _MAX_RETRIES: Final[int] = 5
 _BACKOFF_BASE_SECONDS: Final[float] = 0.5
 _BACKOFF_CAP_SECONDS: Final[float] = 30.0
 _RETRY_STATUSES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
+
+# Per-request socket timeout (connect + read). Without this `urlopen` can block
+# forever on a hung Google endpoint, freezing a whole poll cycle. A read timeout
+# raises `TimeoutError`, which `_call` treats as a transient (retryable) failure.
+_HTTP_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 class GoogleChatClient:
@@ -85,7 +90,7 @@ class GoogleChatClient:
             if self.quota_project:
                 req.add_header("x-goog-user-project", self.quota_project)
             try:
-                with urllib.request.urlopen(req) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
                     raw = resp.read()
                     if not raw:
                         return resp.status, {}
@@ -116,8 +121,10 @@ class GoogleChatClient:
                     f"Chat API {method} {path} failed (HTTP {exc.code}): "
                     f"{json.dumps(payload)[:800]}"
                 ) from exc
-            except urllib.error.URLError as exc:
-                # Transport-level hiccup — treat like a transient failure.
+            except (urllib.error.URLError, TimeoutError) as exc:
+                # Transport-level hiccup or socket timeout — transient failure.
+                # (A read timeout raises `TimeoutError`, which is NOT a subclass
+                # of `URLError`, so it must be named explicitly here.)
                 if attempt < _MAX_RETRIES:
                     self._sleep_backoff(attempt)
                     continue
@@ -179,7 +186,9 @@ class GoogleChatClient:
         paginated. `None` ⇒ no `createTime` filter (all messages the account can
         see in the space)."""
         space = self._require_space()
-        params: dict[str, str] = {"pageSize": "1000", "orderBy": "ASC"}
+        # orderBy must be a field + direction ("createTime asc"); a bare "ASC"
+        # returns HTTP 400 "Invalid order by query". oldest-first is the default.
+        params: dict[str, str] = {"pageSize": "1000", "orderBy": "createTime asc"}
         if since:
             # RFC-3339 timestamp must be DOUBLE-QUOTED inside the filter (§7).
             params["filter"] = f'createTime > "{since}"'

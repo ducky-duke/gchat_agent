@@ -135,10 +135,20 @@ class IssueStore:
 
         existing = self._by_fp.get(fp)
         if existing is None:
-            existing = self._find_similar_open(candidate)
+            existing = self._find_similar(candidate, closed=False)
         if existing is not None and existing.status not in _CLOSED_STATUSES:
             self._merge(existing, candidate)
             return existing
+
+        # Category-drift guard: a candidate that closely matches a closed AND
+        # tombstoned issue in the same thread is that resolved/stale issue
+        # re-detected under a drifted category — a fresh fingerprint the
+        # exact-match tombstone set misses. Suppress it like a tombstone rather
+        # than re-raise. A genuinely new issue has a distinct title/summary and
+        # stays below the similarity threshold, so it survives; a closed-but-not-
+        # tombstoned issue (edge case) doesn't suppress either.
+        if self._find_similar(candidate, closed=True) is not None:
+            return TOMBSTONED
 
         # New issue: track it and index by fingerprint.
         self.state.issues.append(candidate)
@@ -158,15 +168,24 @@ class IssueStore:
         ):
             target.updated_at = candidate.updated_at
 
-    def _find_similar_open(self, candidate: Issue) -> Issue | None:
-        """Secondary tie-breaker: an open issue in the same thread whose title or
-        summary overlaps the candidate's strongly enough to be the same issue
-        (guards against the LLM flipping `category` and minting a new
-        fingerprint, §5.2/§6)."""
+    def _find_similar(self, candidate: Issue, *, closed: bool) -> Issue | None:
+        """Best same-thread issue (highest score) whose title or summary overlaps
+        the candidate's at/above the similarity threshold, restricted to open or
+        closed issues. Guards against the LLM flipping `category` and minting a
+        new fingerprint (§5.2/§6): an *open* match is merged into; a *closed*
+        match means the candidate is a re-detection of an already-closed issue
+        and `upsert` suppresses it.
+
+        For the closed branch the match is further gated on the tombstone set —
+        only a *tombstoned* closed issue suppresses a re-detection (closed ⟹
+        tombstoned in the normal runner flow), so a closed-but-not-tombstoned
+        issue still allows a fresh detection, as before."""
         best: Issue | None = None
         best_score = _SIMILARITY_THRESHOLD
         for issue in self.state.issues:
-            if issue.status in _CLOSED_STATUSES:
+            if (issue.status in _CLOSED_STATUSES) != closed:
+                continue
+            if closed and not self.is_tombstoned(issue.fingerprint):
                 continue
             if issue.thread_id != candidate.thread_id:
                 continue

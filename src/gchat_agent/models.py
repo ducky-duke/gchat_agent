@@ -161,6 +161,10 @@ class Issue:
     questions_asked: list[str] = field(default_factory=list)
     qa: list[QAPair] = field(default_factory=list)
     last_bot_message_id: str | None = None
+    # Server `create_time` of the last bot question (RFC-3339). Lets `_new_replies`
+    # recover replies after a restart, when the working conversation — rebuilt from
+    # only *unseen* messages — no longer contains the (already-seen) anchor message.
+    last_bot_create_time: str | None = None
     last_question_at: str | None = None
     rounds: int = 0
     idle_cycles: int = 0
@@ -191,6 +195,7 @@ class Issue:
             questions_asked=list(data.get("questions_asked", [])),
             qa=[QAPair.from_dict(item) for item in data.get("qa", [])],
             last_bot_message_id=data.get("last_bot_message_id"),
+            last_bot_create_time=data.get("last_bot_create_time"),
             last_question_at=data.get("last_question_at"),
             rounds=int(data.get("rounds", 0)),
             idle_cycles=int(data.get("idle_cycles", 0)),

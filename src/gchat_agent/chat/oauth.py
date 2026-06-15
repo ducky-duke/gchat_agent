@@ -27,6 +27,11 @@ _DEFAULT_TOKEN_URI: Final[str] = "https://oauth2.googleapis.com/token"
 # Refresh a little early so an in-flight request never races the expiry.
 _EXPIRY_SKEW_SECONDS: Final[int] = 60
 
+# Per-request socket timeout (connect + read) for the token exchange, so a hung
+# token endpoint can't block a poll cycle forever. A read timeout raises
+# `TimeoutError` (not a `URLError` subclass), surfaced as a transport error.
+_HTTP_TIMEOUT_SECONDS: Final[float] = 30.0
+
 
 def _load_client(path: str) -> tuple[str, str, str]:
     """Load (client_id, client_secret, token_uri) from a Desktop OAuth client
@@ -75,7 +80,7 @@ def _post_form(url: str, fields: dict[str, str]) -> dict:
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
             raw = resp.read()
             if not raw:
                 return {}
@@ -86,11 +91,13 @@ def _post_form(url: str, fields: dict[str, str]) -> dict:
                     f"token endpoint returned non-JSON: {raw[:200]!r}"
                 ) from exc
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", "replace")
+        # Bound the echoed body: a hostile/verbose endpoint shouldn't be able to
+        # flood logs, and the OAuth error JSON we care about is short.
+        body = exc.read().decode("utf-8", "replace")[:400]
         raise RuntimeError(
             f"token refresh failed (HTTP {exc.code}): {body}"
         ) from exc
-    except urllib.error.URLError as exc:
+    except (urllib.error.URLError, TimeoutError) as exc:
         raise RuntimeError(f"token endpoint unreachable: {exc}") from exc
 
 

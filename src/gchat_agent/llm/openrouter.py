@@ -32,6 +32,11 @@ _X_TITLE = "gchat-agent"
 _MAX_RETRIES = 3
 _BASE_BACKOFF = 1.5  # seconds; doubled each attempt
 
+# Per-request timeout. Without this the openai SDK waits up to its 600s (10 min)
+# default, so one hung/slow call can freeze the whole poll cycle. A reasoning
+# model legitimately takes tens of seconds, so keep this generous but bounded.
+_REQUEST_TIMEOUT = 90.0  # seconds
+
 
 class OpenRouterClient:
     """An `LLMClient` backed by OpenRouter via the `openai` SDK (§5.3)."""
@@ -41,6 +46,12 @@ class OpenRouterClient:
         self._model = config.OPENROUTER_MODEL
         self._base_url = config.OPENROUTER_BASE_URL
         self._api_key = config.OPENROUTER_API_KEY
+        self._reasoning = config.OPENROUTER_REASONING
+        self._quantizations = [
+            q.strip()
+            for q in (config.OPENROUTER_QUANTIZATIONS or "").split(",")
+            if q.strip()
+        ]
         self._use_langfuse = config.OBSERVABILITY == "langfuse"
         self._client: Any | None = None  # lazily constructed
 
@@ -58,7 +69,12 @@ class OpenRouterClient:
             from langfuse.openai import OpenAI  # lazy, optional dep
         else:
             from openai import OpenAI  # lazy, optional dep
-        self._client = OpenAI(base_url=self._base_url, api_key=self._api_key)
+        self._client = OpenAI(
+            base_url=self._base_url,
+            api_key=self._api_key,
+            timeout=_REQUEST_TIMEOUT,
+            max_retries=2,
+        )
         return self._client
 
     @property
@@ -79,8 +95,25 @@ class OpenRouterClient:
         return "429" in text or "rate limit" in text or "resource_exhausted" in text
 
     def _create(self, messages: list[dict[str, str]], **kwargs: Any) -> Any:
-        """Call chat.completions.create with extra backoff on 429/5xx."""
+        """Call chat.completions.create with extra backoff on 429/5xx.
+
+        Inject OpenRouter's unified `extra_body` knobs when configured:
+        ``{"reasoning": {"enabled": True}}`` (when `OPENROUTER_REASONING` is on)
+        so reasoning-capable models think before answering, and
+        ``{"provider": {"quantizations": [...]}}`` (from `OPENROUTER_QUANTIZATIONS`)
+        to pin routing to those quants. A caller-supplied `extra_body` is merged,
+        not clobbered, and explicit `reasoning`/`provider` keys always win.
+        """
         client = self._get_client()
+        if self._reasoning or self._quantizations:
+            extra_body = dict(kwargs.pop("extra_body", None) or {})
+            if self._reasoning:
+                extra_body.setdefault("reasoning", {"enabled": True})
+            if self._quantizations:
+                provider = dict(extra_body.get("provider") or {})
+                provider.setdefault("quantizations", list(self._quantizations))
+                extra_body["provider"] = provider
+            kwargs["extra_body"] = extra_body
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
@@ -129,17 +162,29 @@ class OpenRouterClient:
             {"role": "system", "content": sys_text},
             {"role": "user", "content": user},
         ]
-        # Request a JSON object when the model supports it; gracefully retry
-        # without response_format if the model rejects it.
+        # Reasoning models occasionally return empty `content` (the turn's budget
+        # went to reasoning tokens); retry once before giving up. Request a JSON
+        # object when supported, falling back if the model rejects response_format.
+        text = ""
+        for _attempt in range(2):
+            try:
+                response = self._create(
+                    messages,
+                    temperature=0.0,
+                    response_format={"type": "json_object"},
+                )
+            except Exception:  # noqa: BLE001 - model may not honor response_format
+                response = self._create(messages, temperature=0.0)
+            text = self._content(response).strip()
+            if text:
+                break
+        # Never raise: a single empty/garbage reply must degrade THIS call (callers
+        # handle {} — no issues / default clarity / no questions), not crash the
+        # whole poller. Parse failures fall back to an empty object.
         try:
-            response = self._create(
-                messages,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-        except Exception:  # noqa: BLE001 - model may not honor response_format
-            response = self._create(messages, temperature=0.0)
-        return extract_json(self._content(response))
+            return extract_json(text)
+        except ValueError:
+            return {}
 
 
 def build_llm(config: "Config") -> LLMClient:

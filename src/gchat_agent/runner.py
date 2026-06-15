@@ -174,10 +174,15 @@ class Runner:
 
     @staticmethod
     def _cursor_anchor(latest: Message, prev: str | None) -> str | None:
-        """The cursor's stored `name`: prefer the latest message create_time (a
-        valid RFC-3339 `since` for the next fetch), else the message name, else
-        keep the previous anchor."""
-        return latest.create_time or latest.id or prev
+        """The cursor's stored `name`: the latest message's RFC-3339 `create_time`
+        (a valid `since` for the next fetch), else keep the previous valid anchor.
+
+        Never the message *resource name*: `_since` feeds this value straight
+        into the Chat `createTime > "{since}"` filter, where a
+        `spaces/…/messages/…` value yields HTTP 400 / a silent mis-fetch. Falling
+        back to `prev` (a known-good timestamp, possibly None) only widens the
+        next fetch slightly; the seen-id set dedups the small replay."""
+        return latest.create_time or prev
 
     # --- step 3 + 4: detection ----------------------------------------------
     def _detect(self, own_id: str | None) -> int:
@@ -233,6 +238,27 @@ class Runner:
                 return self._mark_stale(issue)
             return None
 
+        # First contact: a freshly detected issue (no questions asked, no replies)
+        # is definitionally not "clear" yet — skip the `assess_clarity` LLM call and
+        # open with the first questions straight away. Saves one frontier-model
+        # round-trip on every issue's first reply (the dominant latency cost). Only
+        # when we will actually ask (rounds < cap), so the degenerate cap=0 config
+        # still falls through to the original assess→stale path below.
+        if (
+            not issue.questions_asked
+            and not replies
+            and issue.rounds < self.config.MAX_CLARIFY_ROUNDS
+        ):
+            if self._ask(issue, thread_conv, []):
+                return "asked"
+            # Model produced no questions (rare transient empty) — idle and retry
+            # rather than assessing an empty discussion; the idle cap still bounds it.
+            issue.idle_cycles += 1
+            issue.updated_at = _now()
+            if issue.idle_cycles >= self.config.STALE_AFTER_IDLE_CYCLES:
+                return self._mark_stale(issue)
+            return None
+
         assessment = self.analyzer.assess_clarity(issue, thread_conv)
         if (
             assessment.is_clear
@@ -245,8 +271,15 @@ class Runner:
         if issue.rounds < self.config.MAX_CLARIFY_ROUNDS:
             if self._ask(issue, thread_conv, assessment.missing_info):
                 return "asked"
-            # No questions produced — fall through to stale rather than spin.
-            return self._mark_stale(issue)
+            # No questions this cycle — usually a transient empty LLM reply, not a
+            # genuinely unanswerable issue. Treat as idle and retry next cycle
+            # rather than staling at once; the idle cap still bounds it so a truly
+            # stuck issue eventually goes stale instead of spinning forever.
+            issue.idle_cycles += 1
+            issue.updated_at = _now()
+            if issue.idle_cycles >= self.config.STALE_AFTER_IDLE_CYCLES:
+                return self._mark_stale(issue)
+            return None
 
         return self._mark_stale(issue)
 
@@ -263,18 +296,34 @@ class Runner:
         """Messages in the issue's thread after the last bot question, authored by
         anyone but the bot (any sender ≠ bot, §6).
 
-        If the bot has not asked yet (no `last_bot_message_id`), or that message
-        isn't in our working view, return `[]` — there is no "reply since a bot
-        question" to gate on. This keeps the anti-spam gate conservative: it never
-        mistakes pre-existing thread text for a fresh reply, whether the issue is
-        open or clarifying."""
+        If the bot has not asked yet (no `last_bot_message_id`) there is no "reply
+        since a bot question" to gate on, so return `[]`.
+
+        Normally the anchor message is present in the working view and we take the
+        messages strictly after it. After a *restart*, though, the working
+        conversation is rebuilt from only the *unseen* messages, so the
+        already-seen anchor is absent — falling through to `[]` there would idle a
+        live clarification straight to stale. In that one case we fall back to the
+        anchor's persisted `create_time` and treat thread messages newer than it as
+        the replies. The gate stays conservative: with neither the anchor message
+        nor a recorded timestamp, it still returns `[]` and never mistakes
+        pre-existing thread text for a fresh reply."""
         anchor = issue.last_bot_message_id
-        if not anchor or anchor not in {m.id for m in thread_conv.messages}:
+        if not anchor:
             return []
-        after = thread_conv.after(anchor)
+        if anchor in {m.id for m in thread_conv.messages}:
+            candidates = thread_conv.after(anchor).messages
+        elif issue.last_bot_create_time:
+            cutoff = issue.last_bot_create_time
+            candidates = [
+                m for m in thread_conv.messages
+                if m.create_time and m.create_time > cutoff
+            ]
+        else:
+            return []
         if own_id:
-            after = after.without_sender(own_id)
-        return list(after.messages)
+            candidates = [m for m in candidates if m.sender != own_id]
+        return list(candidates)
 
     def _ask(self, issue, thread_conv: Conversation, missing_info: list[str]) -> bool:
         """Generate + post the next clarifying-question batch into the thread.
@@ -289,6 +338,9 @@ class Runner:
         now = _now()
         issue.questions_asked.append(text)
         issue.last_bot_message_id = posted.id
+        # Persist the question's server create_time so a reply is still detectable
+        # after a restart (the anchor message itself won't be in the rebuilt view).
+        issue.last_bot_create_time = posted.create_time or None
         issue.last_question_at = now
         issue.rounds += 1
         issue.idle_cycles = 0
@@ -352,22 +404,54 @@ class Runner:
                 return by_id[mid]
         return None
 
+    # --- lock-guarded entrypoints -------------------------------------------
+    def _lock_path(self) -> str:
+        return self.config.STATE_FILE + ".lock"
+
+    def run_once(self) -> dict:
+        """Run exactly one cycle under the single-runner lock, then release it.
+
+        Mirrors `run_forever`'s mutual exclusion so a manual `--once` invocation
+        can't race a running daemon (or a second `--once`) on the shared state
+        file. Fail-fast: a cycle error propagates to the caller (unlike
+        `run_forever`, which logs it and retries). Returns the cycle summary."""
+        lock_path = self._lock_path()
+        _acquire_lock_or_raise(lock_path)
+        try:
+            return self.run_cycle()
+        finally:
+            _release_lock(lock_path)
+            observability.flush()
+
     # --- the long-running loop ----------------------------------------------
     def run_forever(self) -> None:
         """Loop `run_cycle` forever under a single-runner lock, sleeping
         `POLL_INTERVAL_SECONDS` between cycles. Releases the lock on exit and
-        flushes observability."""
-        import time
+        flushes observability.
 
-        lock_path = self.config.STATE_FILE + ".lock"
-        if not _acquire_lock(lock_path):
-            raise RuntimeError(
-                f"another runner holds {lock_path} (a live process). Refusing to "
-                f"start a second poller — stop the other one or remove a stale lock."
-            )
+        A single cycle's failure (a network/API/LLM error that survived its own
+        retries) is logged and swallowed so one transient hiccup never kills the
+        long-running daemon — the loop sleeps and tries again next cycle.
+        `KeyboardInterrupt`/`SystemExit` are *not* caught (they subclass
+        `BaseException`, not `Exception`), so Ctrl-C still shuts down cleanly via
+        the `finally`. `--once` (via `run_once`) keeps its fail-fast behavior."""
+        import sys
+        import time
+        import traceback
+
+        lock_path = self._lock_path()
+        _acquire_lock_or_raise(lock_path)
         try:
             while True:
-                self.run_cycle()
+                try:
+                    self.run_cycle()
+                except Exception:  # noqa: BLE001 — daemon must outlive any one cycle
+                    traceback.print_exc()
+                    print(
+                        "cycle failed (see traceback above); continuing after "
+                        f"{max(1, self.config.POLL_INTERVAL_SECONDS)}s",
+                        file=sys.stderr,
+                    )
                 time.sleep(max(1, self.config.POLL_INTERVAL_SECONDS))
         finally:
             _release_lock(lock_path)
@@ -375,6 +459,16 @@ class Runner:
 
 
 # --- single-runner lock (stdlib only) ---------------------------------------
+def _acquire_lock_or_raise(lock_path: str) -> None:
+    """Acquire the single-runner lock or raise — shared by `run_once` and
+    `run_forever` so both refuse to run alongside another live runner."""
+    if not _acquire_lock(lock_path):
+        raise RuntimeError(
+            f"another runner holds {lock_path} (a live process). Refusing to "
+            f"start a second poller — stop the other one or remove a stale lock."
+        )
+
+
 def _acquire_lock(lock_path: str) -> bool:
     """Create `lock_path` exclusively, writing our PID. If it exists, refuse
     unless it is stale (the recorded PID is no longer alive), in which case we
@@ -433,7 +527,17 @@ def _lock_is_stale(lock_path: str) -> bool:
 
 
 def _release_lock(lock_path: str) -> None:
-    """Remove the lock file if it is ours. Best-effort."""
+    """Remove the lock file, but only if it is *ours* — its recorded PID matches
+    `os.getpid()`. Guards against deleting another runner's lock after ours was
+    reclaimed as stale and recreated by that runner (an empty/garbled lock is
+    likewise left alone, since it isn't provably ours). Best-effort."""
+    try:
+        with open(lock_path, encoding="ascii") as fh:
+            pid_text = fh.read().strip()
+    except OSError:
+        return
+    if pid_text != str(os.getpid()):
+        return  # not ours — leave it for its owner
     try:
         os.unlink(lock_path)
     except OSError:

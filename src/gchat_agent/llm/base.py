@@ -51,14 +51,10 @@ def _strip_code_fences(text: str) -> str:
     return body.strip()
 
 
-def _first_balanced_json(text: str) -> str | None:
-    """Return the first balanced top-level JSON value — an object `{...}` or an
-    array `[...]` — respecting strings and escapes so brackets inside string
-    literals don't throw off the depth count. Returns `None` if none is found."""
-    starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
-    if not starts:
-        return None
-    start = min(starts)
+def _scan_balanced(text: str, start: int) -> int | None:
+    """Index of the bracket that closes the one at `start` (`{`/`[`), respecting
+    string literals + escapes so brackets inside strings don't skew the depth
+    count. Returns `None` if the value never balances."""
     depth = 0
     in_string = False
     escaped = False
@@ -79,16 +75,40 @@ def _first_balanced_json(text: str) -> str | None:
         elif ch in "}]":
             depth -= 1
             if depth == 0:
-                return text[start:i + 1]
+                return i
     return None
+
+
+def _iter_balanced_json(text: str):
+    """Yield each balanced top-level JSON value (object `{...}` or array `[...]`)
+    embedded in `text`, left to right. Lets a caller try every candidate when
+    chatty output puts a non-JSON bracket group (e.g. `Note [x] {...}`) before
+    the real payload — scanning only the *first* balanced value would parse `[x]`
+    and give up before reaching the valid object after it (§5.3)."""
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] not in "{[":
+            i += 1
+            continue
+        end = _scan_balanced(text, i)
+        if end is None:
+            # Unbalanced from here — skip this opener and keep looking; a later
+            # bracket group may still balance.
+            i += 1
+            continue
+        yield text[i:end + 1]
+        i = end + 1
 
 
 def extract_json_value(text: str) -> dict[str, Any] | list[Any]:
     """Robustly extract a JSON value (object or array) from LLM output (§5.3).
 
     Strategy: strip Markdown code fences, then try `json.loads` on the whole
-    thing; on failure, scan for the first balanced `{...}`/`[...]` and parse it.
-    Detection (§6) returns a top-level array; object responses (assess / question
+    thing; on failure, scan every balanced `{...}`/`[...]` embedded in the prose
+    and return the first that parses to an object or array — so a non-JSON
+    bracket group before the real payload doesn't abort the search. Detection
+    (§6) returns a top-level array; object responses (assess / question
     generation) return a dict. Raises `ValueError` on total failure.
     """
     if text is None:
@@ -103,19 +123,26 @@ def extract_json_value(text: str) -> dict[str, Any] | list[Any]:
     except json.JSONDecodeError:
         pass
 
-    # Fallback: locate the first balanced value embedded in surrounding prose.
-    blob = _first_balanced_json(candidate)
-    if blob is not None:
+    # Fallback: try each balanced value embedded in surrounding prose, in order,
+    # until one parses to an object/array (chatty output may carry a non-JSON
+    # bracket group before the real payload).
+    found_any = False
+    last_exc: json.JSONDecodeError | None = None
+    for blob in _iter_balanced_json(candidate):
+        found_any = True
         try:
             parsed = json.loads(blob)
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"found a JSON-like value but could not parse it: {exc}; "
-                f"text was: {text!r}"
-            ) from exc
+            last_exc = exc
+            continue
         if isinstance(parsed, (dict, list)):
             return parsed
 
+    if found_any and last_exc is not None:
+        raise ValueError(
+            f"found JSON-like value(s) but none parsed: {last_exc}; "
+            f"text was: {text!r}"
+        ) from last_exc
     raise ValueError(f"no JSON value found in LLM output: {text!r}")
 
 
