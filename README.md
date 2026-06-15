@@ -70,7 +70,15 @@ LLM_PROVIDER=mock
 
 `mock` uses a deterministic in-process LLM — no API key, no network. The default
 provider is `openrouter`; selecting it without `OPENROUTER_API_KEY` set makes
-`build_llm` raise a clear `RuntimeError`.
+`build_llm` raise a clear `RuntimeError`. On the `openrouter` path,
+`OPENROUTER_REASONING` defaults to `true`, sending
+`extra_body={"reasoning": {"enabled": True}}` on every completion so
+reasoning-capable models (e.g. `deepseek/deepseek-v4-flash`) think before
+answering; set `OPENROUTER_REASONING=false` for lower latency/cost.
+`OPENROUTER_QUANTIZATIONS` (default `fp8`, comma-separated) pins OpenRouter
+routing to endpoints serving those quants via
+`extra_body={"provider": {"quantizations": [...]}}`; leave it empty to drop the
+constraint.
 
 ## Run the tests
 
