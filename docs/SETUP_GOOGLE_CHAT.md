@@ -155,12 +155,17 @@ OPENROUTER_MODEL=deepseek/deepseek-v4-flash  # or your model of choice
 GOOGLE_SPACE=spaces/AAQAxxxxxxx              # from step 5
 GOOGLE_OAUTH_CLIENT=secrets/oauth_client.json
 GOOGLE_TOKEN_FILE=secrets/token_bot.json     # the BOT's token (default account)
-GOOGLE_QUOTA_PROJECT=chat-smoke-1781346315   # project id with Chat API enabled (Gotcha 4)
+GOOGLE_QUOTA_PROJECT=                         # LEAVE BLANK for the 3-account demo (Gotcha 4)
 ```
 
 Notes:
-- `GOOGLE_QUOTA_PROJECT` is sent as the `x-goog-user-project` header — set it to
-  the project id where you enabled the Chat API.
+- **Leave `GOOGLE_QUOTA_PROJECT` empty** for the multi-account demo. When set, it is
+  sent as the `x-goog-user-project` header, which makes Google check
+  `serviceusage.services.use` on that project for **every** calling account — the
+  staff Gmails are only OAuth test users (no IAM role) and get **HTTP 403
+  PERMISSION_DENIED**. Empty = quota falls back to the OAuth client's own project,
+  which works for the bot *and* the staff (verified live 2026-06-14). Only set it if
+  every account also holds `roles/serviceusage.serviceUsageConsumer` on the project.
 - `GOOGLE_TOKEN_FILE` here is the **bot's** token (`run_poller.py` uses it).
   Staff processes override it via `--token` (step 7), so each staff posts as its
   own account.
@@ -212,7 +217,14 @@ poll; otherwise it misses them.
 - In the **Chat space UI**: each staff persona posts 1–2 seed messages, the bot
   detects an issue and replies **in-thread** with a clarifying question, the
   staff persona answers one held fact per reply, and the loop continues until the
-  bot has enough (up to `MAX_CLARIFY_ROUNDS`, default 3).
+  bot has enough (up to `MAX_CLARIFY_ROUNDS`).
+- **Set `MAX_CLARIFY_ROUNDS` high enough to RESOLVE.** A thorough live model (e.g.
+  `deepseek-v4-flash`) asks ~3 questions per round while the personas reveal only
+  **one fact per reply**, so an issue needs ~8 rounds to reach `resolved`; at the
+  config default of `3` it will cap out and go **stale** instead. Use
+  `MAX_CLARIFY_ROUNDS=8` in `.env` for a resolving demo (verified locally via
+  `scripts/demo_local.py`). To preview the entire loop with **no Google setup**,
+  run `python scripts/demo_local.py` (in-memory Chat, live `.env` LLM).
 - On **resolution**, the bot writes a Markdown report to
   `reports/issue-<id>.md` and posts a **one-line confirmation** into the thread.
 - **Terminal banners**: confirm `space:` is your `GOOGLE_SPACE` and `provider:`
@@ -241,8 +253,15 @@ poll; otherwise it misses them.
    **test users**. Testing-mode refresh tokens **expire after 7 days** →
    re-consent weekly via `scripts/authorize.py` (or publish the app).
 
-4. **Quota project.** Set `GOOGLE_QUOTA_PROJECT` to the project id with the Chat
-   API enabled; it is sent as the `x-goog-user-project` header on every call.
+4. **Quota project — leave it BLANK for the multi-account demo.** When
+   `GOOGLE_QUOTA_PROJECT` is set it is sent as the `x-goog-user-project` header,
+   which forces a `serviceusage.services.use` permission check on that project for
+   **every** calling account. The bot (project owner) passes, but the staff Gmails
+   are only OAuth *test users* with no IAM role → **HTTP 403 PERMISSION_DENIED**
+   (`USER_PROJECT_DENIED`) on their first call. Empty = quota falls back to the
+   OAuth client's own project and works for all three accounts (verified live
+   2026-06-14). Set it only if every account also holds
+   `roles/serviceusage.serviceUsageConsumer` on the project.
 
 5. **Browser account ≠ gcloud account.** Do the console work and the OAuth
    consent in an **Incognito** window signed into the **target Gmail**, or append

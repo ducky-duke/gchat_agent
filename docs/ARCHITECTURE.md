@@ -354,7 +354,11 @@ defaults — so the mock/CI path needs no configuration. Every key is documented
 `STATE_FILE=.state/issues.json`, `REPORTS_DIR=reports`,
 `KB_DIR=data/knowledge_base`, `DETECT_WINDOW_MESSAGES=50`, `MAX_CLARIFY_ROUNDS=3`,
 `STALE_AFTER_IDLE_CYCLES=3`, `RESOLVE_CONFIDENCE_THRESHOLD=0.8`,
-`POLL_INTERVAL_SECONDS=15`.
+`POLL_INTERVAL_SECONDS=15`, `OPENROUTER_REASONING=true` (sends
+`extra_body={"reasoning": {"enabled": True}}` on every completion; set `false`
+to skip it for lower latency/cost), `OPENROUTER_QUANTIZATIONS=fp8` (comma-separated;
+adds `extra_body={"provider": {"quantizations": [...]}}` to pin routing — empty
+to drop the constraint).
 
 The package is a `src/` layout (`pyproject.toml`, core dep `openai`; extras
 `[observability]=langfuse`, `[google]=google-auth`,
