@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--once",
         action="store_true",
-        help="run a single poll cycle and exit (no lock, no loop).",
+        help="run a single poll cycle and exit (single-runner lock, fail-fast).",
     )
     args = parser.parse_args(argv)
 
@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
 
     runner = build_runner(config)
     if args.once:
-        summary = runner.run_cycle()
+        summary = runner.run_once()
         print(f"cycle summary: {summary}")
         return 0
 

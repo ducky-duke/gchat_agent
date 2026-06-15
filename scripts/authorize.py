@@ -54,6 +54,9 @@ AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?access_token="
 
+# Per-request socket timeout so a hung endpoint can't wedge the mint flow forever.
+HTTP_TIMEOUT_SECONDS = 30.0
+
 # v1 demo scopes (§5.4): read + write Chat messages, create the demo space, and
 # userinfo.email so we can confirm (and refuse) the consenting account.
 SCOPES = [
@@ -119,7 +122,7 @@ def post_form(url: str, fields: dict[str, str]) -> dict:
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
     try:
-        with urllib.request.urlopen(req) as r:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as r:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         sys.exit(
@@ -204,9 +207,11 @@ def main(argv: list[str] | None = None) -> int:
     # Confirm the account (refuse glo.com) via tokeninfo.
     info: dict = {}
     try:
-        with urllib.request.urlopen(TOKENINFO + urllib.parse.quote(access)) as r:
+        with urllib.request.urlopen(
+            TOKENINFO + urllib.parse.quote(access), timeout=HTTP_TIMEOUT_SECONDS
+        ) as r:
             info = json.loads(r.read() or b"{}")
-    except urllib.error.URLError:
+    except (urllib.error.URLError, TimeoutError):
         info = {}
     email = info.get("email")
     print(f"\nToken minted. Account: {email or '(unknown)'}")
