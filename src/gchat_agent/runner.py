@@ -84,6 +84,30 @@ def _seconds_since(ts: str | None) -> float:
     return (datetime.now(timezone.utc) - dt).total_seconds()
 
 
+# Reporter replies that mean "I can't answer this." When the latest clarify reply
+# is essentially one of these AND core facts are still missing, re-asking is
+# pointless — the runner closes the issue with the gap documented instead of
+# repeating the question (the "duplicate question" failure). Matched only on a
+# SHORT reply so a long, substantive answer that merely contains "not sure"
+# somewhere isn't misread as a decline.
+_DECLINE_PHRASES: tuple[str, ...] = (
+    "i don't know", "i dont know", "don't know", "dont know", "idk",
+    "no idea", "not sure", "unsure", "dunno", "no clue", "can't say",
+    "cant say", "not certain", "no information", "who knows", "beats me",
+)
+_DECLINE_MAX_WORDS = 8
+
+
+def _looks_like_decline(text: str) -> bool:
+    """Whether a reply is essentially "I don't know": it contains a decline phrase
+    AND is short (≤ `_DECLINE_MAX_WORDS` words), so a long informative answer that
+    happens to include e.g. "not sure" is not mistaken for a refusal."""
+    low = " ".join((text or "").lower().split())
+    if not low or len(low.split()) > _DECLINE_MAX_WORDS:
+        return False
+    return any(p in low for p in _DECLINE_PHRASES)
+
+
 class Runner:
     """One issue-spotter bot driving a `ChatClient` + `Analyzer` + `IssueStore`."""
 
@@ -359,6 +383,32 @@ class Runner:
         ):
             self._resolve(issue, thread_conv)
             return "resolved"
+
+        # Loop-breaker — never re-ask questions the reporter can't answer (the
+        # "duplicate question" failure). When the reporter has replied but the
+        # missing-facts set did not shrink, re-asking just repeats the same
+        # questions. Two triggers close the issue with the remaining facts
+        # documented as open questions, instead of nagging:
+        #   * the reply is essentially "I don't know" (a decline), or
+        #   * the gap hasn't shrunk for MAX_NO_PROGRESS_ROUNDS consecutive replies.
+        # The FIRST clarify reply only establishes the baseline (the reporter has
+        # not seen the refined questions yet), so it never trips the counter.
+        if replies and assessment.missing_info:
+            prev = set(issue.last_missing_info)
+            curr = set(assessment.missing_info)
+            progressed = (not prev) or (curr < prev)
+            issue.no_progress_rounds = 0 if progressed else issue.no_progress_rounds + 1
+            issue.last_missing_info = list(assessment.missing_info)
+            declined = any(_looks_like_decline(r.text) for r in replies)
+            if declined or issue.no_progress_rounds >= self.config.MAX_NO_PROGRESS_ROUNDS:
+                self._resolve(issue, thread_conv, gaps=assessment.missing_info)
+                return "resolved"
+        elif replies:
+            # Reporter replied and nothing core is missing, but confidence was too
+            # low to resolve above — count it as progress so a later stall starts
+            # its no-progress tally fresh.
+            issue.no_progress_rounds = 0
+            issue.last_missing_info = []
 
         if issue.rounds < self.config.MAX_CLARIFY_ROUNDS:
             # Lever 1: the clarity call already drafted the next batch inline
@@ -777,9 +827,16 @@ class Runner:
         issue.updated_at = now
         return True
 
-    def _resolve(self, issue, thread_conv: Conversation) -> None:
+    def _resolve(self, issue, thread_conv: Conversation, gaps: list[str] | None = None) -> None:
         """Resolve once: build the report, deliver it (disk and/or voice), post
         the in-thread confirmation, mark resolved, tombstone.
+
+        `gaps` are the core facts still missing when the issue is closed WITHOUT
+        them (the loop-breaker path: the reporter said "I don't know" or the
+        exchange stopped making progress). They flow into the report as documented
+        "open questions" and make the confirmation honest ("closed with open
+        questions") instead of claiming a clean resolution; `None` ⇒ a clean
+        resolve, unchanged.
 
         Delivery follows `REPORT_DELIVERY` (`disk` | `voice` | `both`). Voice
         delivery is best-effort: if it is unavailable or fails, the disk report is
@@ -794,7 +851,7 @@ class Runner:
         mid-delivery lets the next cycle finish rather than skip it forever (§5.7)."""
         now = _now()
         if not issue.report_written_at:
-            report = report_mod.build_resolution_report(issue, self._llm)
+            report = report_mod.build_resolution_report(issue, self._llm, open_questions=gaps)
             delivery = (self.config.REPORT_DELIVERY or "disk").strip().lower()
             want_voice = delivery in ("voice", "both")
             want_disk = delivery in ("disk", "both")
@@ -811,7 +868,7 @@ class Runner:
             self._post_to_thread(
                 issue,
                 report_mod.confirmation_line(
-                    report, self._report_ref(report, voice_target, disk_written)
+                    report, self._report_ref(report, disk_written)
                 ),
                 request_id=f"client-issue-{issue.id}-report",
             )
@@ -860,21 +917,16 @@ class Runner:
             return None
 
     @staticmethod
-    def _report_ref(report, voice_target: str | None, disk_written: bool) -> str | None:
-        """The confirmation's trailing report reference, naming where the report
-        went. `None` ⇒ let `confirmation_line` use its default on-disk reference
-        (the disk-only path, so the existing confirmation text is unchanged)."""
-        parts: list[str] = []
-        if voice_target:
-            if voice_target == "this thread":
-                parts.append("🔊 Voice report posted in this thread")
-            else:
-                parts.append(f"🔊 Voice report sent to {voice_target}")
-        if disk_written and not parts:
-            return None  # disk-only: default "Report: reports/issue-<id>.md"
+    def _report_ref(report, disk_written: bool) -> str:
+        """The confirmation's trailing report reference. Names the on-disk report
+        when one was written; voice-only delivery carries no trailing reference
+        (the spoken transcript travels in the voice message body, so the
+        confirmation never announces where the audio went). Returns `""` when
+        nothing was written to disk, so the confirmation has no dangling
+        `Report: …` clause pointing at a file that does not exist."""
         if disk_written:
-            parts.append(f"Report: {report_mod.report_disk_ref(report)}")
-        return " · ".join(parts) if parts else None
+            return f"Report: {report_mod.report_disk_ref(report)}"
+        return ""  # voice-only: no on-disk file to point at
 
     # --- posting helper -----------------------------------------------------
     def _post_to_thread(

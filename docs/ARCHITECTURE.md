@@ -199,9 +199,10 @@ the summary/resolution prose (any LLM failure is swallowed — the report still
 builds). `render_markdown(report)` produces the on-disk Markdown;
 `write_report(report, reports_dir)` writes it **atomically** to
 `reports/issue-<id>.md` (returns the path); `confirmation_line(report, report_ref=None)`
-renders the one-line `✅ Issue "<title>" resolved — … Report: reports/issue-<id>.md`
-posted into the thread (`report_ref` overrides the trailing reference for the voice
-path).
+renders the one-line `✅ Issue "<title>" recorded — … Report: reports/issue-<id>.md`
+posted into the thread (`report_ref` overrides the trailing reference: `""` omits it
+entirely for the voice-only path, which has no on-disk file and no longer announces
+the audio destination in the confirmation).
 
 **Voice delivery.** When `REPORT_DELIVERY` is `voice`/`both`, `build_narration(report,
 llm)` writes a concise **spoken** script (plain prose, no Markdown — a deterministic

@@ -170,8 +170,8 @@ class ConfirmationLineTest(unittest.TestCase):
         self.report = build_resolution_report(_make_issue(), llm=None)
         self.line = confirmation_line(self.report)
 
-    def test_contains_resolved_and_report_path(self) -> None:
-        self.assertIn("resolved", self.line)
+    def test_contains_recorded_and_report_path(self) -> None:
+        self.assertIn("recorded", self.line)
         self.assertIn("reports/issue-abc123.md", self.line)
 
     def test_contains_title(self) -> None:

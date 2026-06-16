@@ -24,6 +24,17 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   questions`) and falls back to a dedicated `generate_questions` call only when the
   model returned none — so question quality never regresses. MockLLM emits both
   inline too (`_questions_from_missing`).
+- **No duplicate questions (loop-breaker)**: the bot never re-asks a question the
+  reporter can't answer. Two layers: (1) `clarity_prompt`/`questions_prompt` show
+  the model every already-asked question (`prompts._asked_block`) and instruct it
+  to never repeat one and to treat a declined fact ("I don't know") as
+  unobtainable — drop it, resolve with the gap. (2) A deterministic runner guard
+  in `_step_issue`: if the reporter replied but `missing_info` didn't shrink, it
+  closes the issue *with gaps* instead of re-asking — immediately on a decline
+  (`runner._looks_like_decline`), else after `MAX_NO_PROGRESS_ROUNDS` (default 2,
+  tracked via `Issue.no_progress_rounds`/`last_missing_info`). A gap-close routes
+  through `_resolve(..., gaps=...)` → `ResolutionReport.open_questions` → an "Open
+  questions" report section + an honest "recorded with open questions" confirmation.
 - **Voice reports** (`REPORT_DELIVERY=voice|both`): a resolved issue is narrated to a concise
   spoken script (`report.build_narration`) → TTS (`llm/tts.py`, OpenRouter `audio.speech`, default
   `x-ai/grok-voice-tts-1.0`) → posted as an in-memory MP3 attachment to `GOOGLE_VOICE_SPACE` (a

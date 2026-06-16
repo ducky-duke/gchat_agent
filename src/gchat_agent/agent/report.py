@@ -56,7 +56,10 @@ def _qa_transcript(issue: "Issue") -> str:
 
 
 def build_resolution_report(
-    issue: "Issue", llm: "LLMClient | None" = None
+    issue: "Issue",
+    llm: "LLMClient | None" = None,
+    *,
+    open_questions: "list[str] | None" = None,
 ) -> ResolutionReport:
     """Assemble a :class:`ResolutionReport` from a resolved ``issue``.
 
@@ -65,9 +68,15 @@ def build_resolution_report(
     to a generic line. When ``llm`` is supplied, one ``complete_json`` call over
     :func:`resolution_prompt` may replace either with crisper prose; any LLM
     failure (exception or missing keys) is swallowed so the report still builds.
+
+    ``open_questions`` are the core facts still missing when the issue is closed
+    WITH gaps (the reporter couldn't supply them, e.g. answered "I don't know").
+    They are recorded on the report so the Markdown and the Chat confirmation stay
+    honest about what was left unanswered; empty / ``None`` for a clean resolve.
     """
     summary = (issue.summary or "").strip()
     resolution = _default_resolution(issue)
+    gaps = [str(q).strip() for q in (open_questions or []) if str(q).strip()]
 
     if llm is not None:
         system, user = resolution_prompt(issue, _qa_transcript(issue))
@@ -95,6 +104,7 @@ def build_resolution_report(
         resolution=resolution,
         qa=[QAPair.from_dict(qa.to_dict()) for qa in issue.qa],  # defensive copy
         source_message_ids=list(issue.source_message_ids),
+        open_questions=gaps,
         resolved_at=issue.report_written_at or _now_rfc3339(),
     )
 
@@ -200,6 +210,17 @@ def render_markdown(report: ResolutionReport) -> str:
     lines.append(report.resolution or "(no resolution recorded)")
     lines.append("")
 
+    # Only when the issue was closed WITH gaps (the reporter couldn't supply these
+    # facts) — keeps a clean resolve's report unchanged.
+    if report.open_questions:
+        lines.append("## Open questions")
+        lines.append(
+            "Closed without these facts — the reporter could not provide them:"
+        )
+        for q in report.open_questions:
+            lines.append(f"- {q}")
+        lines.append("")
+
     lines.append("## Clarifying Q&A")
     if report.qa:
         for i, qa in enumerate(report.qa, start=1):
@@ -276,18 +297,30 @@ def confirmation_line(
 ) -> str:
     """The ≤2-line Chat-thread confirmation (§6 template):
 
-    ``✅ Issue "<title>" resolved — <one-line resolution>. Report: reports/issue-<id>.md``
+    ``✅ Issue "<title>" recorded — <one-line resolution>. Report: reports/issue-<id>.md``
+
+    When the issue was closed WITH gaps (``report.open_questions`` non-empty, the
+    loop-breaker path), the line is honest about it instead of claiming a clean
+    resolution:
+
+    ``⚠️ Issue "<title>" recorded with open questions — still needs: <facts>. Report: …``
 
     ``report_ref`` overrides the trailing report reference (the whole
-    ``Report: …`` clause) so the voice path can say where the spoken report went
-    instead of pointing at an on-disk Markdown file that wasn't written; when
-    omitted the default on-disk path is used (unchanged for the disk path)."""
+    ``Report: …`` clause): pass a string to use it verbatim, ``""`` to omit the
+    reference entirely (e.g. voice-only delivery, where no on-disk file exists),
+    or leave it ``None`` to use the default on-disk path (unchanged for the disk
+    path)."""
     title = _one_line(report.title) or "issue"
-    resolution = _one_line(report.resolution) or "Clarified and ready to close."
-    resolution = resolution.rstrip(".")
     ref = (
         report_ref
         if report_ref is not None
         else f"Report: {report_disk_ref(report)}"
     )
-    return f'✅ Issue "{title}" resolved — {resolution}. {ref}'
+    if report.open_questions:
+        gaps = "; ".join(_one_line(q) for q in report.open_questions if _one_line(q))
+        line = f'⚠️ Issue "{title}" recorded with open questions — still needs: {gaps}.'
+        return f"{line} {ref}" if ref else line
+    resolution = _one_line(report.resolution) or "Clarified and ready to close."
+    resolution = resolution.rstrip(".")
+    line = f'✅ Issue "{title}" recorded — {resolution}.'
+    return f"{line} {ref}" if ref else line

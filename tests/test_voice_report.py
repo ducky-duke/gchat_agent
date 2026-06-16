@@ -156,7 +156,12 @@ class RunnerDeliveryTest(unittest.TestCase):
             self.assertEqual(post["space"], "spaces/REPORTS")
             self.assertEqual(post["filename"], "issue-abc123.mp3")
             self.assertTrue(post["audio"])  # synthesized bytes flowed through
-            self.assertIn("Voice report sent to spaces/REPORTS", h.confirmation_text())
+            # Voice-only: the confirmation no longer announces the audio
+            # destination, and there is no on-disk file to reference either.
+            text = h.confirmation_text()
+            self.assertNotIn("Voice report", text)
+            self.assertNotIn("reports/issue-abc123.md", text)
+            self.assertIn("recorded", text)
 
     def test_voice_post_carries_transcript_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -178,7 +183,8 @@ class RunnerDeliveryTest(unittest.TestCase):
             self.assertEqual(len(h.chat.voice_posts), 1)
             # Falls back to the issue's own thread.
             self.assertEqual(h.chat.voice_posts[0]["thread_id"], h.issue.thread_id)
-            self.assertIn("posted in this thread", h.confirmation_text())
+            # No voice-destination announcement in the confirmation anymore.
+            self.assertNotIn("Voice report", h.confirmation_text())
             self.assertFalse(os.path.isfile(h.disk_path))
 
     def test_both_writes_disk_and_voice(self) -> None:
@@ -189,7 +195,9 @@ class RunnerDeliveryTest(unittest.TestCase):
             self.assertTrue(os.path.isfile(h.disk_path))
             self.assertEqual(len(h.chat.voice_posts), 1)
             text = h.confirmation_text()
-            self.assertIn("Voice report sent to spaces/REPORTS", text)
+            # 'both' still references the on-disk report, but no longer announces
+            # the voice destination in the confirmation.
+            self.assertNotIn("Voice report", text)
             self.assertIn("Report: reports/issue-abc123.md", text)
 
     def test_voice_requested_but_no_tts_falls_back_to_disk(self) -> None:

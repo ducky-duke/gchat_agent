@@ -218,7 +218,7 @@ class ClarificationRoundTripTest(unittest.TestCase):
         )
         confirmation = bot_after_resolve[-1]
         self.assertEqual(confirmation.thread_id, thread_id)
-        self.assertIn("resolved", confirmation.text.lower())
+        self.assertIn("recorded", confirmation.text.lower())
         self.assertIn(f"issue-{resolved.id}.md", confirmation.text)
 
         # --- anti-spam + no self-detection on a trailing cycle ---------------

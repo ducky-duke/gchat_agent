@@ -124,6 +124,13 @@ class Config:
 
     # --- Agent loop ---
     MAX_CLARIFY_ROUNDS: int = 3
+    # Loop-breaker for the "duplicate question" failure: how many consecutive
+    # clarify replies may leave the missing-facts set unchanged before the bot
+    # stops re-asking and closes the issue with the remaining facts documented as
+    # open questions. A reporter saying "I don't know" closes it immediately,
+    # regardless of this count. Set to a very large value to effectively disable
+    # the no-progress backstop (the explicit "I don't know" path still fires).
+    MAX_NO_PROGRESS_ROUNDS: int = 2
     STALE_AFTER_IDLE_CYCLES: int = 3
     # Wall-clock grace before the bot reminds a reporter about a CLARIFYING issue
     # they haven't answered: once this many SECONDS have elapsed since the last
@@ -208,6 +215,7 @@ _BOOL_KEYS: Final[frozenset[str]] = frozenset(
 _INT_KEYS: Final[frozenset[str]] = frozenset({
     "RAG_TOP_K",
     "MAX_CLARIFY_ROUNDS",
+    "MAX_NO_PROGRESS_ROUNDS",
     "STALE_AFTER_IDLE_CYCLES",
     "ESCALATE_AFTER_SECONDS",
     "DETECT_WINDOW_MESSAGES",

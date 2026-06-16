@@ -204,6 +204,14 @@ class Issue:
     last_question_at: str | None = None
     rounds: int = 0
     idle_cycles: int = 0
+    # Loop-breaker bookkeeping (§ duplicate-question fix). `last_missing_info` is
+    # the `missing_info` from the previous clarity assessment, so the runner can
+    # tell whether a reporter's reply actually shrank the gap. `no_progress_rounds`
+    # counts consecutive clarify replies that did NOT shrink it; once it crosses
+    # MAX_NO_PROGRESS_ROUNDS (or the reporter says "I don't know") the runner stops
+    # re-asking the same questions and resolves with the gap documented.
+    last_missing_info: list[str] = field(default_factory=list)
+    no_progress_rounds: int = 0
     report_written_at: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
@@ -242,6 +250,8 @@ class Issue:
             last_question_at=data.get("last_question_at"),
             rounds=int(data.get("rounds", 0)),
             idle_cycles=int(data.get("idle_cycles", 0)),
+            last_missing_info=list(data.get("last_missing_info", [])),
+            no_progress_rounds=int(data.get("no_progress_rounds", 0)),
             report_written_at=data.get("report_written_at"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
@@ -295,6 +305,11 @@ class ResolutionReport:
     resolution: str
     qa: list[QAPair] = field(default_factory=list)
     source_message_ids: list[str] = field(default_factory=list)
+    # Core facts that were still missing when the issue was closed — populated only
+    # when the runner closes an issue WITH gaps (the reporter couldn't supply them,
+    # e.g. answered "I don't know"). Rendered as an "Open questions" section and
+    # surfaced in the confirmation so the close is honest. Empty on a clean resolve.
+    open_questions: list[str] = field(default_factory=list)
     resolved_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -313,6 +328,7 @@ class ResolutionReport:
             resolution=data.get("resolution", ""),
             qa=[QAPair.from_dict(item) for item in data.get("qa", [])],
             source_message_ids=list(data.get("source_message_ids", [])),
+            open_questions=list(data.get("open_questions", [])),
             resolved_at=data.get("resolved_at"),
         )
 

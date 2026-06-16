@@ -533,7 +533,7 @@ class ResolveIdempotencyTest(unittest.TestCase):
 
             bot_msgs = [m for m in chat.messages if m.sender == BOT_ID]
             self.assertEqual(len(bot_msgs), 1, "confirmation must still be posted")
-            self.assertIn("resolved", bot_msgs[0].text.lower())
+            self.assertIn("recorded", bot_msgs[0].text.lower())
             self.assertTrue(issue.report_written_at)
             self.assertEqual(issue.status, Status.RESOLVED)
             self.assertTrue(store.is_tombstoned(issue.fingerprint))
@@ -735,7 +735,7 @@ class OutOfThreadCaptureTest(unittest.TestCase):
             # original issue thread — and via a REAL anchor, never a re-tagged copy.
             confirmations = [
                 m for m in chat.messages
-                if m.sender == BOT_ID and "resolved" in m.text.lower()
+                if m.sender == BOT_ID and "recorded" in m.text.lower()
             ]
             self.assertEqual(len(confirmations), 1)
             self.assertEqual(

@@ -404,7 +404,7 @@ else:
   thread that references the report. Done **exactly once** per issue (guarded by `report_written_at`
   + a file-existence check).
 - **Confirmation template** (≤2 lines, posted to the thread):
-  `✅ Issue "<title>" resolved — <one-line resolution>. Report: reports/issue-<id>.md`.
+  `✅ Issue "<title>" recorded — <one-line resolution>. Report: reports/issue-<id>.md`.
 - **Stop conditions:** resolved; round cap reached (→ `stale`); or no reply for
   `STALE_AFTER_IDLE_CYCLES` cycles (→ `stale`, follow-up needed).
 - **Anti-spam:** the agent **never posts a follow-up until a new reply from another participant

@@ -90,6 +90,38 @@ def _issue_brief(issue: "Issue") -> str:
     )
 
 
+def _asked_questions(issue: "Issue") -> list[str]:
+    """Flatten every clarifying question already posted to the reporter into a
+    single de-duplicated list. `issue.questions_asked` stores one entry per posted
+    *batch* (a newline-joined block of 2-3 questions), so split each on newlines
+    to recover the individual questions the anti-repeat instruction references."""
+    out: list[str] = []
+    for batch in getattr(issue, "questions_asked", []) or []:
+        for line in str(batch).splitlines():
+            q = line.strip()
+            if q and q not in out:
+                out.append(q)
+    return out
+
+
+def _asked_block(issue: "Issue") -> str:
+    """Render the already-asked questions as a labeled bullet block for the user
+    prompt, or `""` when nothing has been asked yet (first contact). Lets the
+    model see exactly what the reporter has already been asked so it never repeats
+    a question — even reworded — and can tell which facts the reporter was unable
+    to supply (an unanswered/"I don't know" question = an unobtainable fact)."""
+    asked = _asked_questions(issue)
+    if not asked:
+        return ""
+    bullets = "\n".join(f"- {q}" for q in asked)
+    return (
+        "Questions ALREADY asked of the reporter (do NOT ask any of these again, "
+        "even reworded; if the reporter's reply did not answer one — e.g. they "
+        "said they don't know — that fact is unobtainable, so drop it):\n"
+        f"{bullets}"
+    )
+
+
 # --- detection ---------------------------------------------------------------
 def detect_prompt(transcript: str, retrieved_context: str = "") -> tuple[str, str]:
     """Build the (system, user) prompt for detecting candidate issues.
@@ -172,23 +204,35 @@ def clarity_prompt(
         "diagnostics, dashboard or status-page confirmations, exhaustive metrics, "
         "exact timestamps, or a formal severity label; treat those as optional "
         "follow-ups, not blockers. Only list a fact in `missing_info` if it is one "
-        "of the CORE facts above and is still absent. `confidence` is your "
+        "of the CORE facts above and is still absent.\n"
+        "CRITICAL — do not loop on questions the reporter cannot answer. If the "
+        "reporter was already asked about a fact and replied that they don't know, "
+        "aren't sure, or can't say (e.g. \"I don't know\", \"no idea\", \"not "
+        "sure\"), that fact is UNOBTAINABLE: remove it from `missing_info` and "
+        "never ask about it again. Once only unobtainable facts remain, set "
+        "`is_clear` true and resolve with the gap noted rather than re-asking — "
+        "re-asking a question the reporter has already declined is the worst "
+        "outcome. A fact left unanswered after it was already asked is unobtainable "
+        "too; do not re-list it.\n"
+        "`confidence` is your "
         "certainty in [0, 1]. Give a one-sentence `rationale`. When `is_clear` is "
         "false, also write `questions`: 2-3 sharp, specific clarifying questions "
         "(one concrete thing each, no compound or yes/no questions, a single "
-        "sentence each) targeting the `missing_info` above and not repeating "
-        "anything already answered. When `is_clear` is true, return `questions` as "
-        "an empty list.\n\n"
+        "sentence each) targeting the `missing_info` above. NEVER repeat a question "
+        "already asked of the reporter (see the asked list in the task) and never "
+        "ask about anything already answered. When `is_clear` is true, return "
+        "`questions` as an empty list.\n\n"
         "Respond with a JSON object of exactly this shape:\n"
         '{"is_clear": bool, "confidence": number between 0 and 1, '
         '"missing_info": [str, ...], "rationale": str, "questions": [str, ...]}\n'
         f"{_STRICT}"
     )
-    user = _render_user(
-        transcript,
-        retrieved_context,
-        task_line=f"{_issue_brief(issue)}\n\nAssess whether this issue is now clear.",
-    )
+    asked = _asked_block(issue)
+    task_line = _issue_brief(issue)
+    if asked:
+        task_line = f"{task_line}\n\n{asked}"
+    task_line = f"{task_line}\n\nAssess whether this issue is now clear."
+    user = _render_user(transcript, retrieved_context, task_line=task_line)
     return system, user
 
 
@@ -212,14 +256,21 @@ def questions_prompt(
         "make the issue clear enough to act on. Target the missing facts listed "
         "below; ask one concrete thing per question (no compound or yes/no "
         "questions), do not repeat anything already answered in the transcript, "
-        "and keep each question to a single sentence.\n\n"
+        "and keep each question to a single sentence. NEVER repeat a question "
+        "already asked of the reporter (see the asked list in the task), even "
+        "reworded; if the reporter already said they don't know a fact, treat it "
+        "as unobtainable and do not ask about it — skip it and pick another "
+        "genuinely open fact instead.\n\n"
         "Respond with a JSON object of exactly this shape:\n"
         '{"questions": [str, ...]}\n'
         f"{_STRICT}"
     )
     missing = "\n".join(f"- {m}" for m in missing_info) if missing_info else "- (none listed)"
-    task_line = (
-        f"{_issue_brief(issue)}\n\n"
+    task_line = f"{_issue_brief(issue)}\n\n"
+    asked = _asked_block(issue)
+    if asked:
+        task_line += f"{asked}\n\n"
+    task_line += (
         f"Missing information to resolve:\n{missing}\n\n"
         "Generate clarifying questions for this issue."
     )
