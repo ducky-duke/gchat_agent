@@ -35,9 +35,8 @@ def _banner(config) -> str:
     obs = config.OBSERVABILITY
     bot_id = config.GOOGLE_BOT_USER_ID.strip()
     self_filter = (
-        f"on (bot id {bot_id})" if bot_id
-        else "learned after first post — set GOOGLE_BOT_USER_ID to self-filter "
-             "from cycle 1 on a fresh start"
+        f"pinned ({bot_id})" if bot_id
+        else "auto-detect via tokeninfo (set GOOGLE_BOT_USER_ID to pin/skip lookup)"
     )
     return (
         "gchat issue-spotter poller\n"

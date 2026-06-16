@@ -14,7 +14,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   `chat/` (base, google_rest, oauth, Phase-2 webhook stub), `rag/` (bm25, boost, chunk, fuse,
   store, optional dense), `agent/` (prompts, `state`·IssueStore, analyzer, report, staff). Entry
   scripts in `scripts/`; tests in `tests/` (+ `fakes.FakeChatClient`).
-- **Run the tests** (offline, no key — the functional gate, currently **238 green**):
+- **Run the tests** (offline, no key — the functional gate, currently **268 green**):
   `PYTHONPATH=src python -m unittest discover -s tests -t . -p "test_*.py"`.
 - **Merged LLM calls (Lever 1, latency)**: detection emits opening
   `clarifying_questions` per issue and clarity emits the next `questions` batch
@@ -29,24 +29,37 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   the model every already-asked question (`prompts._asked_block`) and instruct it
   to never repeat one and to treat a declined fact ("I don't know") as
   unobtainable — drop it, resolve with the gap. (2) A deterministic runner guard
-  in `_step_issue`: if the reporter replied but `missing_info` didn't shrink, it
-  closes the issue *with gaps* instead of re-asking — immediately on a decline
-  (`runner._looks_like_decline`), else after `MAX_NO_PROGRESS_ROUNDS` (default 2,
-  tracked via `Issue.no_progress_rounds`/`last_missing_info`). A gap-close routes
-  through `_resolve(..., gaps=...)` → `ResolutionReport.open_questions` → an "Open
-  questions" report section + an honest "recorded with open questions" confirmation.
+  in `_step_issue`: when the reporter replied but the gap stayed *identical* (same
+  `missing_info` two rounds running), it closes *with gaps* instead of re-asking —
+  on a decline that made **no progress** (`runner._looks_like_decline`), else after
+  `MAX_NO_PROGRESS_ROUNDS` (default 2, via `Issue.no_progress_rounds`/`last_missing_info`).
+  **A decline never closes while the reply made progress** — the gap shrank, or this
+  round surfaced NEW core facts (owner, root-cause) the reporter was never asked.
+  "I don't know" then means "I can't answer THESE asked questions", not "I know
+  nothing about the issue", so the bot pursues the still-unasked facts first (the
+  screenshot bug: "API timeout" → asked env/endpoints/logs → reporter "it's in
+  production, else I don't know" → bot wrongly closed with never-asked owner/root-cause
+  as open questions). `_looks_like_decline` only fires on a reply that is *essentially
+  the refusal* (phrase + padding); a partial answer ("it's in production. Else I don't
+  know") is NOT a decline. A gap-close routes through `_resolve(..., gaps=...)` →
+  `ResolutionReport.open_questions` → an "Open questions" report section + an honest
+  "recorded with open questions" confirmation. Regression: `tests/test_duplicate_questions.py`
+  (`DeclineDoesNotAbandonUnaskedFactsTest`).
 - **Self-filtering (no self-loop)**: detection drops the bot's OWN messages via
   `_detect`'s `without_sender(own_id)` (never a `sender_type` rule — staff post as
-  HUMAN). `own_id` comes from `chat.me()`, which the live client only learns *after
-  its first post*; `build_runner` seeds it from persisted `.state/`. So on a **fresh
-  start** (deleted `.state/`, the `start_bot.sh` default) cycle 1 had no self id and
-  the bot could detect + clarify its own account's messages (the self-loop). Fix:
-  **`GOOGLE_BOT_USER_ID`** (`users/<id>` or bare id; `runner._normalize_user_id`)
-  pins the id so `build_runner` seeds the client from cycle 1 — config wins over
-  persisted, falls back to it when unset. The runner logs `learned bot user id …`
-  (stderr, once) the first time it learns one so the operator can pin it; the poller
-  banner's `self:` line shows pinned vs learn-after-first-post. Tests:
-  `tests/test_self_filter.py`.
+  HUMAN). `own_id` is `chat.me()`, resolved in precedence: configured
+  **`GOOGLE_BOT_USER_ID`** (optional override; `users/<id>` or bare id, normalized
+  by `runner._normalize_user_id`, seeded via `build_runner`) → persisted `.state/`
+  → **OAuth tokeninfo** (`GoogleChatClient._resolve_self_id`: `sub` == the Chat
+  user id, one cached lookup on first `me()`, needs only the already-granted
+  `userinfo.email` scope) → learn-from-first-post. The tokeninfo step is what makes
+  self-filtering work from **cycle 1 on a fresh start** with no pin and no posting
+  (the original bug: `me()` was `None` on cycle 1 → bot clarified its own messages).
+  Runner logs `bot self-id resolved: …` (stderr, once) when not pinned; poller
+  banner's `self:` line shows pinned vs auto-detect. Tests:
+  `tests/test_self_filter.py`. The bot account here is the user's own
+  `mikmikb26@gmail.com` (`users/116566195804326411461`), so it shows as the same
+  person ("Tran Duc") for both posts and bot replies.
 - **Voice reports** (`REPORT_DELIVERY=voice|both`): a resolved issue is narrated to a concise
   spoken script (`report.build_narration`) → TTS (`llm/tts.py`, OpenRouter `audio.speech`, default
   `x-ai/grok-voice-tts-1.0`) → posted as an in-memory MP3 attachment to `GOOGLE_VOICE_SPACE` (a

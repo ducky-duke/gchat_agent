@@ -108,15 +108,39 @@ _DECLINE_PHRASES: tuple[str, ...] = (
 )
 _DECLINE_MAX_WORDS = 8
 
+# Politeness / hedge tokens that pad a refusal without answering anything, so
+# "no, I don't know" and "Dunno, sorry" still read as pure declines. A reply that
+# carries ANY word outside this set (and outside the decline phrase) answered part
+# of the question — e.g. "it's in production. Else I don't know" answered the
+# environment — so it is a PARTIAL answer, not a refusal. Kept deliberately small:
+# when in doubt we treat a reply as a partial answer (not a decline), which only
+# costs one more clarify round, never a premature close.
+_DECLINE_FILLER: frozenset[str] = frozenset({
+    "sorry", "no", "nope", "well", "honestly", "really", "just", "um", "uh",
+    "oh", "hmm", "yeah", "afraid", "totally", "completely", "else", "but",
+    "otherwise", "however", "though",
+})
+
 
 def _looks_like_decline(text: str) -> bool:
-    """Whether a reply is essentially "I don't know": it contains a decline phrase
-    AND is short (≤ `_DECLINE_MAX_WORDS` words), so a long informative answer that
-    happens to include e.g. "not sure" is not mistaken for a refusal."""
+    """Whether a reply is essentially "I don't know" — a refusal of the asked
+    questions that supplies NO real answer. It must be short (≤ `_DECLINE_MAX_WORDS`
+    words), carry a decline phrase, AND have nothing substantive beyond that phrase
+    plus padding. A reply that also answers part (e.g. "it's in production. Else I
+    don't know") is a PARTIAL answer, not a decline: the reporter declining the
+    asked questions does not mean they can't answer the still-open facts, so the
+    bot keeps clarifying rather than closing the whole issue as unanswerable."""
     low = " ".join((text or "").lower().split())
     if not low or len(low.split()) > _DECLINE_MAX_WORDS:
         return False
-    return any(p in low for p in _DECLINE_PHRASES)
+    if not any(p in low for p in _DECLINE_PHRASES):
+        return False
+    residue = low
+    for phrase in _DECLINE_PHRASES:
+        residue = residue.replace(phrase, " ")
+    leftover = [w.strip(".,!?;:'\"()") for w in residue.split()]
+    substantive = [w for w in leftover if w and w not in _DECLINE_FILLER]
+    return not substantive
 
 
 class Runner:
@@ -196,19 +220,20 @@ class Runner:
         return self.store.get_bot_user_id()
 
     def _remember_bot_id(self, live: str | None) -> None:
-        """Persist a freshly-learned bot `users/<id>` and log it ONCE so the user
-        can pin it via `GOOGLE_BOT_USER_ID` and get self-filtering from the first
-        cycle on a fresh start. No-op once an id is already stored (the persisted
-        guard makes the log fire exactly once per learned id)."""
+        """Persist a freshly-resolved bot `users/<id>` and log it ONCE. Fires only
+        when the id was NOT pinned via `GOOGLE_BOT_USER_ID` (build_runner seeds the
+        store from that, so this is a no-op then) — i.e. when it was auto-resolved
+        from the OAuth tokeninfo endpoint or learned from the first post. The
+        persisted guard makes the log fire exactly once per resolved id."""
         if not live or self.store.get_bot_user_id():
             return
         self.store.set_bot_user_id(live)
         import sys
 
         print(
-            f"[issue-spotter] learned bot user id {live}; set "
-            f"GOOGLE_BOT_USER_ID={live} in .env so the bot self-filters its own "
-            "messages from the first cycle on a fresh start.",
+            f"[issue-spotter] bot self-id resolved: {live} (self-filtering "
+            f"active). Optionally set GOOGLE_BOT_USER_ID={live} in .env to skip "
+            "the startup lookup.",
             file=sys.stderr,
         )
 
@@ -414,18 +439,32 @@ class Runner:
         # missing-facts set did not shrink, re-asking just repeats the same
         # questions. Two triggers close the issue with the remaining facts
         # documented as open questions, instead of nagging:
-        #   * the reply is essentially "I don't know" (a decline), or
+        #   * the reply is essentially "I don't know" (a decline) AND it made no
+        #     progress — the SAME facts are still missing, so the reporter has
+        #     genuinely been asked and cannot answer; or
         #   * the gap hasn't shrunk for MAX_NO_PROGRESS_ROUNDS consecutive replies.
         # The FIRST clarify reply only establishes the baseline (the reporter has
         # not seen the refined questions yet), so it never trips the counter.
+        #
+        # Crucially, a decline closes the issue ONLY when it made no progress. When
+        # the reply progressed — it answered part, OR (as on the first clarify
+        # reply) it surfaced NEW core facts like owner / root-cause that were never
+        # asked — "I don't know" means "I can't answer THESE questions", not "I know
+        # nothing about the issue". Closing then would wrongly record never-asked
+        # facts as unanswerable open questions; instead we keep clarifying the
+        # still-open facts. "Progress" = the gap changed at all (it shrank, or new
+        # facts surfaced); only an identical gap two rounds running is stuck.
         if replies and assessment.missing_info:
             prev = set(issue.last_missing_info)
             curr = set(assessment.missing_info)
-            progressed = (not prev) or (curr < prev)
+            progressed = (not prev) or (curr != prev)
             issue.no_progress_rounds = 0 if progressed else issue.no_progress_rounds + 1
             issue.last_missing_info = list(assessment.missing_info)
             declined = any(_looks_like_decline(r.text) for r in replies)
-            if declined or issue.no_progress_rounds >= self.config.MAX_NO_PROGRESS_ROUNDS:
+            if (
+                (declined and not progressed)
+                or issue.no_progress_rounds >= self.config.MAX_NO_PROGRESS_ROUNDS
+            ):
                 self._resolve(issue, thread_conv, gaps=assessment.missing_info)
                 return "resolved"
         elif replies:
@@ -1170,10 +1209,15 @@ def build_runner(config: Config) -> Runner:
     # state, before it has posted once (otherwise `me()` is None on cycle 1 and
     # detection can't drop the bot's own messages → a self-loop). Fall back to
     # the persisted id learned on a previous run.
+    # Self-id precedence: a pinned GOOGLE_BOT_USER_ID, else the id persisted from a
+    # prior run, else (when both are absent — a true fresh start) the client
+    # auto-resolves it from the OAuth tokeninfo endpoint on its first `me()` call,
+    # so self-filtering works from cycle 1 without pinning or posting. Pinning just
+    # skips that one lookup.
     configured_id = _normalize_user_id(config.GOOGLE_BOT_USER_ID)
     bot_id = configured_id or store.get_bot_user_id()
     # Persist a configured id up front so it survives as the known self id and the
-    # runner's "learned bot user id" hint stays quiet (the user already set it).
+    # runner's self-id log stays quiet (the user already pinned it).
     if configured_id:
         store.set_bot_user_id(configured_id)
 

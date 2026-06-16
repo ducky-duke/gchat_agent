@@ -1,20 +1,22 @@
 """Bot self-filtering: the bot must never detect/clarify its OWN account's
 messages (§5.7/§6).
 
-The live `GoogleChatClient` only learns its own `users/<id>` *after its first
-post* (`me()`), and `build_runner` seeds that id from persisted `.state/`. On a
-fresh start (deleted state) cycle 1 therefore has no self id — detection can't
-drop the bot's own messages and the bot clarifies with itself. `GOOGLE_BOT_USER_ID`
-pins the id so self-filtering works from the very first cycle.
+`chat.me()` is resolved in precedence: configured `GOOGLE_BOT_USER_ID` → persisted
+`.state/` → the OAuth tokeninfo endpoint (`users/<sub>`, one cached lookup) →
+learned from the first post. The tokeninfo step makes self-filtering work from the
+very first cycle on a fresh start (no pin, no posting); without it `me()` was
+`None` on cycle 1 and the bot clarified its own messages.
 
 These pin:
 * `_normalize_user_id` accepts a bare id or the full form, blank ⇒ None;
 * `load_config` reads `GOOGLE_BOT_USER_ID`;
 * `build_runner` seeds the client's `me()` from the configured id (taking
   precedence over persisted state, falling back to it when unset);
+* `GoogleChatClient.me()` auto-resolves the id from tokeninfo (`sub`) once,
+  cached, skipped when seeded, returning None (one-shot) on failure;
 * the runner's detection self-filter: with a known own id, the bot's own
   issue-shaped message is NOT detected; an identical staff message IS — and with
-  NO own id (the bootstrap gap) the bot's own message leaks through.
+  NO own id the bot's own message leaks through.
 
 Stdlib `unittest`; offline (MockLLM + FakeChatClient / lazy GoogleChatClient); no
 network.
@@ -24,14 +26,35 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+import urllib.error
 from dataclasses import replace
+from unittest import mock
 
 from gchat_agent.agent.analyzer import Analyzer
 from gchat_agent.agent.state import IssueStore
+from gchat_agent.chat import google_rest
+from gchat_agent.chat.google_rest import GoogleChatClient
 from gchat_agent.config import load_config
 from gchat_agent.llm.mock import MockLLM
 from gchat_agent.runner import Runner, _normalize_user_id, build_runner
 from tests.fakes import FakeChatClient
+
+
+class _FakeResponse:
+    """Minimal `urlopen`-style context manager returning a fixed body."""
+
+    def __init__(self, body: bytes, status: int = 200) -> None:
+        self._body = body
+        self.status = status
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *_exc) -> bool:
+        return False
 
 BOT_ID = "users/bot"
 STAFF_ID = "users/staff-ops"
@@ -142,9 +165,60 @@ class DetectionSelfFilterTest(unittest.TestCase):
         self.assertEqual(self._run_detect(me=BOT_ID, author=STAFF_ID), 1)
 
     def test_bootstrap_gap_bot_message_leaks_without_known_id(self) -> None:
-        # Documents WHY GOOGLE_BOT_USER_ID exists: with no own id, the bot's own
-        # message is detected (the self-loop). Seeding the id (above) closes it.
+        # The runner-level invariant: with NO own id, the bot's own message is
+        # detected (the self-loop). The live client avoids this `None` state by
+        # auto-resolving its id from tokeninfo (below) before cycle-1 detection;
+        # a pin / persisted id closes it too.
         self.assertEqual(self._run_detect(me=None, author=BOT_ID), 1)
+
+
+class TokenInfoAutoDetectTest(unittest.TestCase):
+    """The live client resolves its own `users/<id>` from the OAuth tokeninfo
+    endpoint on the first `me()` — no posting, no new scope — so self-filtering
+    works from cycle 1 even unpinned. `sub` (the Gaia id) maps to `users/<sub>`."""
+
+    def _client(self, **kw):
+        cfg = replace(load_config(env_file="no-such.env"), GOOGLE_SPACE="spaces/x")
+        return GoogleChatClient(cfg, token_file="unused.json", **kw)
+
+    def test_me_auto_resolves_from_tokeninfo_sub(self) -> None:
+        client = self._client()  # no seeded id
+        with mock.patch.object(google_rest.oauth, "get_access_token", return_value="tok"), \
+                mock.patch.object(google_rest.urllib.request, "urlopen",
+                                  return_value=_FakeResponse(b'{"sub": "999", "email": "b@x"}')):
+            self.assertEqual(client.me(), "users/999")
+
+    def test_lookup_is_one_shot_and_cached(self) -> None:
+        client = self._client()
+        calls = {"n": 0}
+
+        def fake_urlopen(url, timeout=None):  # noqa: ARG001
+            calls["n"] += 1
+            return _FakeResponse(b'{"sub": "999"}')
+
+        with mock.patch.object(google_rest.oauth, "get_access_token", return_value="tok"), \
+                mock.patch.object(google_rest.urllib.request, "urlopen", side_effect=fake_urlopen):
+            self.assertEqual(client.me(), "users/999")
+            self.assertEqual(client.me(), "users/999")
+        self.assertEqual(calls["n"], 1, "tokeninfo must be queried at most once")
+
+    def test_seeded_id_skips_tokeninfo_entirely(self) -> None:
+        client = self._client(user_id="users/seed")
+
+        def boom(*_a, **_k):
+            raise AssertionError("must not hit the network when id is seeded")
+
+        with mock.patch.object(google_rest.oauth, "get_access_token", side_effect=boom), \
+                mock.patch.object(google_rest.urllib.request, "urlopen", side_effect=boom):
+            self.assertEqual(client.me(), "users/seed")
+
+    def test_failure_returns_none_and_does_not_retry(self) -> None:
+        client = self._client()
+        with mock.patch.object(google_rest.oauth, "get_access_token", return_value="tok"), \
+                mock.patch.object(google_rest.urllib.request, "urlopen",
+                                  side_effect=urllib.error.URLError("boom")):
+            self.assertIsNone(client.me())
+        self.assertTrue(client._me_lookup_done, "a failed lookup is one-shot, not retried")
 
 
 if __name__ == "__main__":

@@ -195,13 +195,14 @@ class Config:
     GOOGLE_OAUTH_CLIENT: str = "secrets/oauth_client.json"
     GOOGLE_TOKEN_FILE: str = "secrets/token_bot.json"
     GOOGLE_QUOTA_PROJECT: str = ""
-    # The bot's own `users/<id>` resource name. Pin this so the bot self-filters
-    # its OWN account's messages from the very FIRST cycle — including on a fresh
-    # start (deleted `.state/`), before it has posted once and learned its id via
-    # `me()`. Without it, cycle 1 has no self-filter and the bot can detect and
-    # clarify its own messages (a self-loop with itself). Accepts a bare numeric
-    # id (`1234567890`) or the full `users/1234567890` form. The poller logs the
-    # id it learns after the first post — copy that value here for fresh starts.
+    # OPTIONAL override for the bot's own `users/<id>` (used to self-filter its
+    # OWN messages out of detection, §5.7/§6). Normally the client auto-resolves
+    # this from the OAuth tokeninfo endpoint on its first `me()` (`sub` == the
+    # Chat user id) — needing only the `userinfo.email` scope the demo grants — so
+    # self-filtering works from cycle 1 without pinning or posting. Set this only
+    # to pin a known id (skips the one startup lookup) or for an offline path with
+    # no tokeninfo reachability. Accepts a bare numeric id or the `users/<id>`
+    # form. Precedence: this > persisted `.state/` > tokeninfo > learn-from-post.
     GOOGLE_BOT_USER_ID: str = ""
     POLL_INTERVAL_SECONDS: int = 15
     POLL_BACKFILL_SINCE: str = ""

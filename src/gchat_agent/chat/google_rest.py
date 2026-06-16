@@ -28,6 +28,13 @@ from ..models import Message, SenderType
 from . import oauth
 
 _API_BASE: Final[str] = "https://chat.googleapis.com/v1"
+
+# OAuth tokeninfo endpoint. Given the bot's own access token it returns `sub` —
+# the account's numeric Gaia id, which is exactly the number in the Chat
+# `users/<id>` resource name. So the bot can resolve its own id (for
+# self-filtering) WITHOUT having to post a message first, using only the
+# `userinfo.email` scope the demo already grants (see `_resolve_self_id`).
+_TOKENINFO_URL: Final[str] = "https://oauth2.googleapis.com/tokeninfo?access_token="
 # Media uploads use a distinct upload host/path (not the /v1 resource base).
 _UPLOAD_BASE: Final[str] = "https://chat.googleapis.com/upload/v1"
 
@@ -57,10 +64,13 @@ class GoogleChatClient:
         self.client_json = config.GOOGLE_OAUTH_CLIENT
         self.token_file = token_file or config.GOOGLE_TOKEN_FILE
         self.quota_project = config.GOOGLE_QUOTA_PROJECT or None
-        # Own users/<id> for self-filtering (§5.7/§6). Seeded from persisted
-        # state when known (so it survives a restart before the bot posts), else
-        # learned lazily from the first posted message's sender.name.
+        # Own users/<id> for self-filtering (§5.7/§6). Seeded from a configured /
+        # persisted id when known (no network), else resolved on first `me()` from
+        # the OAuth tokeninfo endpoint, else learned from the first posted message.
         self._me: str | None = user_id
+        # Whether the one-shot tokeninfo self-id lookup has been attempted, so a
+        # failed lookup falls back to learn-from-post instead of retrying per call.
+        self._me_lookup_done: bool = False
 
     # --- auth / HTTP -------------------------------------------------------
     def _token(self) -> str:
@@ -201,9 +211,38 @@ class GoogleChatClient:
 
     # --- ChatClient protocol ----------------------------------------------
     def me(self) -> str | None:
-        """Own `users/<id>` resource name, learned from the first posted
-        message's `sender.name` (cached). `None` until a post has happened."""
+        """Own `users/<id>` resource name for self-filtering (§5.7/§6), cached.
+
+        Priority, first hit wins:
+          1. an id seeded at construction (configured `GOOGLE_BOT_USER_ID` /
+             persisted `.state/`) — no network;
+          2. the account's own id from the OAuth `tokeninfo` endpoint
+             (`users/<sub>`), resolved ONCE on the first call — so the bot
+             self-filters from the FIRST poll cycle without having to post once,
+             needing only the `userinfo.email` scope the demo already grants;
+          3. the id learned from the first posted message's `sender.name` (the
+             historical fallback, still covering a tokeninfo outage).
+        `None` only while none of these has produced an id yet."""
+        if self._me is None and not self._me_lookup_done:
+            self._me_lookup_done = True
+            self._me = self._resolve_self_id()
         return self._me
+
+    def _resolve_self_id(self) -> str | None:
+        """Best-effort own `users/<id>` from the OAuth tokeninfo endpoint: `sub`
+        is the account's numeric Gaia id, identical to the number Chat uses in a
+        `users/<id>` sender. Never raises — any auth/transport/parse failure
+        returns `None`, leaving the id to be learned from the first post."""
+        try:
+            token = self._token()
+            url = _TOKENINFO_URL + urllib.parse.quote(token)
+            with urllib.request.urlopen(url, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
+                info = json.loads(resp.read() or b"{}")
+        except (urllib.error.URLError, TimeoutError, OSError,
+                json.JSONDecodeError, RuntimeError):
+            return None
+        sub = info.get("sub")
+        return f"users/{sub}" if sub else None
 
     def fetch_messages(self, since: str | None) -> list[Message]:
         """List messages created after `since` (RFC-3339), oldest-first, fully

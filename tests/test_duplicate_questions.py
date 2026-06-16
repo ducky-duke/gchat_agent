@@ -21,6 +21,7 @@ Stdlib `unittest`; offline (MockLLM + FakeChatClient); no network.
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 import unittest
 from dataclasses import replace
@@ -115,6 +116,18 @@ class DeclineDetectionTest(unittest.TestCase):
             "by tomorrow affecting 12 accounts on the homepage route."
         )
         self.assertFalse(_looks_like_decline(text))
+
+    def test_short_partial_answer_is_not_a_decline(self) -> None:
+        # The reporter answered ONE asked question and declined the rest — a
+        # partial answer, not a refusal of the whole issue (the screenshot bug:
+        # "it's in production. Else I don't know" was misread as a global decline
+        # and the issue was closed with never-asked facts as open questions).
+        for text in (
+            "it's in production. Else I don't know",
+            "the /payments route, not sure otherwise",
+            "Jane, idk the rest",
+        ):
+            self.assertFalse(_looks_like_decline(text), text)
 
     def test_empty_is_not_a_decline(self) -> None:
         self.assertFalse(_looks_like_decline(""))
@@ -238,6 +251,98 @@ class LoopBreakerTest(unittest.TestCase):
             # (cap is 9; it must close well before that).
             self.assertLessEqual(closed.rounds, 4)
             self.assertTrue(any(o["resolved"] for o in outcomes))
+
+
+class _CoreFactsAnalyzer(Analyzer):
+    """Detection opens with diagnostic questions; the clarity pass then surfaces
+    NEW core facts (owner, root-cause) that were never asked. Mimics the live
+    model on the screenshot issue: the reporter declines the diagnostics, and the
+    runner must pursue the still-unasked core facts rather than close the issue
+    with them wrongly recorded as unanswerable. Once those core facts are
+    themselves declined twice (the gap stops changing), the loop-breaker closes."""
+
+    CORE = [
+        "a named owner or responsible person",
+        "likely root cause or a concrete fix/mitigation plan with a target time",
+    ]
+
+    def assess_clarity(self, issue, conversation):  # type: ignore[override]
+        return ClarityAssessment(
+            is_clear=False, confidence=0.4, missing_info=list(self.CORE),
+            rationale="core facts still missing",
+            questions=[
+                "Who owns this and will drive it to resolution?",
+                "What is the likely root cause or the fix plan and target time?",
+            ],
+        )
+
+
+class DeclineDoesNotAbandonUnaskedFactsTest(unittest.TestCase):
+    """A decline of the asked questions must NOT close the issue while core facts
+    that were never asked remain — the bot pursues them first (the screenshot bug:
+    "API gateway timeout" → asked env/endpoints/logs → reporter "it's in
+    production. Else I don't know" → bot closed with never-asked owner/root-cause
+    as open questions)."""
+
+    SEED = "API gateway timeout now"
+
+    def _latest_bot_question(self, chat) -> str:
+        qs = [
+            m.text for m in chat.messages
+            if m.sender == BOT_ID and "recorded" not in m.text.lower()
+        ]
+        return qs[-1] if qs else ""
+
+    def _run(self, first_reply: str):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        config = _config(tmp, MAX_CLARIFY_ROUNDS=5, MAX_NO_PROGRESS_ROUNDS=2)
+        chat = FakeChatClient(me=BOT_ID)
+        chat.inject(STAFF_ID, self.SEED)
+        store = IssueStore(config.STATE_FILE)
+        runner = Runner(
+            chat, _CoreFactsAnalyzer(MockLLM(), retriever=None, top_k=0),
+            store, config,
+        )
+        runner.run_cycle()  # detect + first-contact ask (diagnostics)
+        issue = store.open_issues()[0]
+        thread = issue.thread_id
+
+        # First clarify reply: declines the asked diagnostics.
+        chat.inject(STAFF_ID, first_reply, thread_id=thread)
+        s2 = runner.run_cycle()
+        return runner, store, chat, issue, thread, s2
+
+    def test_partial_answer_pursues_unasked_core_facts(self) -> None:
+        runner, store, chat, issue, thread, s2 = self._run(
+            "it's in production. Else I don't know"
+        )
+        # The issue is NOT closed; the bot asks the never-asked core facts.
+        self.assertEqual(s2["resolved"], 0, "closed the issue on a partial answer")
+        self.assertEqual(s2["asked"], 1, "did not pursue the unasked core facts")
+        self.assertNotEqual(store.open_issues(), [])
+        self.assertIn("root cause", self._latest_bot_question(chat).lower())
+
+    def test_pure_decline_asks_core_facts_first_then_closes(self) -> None:
+        # Even a bare "I don't know" to the diagnostics does not abandon the
+        # never-asked core facts: the bot asks them once, and only closes with gaps
+        # after the reporter also declines THOSE (the gap then stops changing).
+        runner, store, chat, issue, thread, s2 = self._run("I don't know")
+        self.assertEqual(s2["resolved"], 0, "closed before asking the core facts")
+        self.assertEqual(s2["asked"], 1)
+
+        chat.inject(STAFF_ID, "I don't know", thread_id=thread)
+        s3 = runner.run_cycle()
+        self.assertEqual(s3["resolved"], 1, "never closed after the core facts were declined")
+        self.assertEqual(store.open_issues(), [])
+        closed = next(i for i in store.all_issues() if i.id == issue.id)
+        self.assertEqual(closed.status, Status.RESOLVED)
+        # The close documents the (now genuinely unanswerable) core facts.
+        report_path = os.path.join(runner.reports_dir, f"issue-{closed.id}.md")
+        with open(report_path, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("Open questions", body)
+        self.assertIn("named owner", body)
 
 
 if __name__ == "__main__":

@@ -156,7 +156,7 @@ GOOGLE_SPACE=spaces/AAQAxxxxxxx              # from step 5
 GOOGLE_OAUTH_CLIENT=secrets/oauth_client.json
 GOOGLE_TOKEN_FILE=secrets/token_bot.json     # the BOT's token (default account)
 GOOGLE_QUOTA_PROJECT=                         # LEAVE BLANK for the 3-account demo (Gotcha 4)
-GOOGLE_BOT_USER_ID=                           # the bot's own users/<id> — pin it to self-filter from cycle 1
+GOOGLE_BOT_USER_ID=                           # OPTIONAL: bot auto-detects its own users/<id> via tokeninfo; pin to skip the lookup
 ```
 
 Notes:
@@ -170,17 +170,15 @@ Notes:
 - `GOOGLE_TOKEN_FILE` here is the **bot's** token (`run_poller.py` uses it).
   Staff processes override it via `--token` (step 7), so each staff posts as its
   own account.
-- **Set `GOOGLE_BOT_USER_ID`** to the bot account's own `users/<id>` so the bot
-  drops its own messages from detection on the **very first cycle**. The bot
-  otherwise only learns its id *after it posts once* (and persists it in
-  `STATE_FILE`), so on a **fresh start** (deleted `.state/`, the default for
-  `./start_bot.sh`) cycle 1 has no self id and the bot can detect and clarify its
-  **own** account's messages — a self-loop. Don't know the id yet? Run the bot
-  once: it prints `learned bot user id users/<id>` on stderr the first time it
-  posts (and you can copy it from `STATE_FILE`); paste that value here. Accepts a
-  bare numeric id or the full `users/<id>` form. The poller banner's `self:` line
-  shows whether it's pinned. (Only the bot — staff/reporter ids are never
-  filtered.)
+- **Self-filtering is automatic — `GOOGLE_BOT_USER_ID` is optional.** The bot
+  drops its OWN account's messages from detection (so it never clarifies itself).
+  It resolves its own `users/<id>` from the OAuth `tokeninfo` endpoint on startup
+  (`sub` there == the Chat user id), using only the `userinfo.email` scope step 6
+  grants — so this works from the **first cycle** with no setup and no posting.
+  Set `GOOGLE_BOT_USER_ID` (bare id or `users/<id>`) only to **pin** a known id
+  and skip that one lookup, or for an offline path with no tokeninfo access. The
+  poller banner's `self:` line shows pinned vs auto-detect. (Only the bot —
+  staff/reporter ids are never filtered.)
 - `OPENROUTER_API_KEY` is **required** for the live demo: `build_llm` raises a
   clear `RuntimeError` if `LLM_PROVIDER=openrouter` and no key is set. (To run
   offline, set `LLM_PROVIDER=mock`.)
@@ -241,11 +239,10 @@ poll; otherwise it misses them.
   `reports/issue-<id>.md` and posts a **one-line confirmation** into the thread.
 - **Terminal banners**: confirm `space:` is your `GOOGLE_SPACE` and `provider:`
   shows your OpenRouter model (not `(unset GOOGLE_SPACE)`).
-- The bot drops only **its own** messages (its `users/<id>`), so it processes
-  both staff personas' threads. Pin that id via `GOOGLE_BOT_USER_ID` (above) so
-  self-filtering works from cycle 1 — otherwise a fresh start can clarify the
-  bot's own messages until it has posted once. State persists in `STATE_FILE`
-  (`.state/issues.json`) — delete it to reset between demo runs.
+- The bot drops only **its own** messages (its `users/<id>`, auto-detected via
+  tokeninfo on startup — see step 6's notes), so it processes both staff
+  personas' threads without ever clarifying itself. State persists in
+  `STATE_FILE` (`.state/issues.json`) — delete it to reset between demo runs.
 - `scripts/run_webhook.py` is a **Phase-2 stub** that just prints a deferral
   notice; the webhook ingress is not built in v1. Use `run_poller.py` instead.
 
