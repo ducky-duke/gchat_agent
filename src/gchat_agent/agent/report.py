@@ -127,14 +127,28 @@ def _one_line(text: str) -> str:
 def _plain_narration(report: ResolutionReport) -> str:
     """A deterministic spoken script from the report's own fields — the fallback
     when no LLM is available (or it returns nothing). Plain prose, no Markdown, so
-    it reads cleanly when spoken by TTS."""
+    it reads cleanly when spoken by TTS.
+
+    Framing mirrors :func:`confirmation_line`: the bot *records/documents* the
+    issue, it does not fix the underlying incident — so this never claims the
+    issue is "resolved". When the issue closed WITH gaps (``open_questions``), the
+    opener and a closing "Still needs:" clause say so honestly."""
     title = _one_line(report.title) or "the reported issue"
-    parts = [f"Issue resolved: {title}."]
+    opener = (
+        f"Issue recorded with open questions: {title}."
+        if report.open_questions
+        else f"Issue recorded: {title}."
+    )
+    parts = [opener]
     summary = _one_line(report.summary)
     if summary:
         parts.append(summary if summary.endswith(".") else summary + ".")
-    resolution = _one_line(report.resolution) or "It has been clarified and closed."
+    resolution = _one_line(report.resolution) or "It has been clarified and documented."
     parts.append(resolution if resolution.endswith(".") else resolution + ".")
+    if report.open_questions:
+        gaps = "; ".join(_one_line(q) for q in report.open_questions if _one_line(q))
+        if gaps:
+            parts.append(f"Still needs: {gaps}.")
     return " ".join(parts)
 
 

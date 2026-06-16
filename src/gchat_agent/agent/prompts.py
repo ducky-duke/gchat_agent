@@ -309,10 +309,10 @@ def resolution_prompt(issue: "Issue", transcript: str) -> tuple[str, str]:
 
 # --- spoken-narration script -------------------------------------------------
 def _report_brief(report: "ResolutionReport") -> str:
-    """A compact block of a resolved report's facts for the narration prompt."""
+    """A compact block of a recorded report's facts for the narration prompt."""
     severity = getattr(report.severity, "value", report.severity)
     lines = [
-        "Resolved issue to narrate:",
+        "Issue to narrate (recorded/documented by the bot — NOT necessarily fixed):",
         f"- title: {report.title}",
         f"- category: {report.category}",
         f"- severity: {severity}",
@@ -325,12 +325,21 @@ def _report_brief(report: "ResolutionReport") -> str:
             answer = " ".join((qa.text or "").split())
             if answer:
                 lines.append(f"  - {answer}")
+    if report.open_questions:
+        lines.append("- still-open questions (reporter could not provide these):")
+        for q in report.open_questions:
+            gap = " ".join((q or "").split())
+            if gap:
+                lines.append(f"  - {gap}")
     return "\n".join(lines)
 
 
 def narration_prompt(report: "ResolutionReport") -> tuple[str, str]:
     """Build the (system, user) prompt for a concise SPOKEN narration of a
-    resolved report — the script handed to text-to-speech for a voice update.
+    recorded report — the script handed to text-to-speech for a voice update.
+
+    The bot *records and documents* issues; it does NOT fix the underlying
+    incident — so the narration must not claim the issue is "resolved"/"fixed".
 
     Output shape::
 
@@ -340,13 +349,18 @@ def narration_prompt(report: "ResolutionReport") -> tuple[str, str]:
         f"{_ROLE}\n\n"
         f"{MARK_NARRATION}\n"
         "Write a short spoken update that a colleague will hear as audio — a "
-        "voice note announcing that an issue has been resolved. Cover what the "
-        "issue was, how it was resolved (owner / action / deadline if known), and "
-        "the single most important clarification. Requirements: plain spoken "
+        "voice note announcing that an issue has been RECORDED and documented. "
+        "IMPORTANT: the bot only logs and reports the issue; it does NOT fix the "
+        "underlying incident, so never say the issue is 'resolved', 'fixed', or "
+        "'closed' — say it has been 'recorded' / 'documented'. Cover what the "
+        "issue was, its current status and owner (owner / action / deadline if "
+        "known), and the single most important clarification. If the brief lists "
+        "still-open questions, say it was recorded WITH open questions and name "
+        "what is still needed. Requirements: plain spoken "
         "prose only — NO Markdown, NO headings, NO bullet points, NO emoji, NO "
         "message ids or URLs; 2 to 4 sentences, about 20 to 40 seconds when read "
         "aloud; natural and clear, since it will be spoken, not read. Open with a "
-        "brief framing such as \"Issue resolved:\".\n\n"
+        "brief framing such as \"Issue recorded:\".\n\n"
         "Respond with a JSON object of exactly this shape:\n"
         '{"narration": str}\n'
         "Output requirements: respond with ONLY that JSON object. No prose, no "
@@ -354,6 +368,6 @@ def narration_prompt(report: "ResolutionReport") -> tuple[str, str]:
     )
     user = (
         f"{_report_brief(report)}\n\n"
-        "Write the spoken narration for this resolved issue."
+        "Write the spoken narration for this recorded issue."
     )
     return system, user

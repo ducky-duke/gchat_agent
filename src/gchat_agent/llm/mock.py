@@ -404,8 +404,10 @@ class MockLLM:
         fields = self._brief_fields(user)
         title = fields.get("title", "") or "the reported issue"
         summary = fields.get("summary", "")
-        resolution = fields.get("resolution", "") or "It has been clarified and closed."
-        parts = [f"Issue resolved: {title}."]
+        resolution = fields.get("resolution", "") or "It has been clarified and documented."
+        # The bot records/documents issues — it does not fix the incident, so the
+        # spoken framing is "recorded", never "resolved" (mirrors report.py).
+        parts = [f"Issue recorded: {title}."]
         if summary:
             parts.append(summary if summary.endswith(".") else summary + ".")
         parts.append(resolution if resolution.endswith(".") else resolution + ".")
