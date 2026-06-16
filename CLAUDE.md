@@ -10,12 +10,33 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
 
 ## Code layout & commands
 - **Package** (src layout): `src/gchat_agent/` — `config.py`, `models.py`, `runner.py`,
-  `observability.py`; subpackages `llm/` (base, mock, openrouter+`build_llm`), `chat/` (base,
-  google_rest, oauth, Phase-2 webhook stub), `rag/` (bm25, boost, chunk, fuse, store, optional
-  dense), `agent/` (prompts, `state`·IssueStore, analyzer, report, staff). Entry scripts in
-  `scripts/`; tests in `tests/` (+ `fakes.FakeChatClient`).
-- **Run the tests** (offline, no key — the functional gate, currently **186 green**):
+  `observability.py`; subpackages `llm/` (base, mock, openrouter+`build_llm`, tts+`build_tts`),
+  `chat/` (base, google_rest, oauth, Phase-2 webhook stub), `rag/` (bm25, boost, chunk, fuse,
+  store, optional dense), `agent/` (prompts, `state`·IssueStore, analyzer, report, staff). Entry
+  scripts in `scripts/`; tests in `tests/` (+ `fakes.FakeChatClient`).
+- **Run the tests** (offline, no key — the functional gate, currently **238 green**):
   `PYTHONPATH=src python -m unittest discover -s tests -t . -p "test_*.py"`.
+- **Merged LLM calls (Lever 1, latency)**: detection emits opening
+  `clarifying_questions` per issue and clarity emits the next `questions` batch
+  inline, so the first-contact *detect→ask* and the *assess→ask* clarify step are
+  each ONE round-trip, not two (the dominant per-cycle cost). The runner's `_ask`
+  prefers these inline questions (`Issue.pending_questions` / `ClarityAssessment.
+  questions`) and falls back to a dedicated `generate_questions` call only when the
+  model returned none — so question quality never regresses. MockLLM emits both
+  inline too (`_questions_from_missing`).
+- **Voice reports** (`REPORT_DELIVERY=voice|both`): a resolved issue is narrated to a concise
+  spoken script (`report.build_narration`) → TTS (`llm/tts.py`, OpenRouter `audio.speech`, default
+  `x-ai/grok-voice-tts-1.0`) → posted as an in-memory MP3 attachment to `GOOGLE_VOICE_SPACE` (a
+  separate space/DM; empty ⇒ in the issue thread) via `chat.post_voice` (`media.upload` multipart +
+  `attachment` create, both on the bot's `chat.messages` user-OAuth scope — no service account).
+  Best-effort: any failure falls back to the on-disk report. Demo offline: `demo_local.py --voice`
+  (saves MP3s to `reports/demo/`). `TTS_VOICE` is model-specific — override in `.env` if rejected.
+  ⚠️ It's an audio **file attachment**, NOT a native voice message (waveform bubble) — that's a hard
+  Chat-API ceiling for bots, settled 2026-06-15; format is irrelevant — mp3/m4a/ogg AND an exact
+  webm/opus + `UserRecording_*.webm` match all render as file cards. See [`MEMORY.md`](MEMORY.md)
+  "Voice reports = audio FILE attachment only". Because the attachment is a download-only card, the
+  voice message body now **also carries the spoken transcript** (`report.voice_message_text` =
+  caption + `build_narration` text), so the report stays readable in-thread without playing the file.
 - **Offline path**: `LLM_PROVIDER=mock` → MockLLM, no network/key. Live path needs `OPENROUTER_API_KEY`
   **and** `pip install openai` (lazy core dep — NOT auto-installed in `igaming`; do it once: `conda run -n igaming pip install openai`).
 - **Scripts** self-add `src/` to path: `python scripts/run_poller.py [--once]` (bot);
@@ -24,6 +45,14 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   per-account refresh token); `python scripts/demo_local.py [--persona ops|promo|both] [--max-rounds N]`
   (full loop end-to-end over the in-memory FakeChatClient with the live/.env LLM — **no Google needed**;
   reports → `reports/demo/`). Docs: `README.md`, `docs/{ARCHITECTURE,RAG_ANALYSIS,SETUP_GOOGLE_CHAT}.md`.
+- **`./start_bot.sh`** is the convenience launcher for the poller (`--once` passthrough). A **fresh
+  start is the DEFAULT**: every launch resets previous-session state first — deletes `.state/`
+  (IssueStore + poll cursor → bot re-scans the Space from the top on a live run) and *archives*
+  (moves, never deletes) old reports to `reports/_archive/<ts>/` (keeping `voice_report_sample.mp3` +
+  `.gitkeep`). Pass **`--continue`** to skip the reset and resume the previous session (keeps `.state/`
+  + reports). It never touches `data/` (RAG corpus / input, not session state); there are no on-disk
+  logs or RAG index to clear (logs → stdout, index rebuilt in memory each start). `--fresh` is accepted
+  as an explicit no-op. Combinable: `./start_bot.sh --continue --once`.
 
 ## Memory
 Accumulated findings, setup gotchas, and the smoke-test environment live in
@@ -48,6 +77,11 @@ Accumulated findings, setup gotchas, and the smoke-test environment live in
   assumption (cited-id format, empty replies, output doubling, fp8 quantization 404, no timeout). Run
   with `conda run --no-capture-output -n igaming python -u ...` (else `conda run` buffers and a crash
   looks like a hang). Full list in [`MEMORY.md`](MEMORY.md) "Model-portability hardening".
+- **Out-of-thread safety modes** (for a shared space with non-staff/leadership): `REQUIRE_IN_THREAD_REPLY`
+  (strict demo floor — ignore replies outside the issue thread) and `REDIRECT_OUT_OF_THREAD_REPLY`
+  (production "redirect-on-capture" — collect the outside reply as evidence-only and post one templated,
+  LLM-free in-thread nudge; never resolves/leaks on it). Both gate *source B* only; design + leak-safety
+  invariants in [`MEMORY.md`](MEMORY.md) "Out-of-thread safety modes".
 
 ## Tooling / conventions
 - Python: `igaming` conda env (3.14). **`ty` is NOT installed here** → syntax-check with

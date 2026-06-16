@@ -125,18 +125,66 @@ class Config:
     # --- Agent loop ---
     MAX_CLARIFY_ROUNDS: int = 3
     STALE_AFTER_IDLE_CYCLES: int = 3
-    # After this many idle cycles on a CLARIFYING issue (no in-thread reply), the
-    # bot posts one top-level @mention nudge to the reporter before it keeps
-    # counting toward STALE. Must be < STALE_AFTER_IDLE_CYCLES to fire at all; set
-    # to 0 to disable escalation entirely.
-    ESCALATE_AFTER_IDLE_CYCLES: int = 2
+    # Wall-clock grace before the bot reminds a reporter about a CLARIFYING issue
+    # they haven't answered: once this many SECONDS have elapsed since the last
+    # clarifying question with no reply, the bot posts ONE top-level @mention
+    # nudge. Each issue is reminded exactly once (per-issue one-shot). Overdue
+    # issues that cross the grace line in the SAME poll cycle are consolidated
+    # into one @mention; issues that go overdue at different times each get their
+    # own single reminder. Staleness is deferred until the nudge has had its
+    # chance. 0 ⇒ remind on the first idle cycle; a negative value disables
+    # escalation entirely.
+    ESCALATE_AFTER_SECONDS: int = 300
+    # When true, an issue is only advanced by replies posted IN ITS OWN THREAD
+    # (plus the bot's own escalation/nudge thread, which is a 1:1 home for it):
+    # the runner stops attributing a reporter's bare top-level / other-thread
+    # messages to the issue (`_effective_conversation` source B). Safer in a busy
+    # shared space — the bot can't "barge into" unrelated discussion by mistaking
+    # an off-topic message for an answer — at the cost of not catching answers the
+    # reporter types outside the thread. Default off (preserves out-of-thread
+    # capture); recommended on for a live demo with non-staff participants.
+    REQUIRE_IN_THREAD_REPLY: bool = False
+    # Production "redirect-on-capture" (§ out-of-thread capture). When true, a
+    # reporter's reply that lands OUTSIDE the issue thread is never trusted to
+    # resolve the issue, feed the clarity/question LLM, enter the Q&A / report /
+    # voice, or move `active_thread_id` — all the leak/mis-placement paths a busy
+    # shared space exposes. Instead the runner records it as evidence (message
+    # ids only) and posts ONE templated, LLM-free nudge into the issue's OWN
+    # thread asking the reporter to confirm there; the issue then resolves only
+    # from in-thread + home-thread (A) replies. This implies the in-thread-only
+    # resolve gate regardless of REQUIRE_IN_THREAD_REPLY (it is that strict floor
+    # PLUS a redirect). Default off; recommended for production in a space with
+    # non-staff participants. (For a one-off live demo, the simpler
+    # REQUIRE_IN_THREAD_REPLY is enough.)
+    REDIRECT_OUT_OF_THREAD_REPLY: bool = False
     RESOLVE_CONFIDENCE_THRESHOLD: float = 0.8
     DETECT_WINDOW_MESSAGES: int = 50
     STATE_FILE: str = ".state/issues.json"
     REPORTS_DIR: str = "reports"
 
+    # --- Resolution-report delivery ---
+    # How a resolved issue's report is delivered:
+    #   "disk"  — write Markdown to REPORTS_DIR (default; the offline/test path).
+    #   "voice" — synthesize a spoken summary (TTS) and post it as an audio
+    #             attachment to GOOGLE_VOICE_SPACE (falls back to disk if voice
+    #             delivery is unavailable or fails, so a report is never lost).
+    #   "both"  — write the Markdown AND post the voice attachment.
+    REPORT_DELIVERY: str = "disk"  # disk | voice | both
+    # Text-to-speech (OpenRouter `audio.speech`, reuses the OpenRouter transport).
+    # TTS_VOICE is model-specific — a wrong voice 404s ("Provider returned 404").
+    # For x-ai/grok-voice-tts-1.0: default | ara | rex | sal | eve | leo (NOT the
+    # OpenAI-style "alloy"). TTS_FORMAT is the audio container; grok accepts only
+    # "mp3" (a real container) or "pcm" (raw, unplayable in Chat) — keep "mp3".
+    TTS_MODEL: str = "x-ai/grok-voice-tts-1.0"
+    TTS_VOICE: str = "default"
+    TTS_FORMAT: str = "mp3"
+
     # --- Google Chat (real demo only — user OAuth, §7) ---
     GOOGLE_SPACE: str = ""
+    # Where voice reports are delivered (a DM space with another account, or a
+    # dedicated "reports" space). The bot must be a member. Empty ⇒ fall back to
+    # the issue's own space, posting the voice into the issue thread.
+    GOOGLE_VOICE_SPACE: str = ""
     GOOGLE_OAUTH_CLIENT: str = "secrets/oauth_client.json"
     GOOGLE_TOKEN_FILE: str = "secrets/token_bot.json"
     GOOGLE_QUOTA_PROJECT: str = ""
@@ -149,12 +197,19 @@ class Config:
 
 
 # Which fields need non-string coercion (everything else stays a str).
-_BOOL_KEYS: Final[frozenset[str]] = frozenset({"RAG_DENSE", "OPENROUTER_REASONING"})
+_BOOL_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "RAG_DENSE",
+        "OPENROUTER_REASONING",
+        "REQUIRE_IN_THREAD_REPLY",
+        "REDIRECT_OUT_OF_THREAD_REPLY",
+    }
+)
 _INT_KEYS: Final[frozenset[str]] = frozenset({
     "RAG_TOP_K",
     "MAX_CLARIFY_ROUNDS",
     "STALE_AFTER_IDLE_CYCLES",
-    "ESCALATE_AFTER_IDLE_CYCLES",
+    "ESCALATE_AFTER_SECONDS",
     "DETECT_WINDOW_MESSAGES",
     "POLL_INTERVAL_SECONDS",
     "WEBHOOK_PORT",

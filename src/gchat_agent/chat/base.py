@@ -50,3 +50,22 @@ class ChatClient(Protocol):
         stable idempotency key (see `post_message`). Returns the created
         `Message`."""
         ...
+
+    def post_voice(
+        self,
+        audio: bytes,
+        filename: str,
+        text: str,
+        space: str | None = None,
+        thread_id: str | None = None,
+        request_id: str | None = None,
+    ) -> Message:
+        """Upload `audio` (in-memory bytes, e.g. MP3) and post it as a file
+        attachment with a short `text` caption — the voice-report delivery path.
+
+        `space` targets a space other than this client's default (e.g. a separate
+        "reports" space or a DM with another account); `None` ⇒ the default space.
+        `thread_id` optionally threads the message (used when falling back to the
+        issue's own space). `request_id` is the stable idempotency key (see
+        `post_message`). Returns the created `Message`."""
+        ...

@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # avoid a runtime dependency cycle; only needed for type hints
-    from gchat_agent.models import Issue
+    from gchat_agent.models import Issue, ResolutionReport
 
 
 # --- task markers (MockLLM branches on these appearing in system+user) ------
@@ -33,6 +33,7 @@ MARK_DETECT = "TASK:detect_issues"
 MARK_CLARITY = "TASK:assess_clarity"
 MARK_QUESTIONS = "TASK:generate_questions"
 MARK_RESOLUTION = "TASK:summarize_resolution"
+MARK_NARRATION = "TASK:narrate_resolution"
 
 
 # --- shared prompt fragments -------------------------------------------------
@@ -98,7 +99,12 @@ def detect_prompt(transcript: str, retrieved_context: str = "") -> tuple[str, st
         {"issues": [{"title": str, "summary": str, "category": str,
                      "severity": "low"|"med"|"high",
                      "source_message_ids": [str, ...],
-                     "missing_info": [str, ...]}, ...]}
+                     "missing_info": [str, ...],
+                     "clarifying_questions": [str, ...]}, ...]}
+
+    ``clarifying_questions`` lets detection ALSO open the clarification in the same
+    round-trip (the runner posts them as the first question batch without a second
+    `generate_questions` call); an empty list is fine and the runner falls back.
     """
     system = (
         f"{_ROLE}\n\n"
@@ -112,11 +118,15 @@ def detect_prompt(transcript: str, retrieved_context: str = "") -> tuple[str, st
         '"low", "med", or "high", cite the `source_message_ids` it is drawn from, '
         "and list `missing_info`: the specific facts still needed to act (owner, "
         "deadline, scope, repro steps, expected vs actual numbers, acceptance "
-        "criteria). If there are no real issues, return an empty list.\n\n"
+        "criteria). Also write `clarifying_questions`: 2-3 sharp, specific "
+        "questions (one concrete thing each, no compound or yes/no questions, a "
+        "single sentence each) that target that `missing_info` so the reporter can "
+        "answer them straight away — ask nothing already answered in the "
+        "transcript. If there are no real issues, return an empty list.\n\n"
         "Respond with a JSON object of exactly this shape:\n"
         '{"issues": [{"title": str, "summary": str, "category": str, '
         '"severity": "low"|"med"|"high", "source_message_ids": [str, ...], '
-        '"missing_info": [str, ...]}, ...]}\n'
+        '"missing_info": [str, ...], "clarifying_questions": [str, ...]}, ...]}\n'
         f"{_STRICT}"
     )
     user = _render_user(
@@ -136,7 +146,12 @@ def clarity_prompt(
     Output shape::
 
         {"is_clear": bool, "confidence": number 0..1,
-         "missing_info": [str, ...], "rationale": str}
+         "missing_info": [str, ...], "rationale": str,
+         "questions": [str, ...]}
+
+    ``questions`` merges the next clarifying batch into the SAME round-trip: 2-3
+    questions when the issue is not clear (empty when it is), so the runner can
+    re-ask without a separate `generate_questions` call. An empty list falls back.
     """
     system = (
         f"{_ROLE}\n\n"
@@ -158,10 +173,15 @@ def clarity_prompt(
         "exact timestamps, or a formal severity label; treat those as optional "
         "follow-ups, not blockers. Only list a fact in `missing_info` if it is one "
         "of the CORE facts above and is still absent. `confidence` is your "
-        "certainty in [0, 1]. Give a one-sentence `rationale`.\n\n"
+        "certainty in [0, 1]. Give a one-sentence `rationale`. When `is_clear` is "
+        "false, also write `questions`: 2-3 sharp, specific clarifying questions "
+        "(one concrete thing each, no compound or yes/no questions, a single "
+        "sentence each) targeting the `missing_info` above and not repeating "
+        "anything already answered. When `is_clear` is true, return `questions` as "
+        "an empty list.\n\n"
         "Respond with a JSON object of exactly this shape:\n"
         '{"is_clear": bool, "confidence": number between 0 and 1, '
-        '"missing_info": [str, ...], "rationale": str}\n'
+        '"missing_info": [str, ...], "rationale": str, "questions": [str, ...]}\n'
         f"{_STRICT}"
     )
     user = _render_user(
@@ -232,5 +252,57 @@ def resolution_prompt(issue: "Issue", transcript: str) -> tuple[str, str]:
         transcript,
         "",
         task_line=f"{_issue_brief(issue)}\n\nSummarize this resolved issue.",
+    )
+    return system, user
+
+
+# --- spoken-narration script -------------------------------------------------
+def _report_brief(report: "ResolutionReport") -> str:
+    """A compact block of a resolved report's facts for the narration prompt."""
+    severity = getattr(report.severity, "value", report.severity)
+    lines = [
+        "Resolved issue to narrate:",
+        f"- title: {report.title}",
+        f"- category: {report.category}",
+        f"- severity: {severity}",
+        f"- summary: {report.summary}",
+        f"- resolution: {report.resolution}",
+    ]
+    if report.qa:
+        lines.append("- key clarifications:")
+        for qa in report.qa:
+            answer = " ".join((qa.text or "").split())
+            if answer:
+                lines.append(f"  - {answer}")
+    return "\n".join(lines)
+
+
+def narration_prompt(report: "ResolutionReport") -> tuple[str, str]:
+    """Build the (system, user) prompt for a concise SPOKEN narration of a
+    resolved report — the script handed to text-to-speech for a voice update.
+
+    Output shape::
+
+        {"narration": str}
+    """
+    system = (
+        f"{_ROLE}\n\n"
+        f"{MARK_NARRATION}\n"
+        "Write a short spoken update that a colleague will hear as audio — a "
+        "voice note announcing that an issue has been resolved. Cover what the "
+        "issue was, how it was resolved (owner / action / deadline if known), and "
+        "the single most important clarification. Requirements: plain spoken "
+        "prose only — NO Markdown, NO headings, NO bullet points, NO emoji, NO "
+        "message ids or URLs; 2 to 4 sentences, about 20 to 40 seconds when read "
+        "aloud; natural and clear, since it will be spoken, not read. Open with a "
+        "brief framing such as \"Issue resolved:\".\n\n"
+        "Respond with a JSON object of exactly this shape:\n"
+        '{"narration": str}\n'
+        "Output requirements: respond with ONLY that JSON object. No prose, no "
+        "Markdown code fences, no comments, no trailing text."
+    )
+    user = (
+        f"{_report_brief(report)}\n\n"
+        "Write the spoken narration for this resolved issue."
     )
     return system, user

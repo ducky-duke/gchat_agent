@@ -38,6 +38,10 @@ class FakeChatClient:
         self._me = me
         self.space = space
         self.messages: list[Message] = []
+        # Voice attachments posted via `post_voice`, in order: each a dict with
+        # the audio bytes, filename, caption text, target space/thread, and the
+        # created Message — so tests/demo can inspect (and replay) what was sent.
+        self.voice_posts: list[dict] = []
         # Monotonic counters drive deterministic ids + create_time (no clock).
         self._counter = 0
         self._thread_counter = 0
@@ -120,6 +124,62 @@ class FakeChatClient:
             text, thread_id=message.thread_id, request_id=request_id
         )
 
+    def post_voice(
+        self,
+        audio: bytes,
+        filename: str,
+        text: str,
+        space: str | None = None,
+        thread_id: str | None = None,
+        request_id: str | None = None,
+    ) -> Message:
+        """Record a voice attachment and append its caption `Message`.
+
+        Mirrors the live adapter's contract: a repeated `request_id` returns the
+        prior `Message` without re-recording (idempotency). The audio bytes and
+        metadata are kept in `voice_posts` for inspection — no real upload."""
+        if request_id is not None and request_id in self._by_request:
+            return self._by_request[request_id]
+        message = self._record_voice(
+            self._me or "", audio, filename, text, space, thread_id
+        )
+        if request_id is not None:
+            self._by_request[request_id] = message
+        return message
+
+    def _record_voice(
+        self,
+        sender: str,
+        audio: bytes,
+        filename: str,
+        text: str,
+        space: str | None,
+        thread_id: str | None,
+    ) -> Message:
+        """Append a voice caption `Message` authored by `sender` and record the
+        attachment in `voice_posts`. Shared by `post_voice` and `StaffChatView`."""
+        seq = self._next_seq()
+        thread = thread_id or self._new_thread_id()
+        message = Message(
+            id=self._next_message_id(seq),
+            space=space or self.space,
+            thread_id=thread,
+            sender=sender,
+            sender_type=SenderType.HUMAN,
+            text=text,
+            create_time=self._create_time(seq),
+        )
+        self.messages.append(message)
+        self.voice_posts.append({
+            "audio": audio,
+            "filename": filename,
+            "text": text,
+            "space": space or self.space,
+            "thread_id": thread,
+            "message": message,
+        })
+        return message
+
     # --- test convenience --------------------------------------------------
     def inject(
         self,
@@ -196,3 +256,23 @@ class StaffChatView:
         self, message: Message, text: str, request_id: str | None = None
     ) -> Message:
         return self.post_message(text, thread_id=message.thread_id, request_id=request_id)
+
+    def post_voice(
+        self,
+        audio: bytes,
+        filename: str,
+        text: str,
+        space: str | None = None,
+        thread_id: str | None = None,
+        request_id: str | None = None,
+    ) -> Message:
+        """Record a voice attachment on the shared backend, authored as `me`
+        (idempotent on `request_id`)."""
+        if request_id is not None and request_id in self._by_request:
+            return self._by_request[request_id]
+        message = self._backend._record_voice(
+            self._me, audio, filename, text, space, thread_id
+        )
+        if request_id is not None:
+            self._by_request[request_id] = message
+        return message

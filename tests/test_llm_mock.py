@@ -126,7 +126,10 @@ class DetectIssuesContractTest(unittest.TestCase):
         for issue in issues:
             self.assertEqual(
                 set(issue.keys()),
-                {"title", "summary", "category", "severity", "source_message_ids", "missing_info"},
+                {
+                    "title", "summary", "category", "severity",
+                    "source_message_ids", "missing_info", "clarifying_questions",
+                },
             )
             self.assertIsInstance(issue["title"], str)
             self.assertIsInstance(issue["summary"], str)
@@ -136,6 +139,11 @@ class DetectIssuesContractTest(unittest.TestCase):
             self.assertTrue(all(isinstance(s, str) for s in issue["source_message_ids"]))
             self.assertIsInstance(issue["missing_info"], list)
             self.assertTrue(all(isinstance(s, str) for s in issue["missing_info"]))
+            # Lever 1: detection opens the clarification inline — a non-empty list
+            # of question strings the runner can post without a second LLM call.
+            self.assertIsInstance(issue["clarifying_questions"], list)
+            self.assertGreaterEqual(len(issue["clarifying_questions"]), 1)
+            self.assertTrue(all(isinstance(q, str) and q for q in issue["clarifying_questions"]))
             # Only ids that appear in the transcript may be cited.
             for sid in issue["source_message_ids"]:
                 self.assertIn(sid, {"a", "b"})
@@ -159,7 +167,8 @@ class AssessClarityContractTest(unittest.TestCase):
 
     def _assert_shape(self, result: dict[str, object]) -> None:
         self.assertEqual(
-            set(result.keys()), {"is_clear", "confidence", "missing_info", "rationale"}
+            set(result.keys()),
+            {"is_clear", "confidence", "missing_info", "rationale", "questions"},
         )
         self.assertIsInstance(result["is_clear"], bool)
         self.assertIsInstance(result["confidence"], float)
@@ -168,6 +177,10 @@ class AssessClarityContractTest(unittest.TestCase):
         self.assertIsInstance(result["missing_info"], list)
         self.assertTrue(all(isinstance(m, str) for m in result["missing_info"]))
         self.assertIsInstance(result["rationale"], str)
+        # Lever 1: the next clarifying batch rides along — questions when not
+        # clear, empty when clear.
+        self.assertIsInstance(result["questions"], list)
+        self.assertTrue(all(isinstance(q, str) and q for q in result["questions"]))
 
     def test_marker_reaches_mock(self) -> None:
         system, _user = prompts.clarity_prompt(_issue(), _VAGUE.render(with_ids=True))
@@ -184,6 +197,8 @@ class AssessClarityContractTest(unittest.TestCase):
             result["missing_info"], ["owner", "deadline", "specific scope or numbers"]
         )
         self.assertGreater(len(result["missing_info"]), 0)
+        # Not clear ⇒ the inline next-question batch is drafted (Lever 1).
+        self.assertGreaterEqual(len(result["questions"]), 2)
 
     def test_clear_once_owner_date_number_present(self) -> None:
         llm = MockLLM()
@@ -199,6 +214,8 @@ class AssessClarityContractTest(unittest.TestCase):
         self.assertTrue(result["is_clear"])
         self.assertEqual(result["confidence"], 0.9)
         self.assertEqual(result["missing_info"], [])
+        # Clear ⇒ no further questions (Lever 1 contract).
+        self.assertEqual(result["questions"], [])
 
     def test_clarity_is_deterministic(self) -> None:
         system, user = prompts.clarity_prompt(_issue(), _CLEAR.render(with_ids=True))

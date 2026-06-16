@@ -21,6 +21,7 @@ from typing import Any
 from gchat_agent.agent.prompts import (
     MARK_CLARITY,
     MARK_DETECT,
+    MARK_NARRATION,
     MARK_QUESTIONS,
     MARK_RESOLUTION,
 )
@@ -167,6 +168,8 @@ class MockLLM:
             return self._generate_questions(user)
         if MARK_RESOLUTION in blob:
             return self._summarize_resolution(user)
+        if MARK_NARRATION in blob:
+            return self._narrate_resolution(user)
         # Unknown task: degrade to an empty-issues object (still a valid object).
         return {"issues": []}
 
@@ -205,6 +208,7 @@ class MockLLM:
             severity = self._severity(bucket_text.lower())
             first_line = bucket[0][1]
             title = self._title_from_line(first_line)
+            missing_info = self._missing_for(bucket_text.lower())
             issues.append(
                 {
                     "title": title,
@@ -214,7 +218,10 @@ class MockLLM:
                     "category": category,
                     "severity": severity,
                     "source_message_ids": ids or all_ids[:1],
-                    "missing_info": self._missing_for(bucket_text.lower()),
+                    "missing_info": missing_info,
+                    # Lever 1: open the clarification inline so detect+ask is one
+                    # round-trip — the runner posts these as the first question batch.
+                    "clarifying_questions": self._questions_from_missing(missing_info),
                 }
             )
         return {"issues": issues}
@@ -283,36 +290,48 @@ class MockLLM:
                 "confidence": 0.9,
                 "missing_info": [],
                 "rationale": "Owner, deadline, and concrete details are all present.",
+                "questions": [],  # clear ⇒ no further questions (Lever 1 contract)
             }
         return {
             "is_clear": False,
             "confidence": 0.6,
             "missing_info": missing,
             "rationale": "Still missing: " + ", ".join(missing) + ".",
+            # Lever 1: draft the next clarifying batch inline so assess+ask is one
+            # round-trip — the runner posts these when it re-asks.
+            "questions": self._questions_from_missing(missing),
         }
 
     # --- generate_questions --------------------------------------------------
     def _generate_questions(self, user: str) -> dict[str, Any]:
         """Templated 2-3 questions derived from the listed missing info."""
-        missing = self._parse_missing_block(user)
-        if not missing:
-            missing = ["owner", "deadline"]
+        return {"questions": self._questions_from_missing(self._parse_missing_block(user))}
 
-        templates = {
-            "owner": "Who will own this and drive it to resolution?",
-            "deadline": "What is the firm deadline or target date for this?",
-            "specific scope or numbers": (
-                "What are the specific numbers or scope involved (expected vs actual)?"
-            ),
-            "scope": "What is the exact scope and acceptance criteria?",
-            "repro steps": "What are the exact steps to reproduce the problem?",
-        }
+    # Templated clarifying question per missing-fact label. Shared so detection's
+    # inline `clarifying_questions`, the clarity branch's inline `questions`, and
+    # the standalone `generate_questions` task all phrase the same fact identically.
+    _QUESTION_TEMPLATES: tuple[tuple[str, str], ...] = (
+        ("owner", "Who will own this and drive it to resolution?"),
+        ("deadline", "What is the firm deadline or target date for this?"),
+        (
+            "specific scope or numbers",
+            "What are the specific numbers or scope involved (expected vs actual)?",
+        ),
+        ("scope", "What is the exact scope and acceptance criteria?"),
+        ("repro steps", "What are the exact steps to reproduce the problem?"),
+    )
+
+    def _questions_from_missing(self, missing: list[str]) -> list[str]:
+        """2-3 templated clarifying questions for a list of missing-fact labels.
+
+        Backfills owner/deadline questions when the labels yield fewer than two,
+        so every caller (detect / clarity / generate_questions) always opens with
+        at least a couple of concrete questions — the contract the runner relies on."""
+        templates = dict(self._QUESTION_TEMPLATES)
         questions: list[str] = []
-        for item in missing:
+        for item in missing or []:
             key = item.strip().lower()
-            q = templates.get(key)
-            if q is None:
-                q = f"Can you clarify the {key}?"
+            q = templates.get(key) or f"Can you clarify the {key}?"
             if q not in questions:
                 questions.append(q)
             if len(questions) >= 3:
@@ -323,7 +342,7 @@ class MockLLM:
                     questions.append(fallback)
                 if len(questions) >= 2:
                     break
-        return {"questions": questions[:3]}
+        return questions[:3]
 
     def _parse_missing_block(self, user: str) -> list[str]:
         """Pull the bulleted "Missing information to resolve:" items if present."""
@@ -377,3 +396,31 @@ class MockLLM:
             if line.lower().startswith("- title:"):
                 return line.split(":", 1)[1].strip()
         return ""
+
+    # --- narrate_resolution --------------------------------------------------
+    def _narrate_resolution(self, user: str) -> dict[str, Any]:
+        """A short, plain spoken script from the report brief (title/summary/
+        resolution) — no Markdown, the contract the voice path feeds to TTS."""
+        fields = self._brief_fields(user)
+        title = fields.get("title", "") or "the reported issue"
+        summary = fields.get("summary", "")
+        resolution = fields.get("resolution", "") or "It has been clarified and closed."
+        parts = [f"Issue resolved: {title}."]
+        if summary:
+            parts.append(summary if summary.endswith(".") else summary + ".")
+        parts.append(resolution if resolution.endswith(".") else resolution + ".")
+        narration = " ".join(" ".join(p.split()) for p in parts if p.strip())
+        return {"narration": narration}
+
+    @staticmethod
+    def _brief_fields(user: str) -> dict[str, str]:
+        """Parse the '- key: value' lines of a report/issue brief into a dict."""
+        fields: dict[str, str] = {}
+        for raw in (user or "").splitlines():
+            line = raw.strip()
+            if line.startswith("- ") and ":" in line:
+                key, _, val = line[2:].partition(":")
+                key = key.strip().lower()
+                if key and key not in fields:
+                    fields[key] = val.strip()
+        return fields

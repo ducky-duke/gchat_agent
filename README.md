@@ -121,6 +121,32 @@ payout webhook; `promo` = a vague welcome-bonus launch request); `--token`
 overrides `GOOGLE_TOKEN_FILE` so that process posts as the right Gmail account.
 Resolution reports land in `reports/issue-<id>.md`.
 
+## Voice reports (text-to-speech)
+
+Instead of (or alongside) the on-disk Markdown, a resolved issue can be delivered
+as a **spoken audio note** posted to Google Chat. Set `REPORT_DELIVERY` in `.env`:
+
+| `REPORT_DELIVERY` | Behaviour |
+|---|---|
+| `disk` (default) | Write Markdown to `reports/issue-<id>.md`. |
+| `voice` | Synthesize a concise spoken summary (TTS) and post it as an MP3 attachment. Falls back to disk if voice delivery is unavailable or fails, so a report is never lost. |
+| `both` | Write the Markdown **and** post the voice attachment. |
+
+The voice goes to `GOOGLE_VOICE_SPACE` — a separate space, or a DM with another
+account (the bot must be a member); leave it empty to post the voice into the
+issue's own thread instead. TTS runs over OpenRouter's `audio.speech` endpoint
+(same key/transport as the LLM): `TTS_MODEL` (default `x-ai/grok-voice-tts-1.0`)
+and `TTS_VOICE` (model-specific — change it if a model rejects the default).
+
+Two REST steps on the bot's user OAuth deliver it — `media.upload` (covered by the
+`chat.messages` scope) returns an attachment token, then `spaces.messages.create`
+attaches it; the audio never touches disk. Try it offline (saves the MP3s under
+`reports/demo/` so you can play them):
+
+```bash
+PYTHONPATH=src python scripts/demo_local.py --persona both --voice
+```
+
 ## RAG
 
 The repo ships **4 sample KB docs** in `data/knowledge_base/`, so on a fresh
@@ -159,7 +185,7 @@ gchat_agent/
 │   ├── models.py              # Conversation, Message, Issue, QAPair, Status, …
 │   ├── runner.py              # Runner / build_runner — the orchestration loop
 │   ├── observability.py       # optional langfuse tracing (no-op by default)
-│   ├── llm/                   # base protocol, mock, openrouter (build_llm)
+│   ├── llm/                   # base protocol, mock, openrouter (build_llm), tts (build_tts)
 │   ├── chat/                  # ChatClient base, google_rest, oauth
 │   ├── rag/                   # base (Retriever protocol), store (build_retriever), bm25, boost, chunk, dense, fuse
 │   └── agent/                 # analyzer, state (IssueStore), report, staff, prompts

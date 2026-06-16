@@ -19,12 +19,18 @@ import os
 import tempfile
 from typing import TYPE_CHECKING
 
-from gchat_agent.agent.prompts import resolution_prompt
+from gchat_agent.agent.prompts import narration_prompt, resolution_prompt
 from gchat_agent.models import QAPair, ResolutionReport, _enum_value
 
 if TYPE_CHECKING:  # only for the type hint — never import the LLM at runtime
     from gchat_agent.llm.base import LLMClient
     from gchat_agent.models import Issue
+
+# Google Chat caps message text near 4096 chars. The spoken narration is meant to
+# be 2-4 sentences (well under this), but a misbehaving live LLM could ignore that;
+# cap the transcript so an over-long body never makes the (text + audio) voice post
+# fail and silently drop the in-chat voice+transcript to the disk fallback.
+_VOICE_TRANSCRIPT_MAX_CHARS: int = 3500
 
 
 def _now_rfc3339() -> str:
@@ -108,6 +114,66 @@ def _one_line(text: str) -> str:
     return " ".join((text or "").split())
 
 
+def _plain_narration(report: ResolutionReport) -> str:
+    """A deterministic spoken script from the report's own fields — the fallback
+    when no LLM is available (or it returns nothing). Plain prose, no Markdown, so
+    it reads cleanly when spoken by TTS."""
+    title = _one_line(report.title) or "the reported issue"
+    parts = [f"Issue resolved: {title}."]
+    summary = _one_line(report.summary)
+    if summary:
+        parts.append(summary if summary.endswith(".") else summary + ".")
+    resolution = _one_line(report.resolution) or "It has been clarified and closed."
+    parts.append(resolution if resolution.endswith(".") else resolution + ".")
+    return " ".join(parts)
+
+
+def build_narration(report: ResolutionReport, llm: "LLMClient | None" = None) -> str:
+    """Build the spoken-narration script for a resolved report (the text handed to
+    TTS). With ``llm`` supplied, one ``complete_json`` call over
+    :func:`narration_prompt` may produce a crisper spoken script; any failure
+    (exception, missing/blank ``narration``) falls back to :func:`_plain_narration`
+    so the voice path always has something to say."""
+    if llm is not None:
+        system, user = narration_prompt(report)
+        try:
+            data = llm.complete_json(system, user)
+        except Exception:  # noqa: BLE001 — never let voice delivery fail on the LLM
+            data = {}
+        if isinstance(data, dict):
+            narration = _one_line(str(data.get("narration", "") or ""))
+            if narration:
+                return narration
+    return _plain_narration(report)
+
+
+def voice_caption(report: ResolutionReport) -> str:
+    """The short text that accompanies the audio attachment in Chat (an audio-only
+    message carries no body otherwise), naming the resolved issue."""
+    title = _one_line(report.title) or "issue"
+    return f'🔊 Resolution voice report — "{title}"'
+
+
+def voice_message_text(report: ResolutionReport, narration: str) -> str:
+    """The Chat message body posted alongside the audio attachment: the
+    :func:`voice_caption` header followed by the spoken ``narration`` as a
+    readable transcript.
+
+    A Chat audio attachment is a download-only file *card* — bots cannot post a
+    native inline-playable voice message (a hard Chat-API ceiling), so without the
+    transcript the resolution is illegible until someone downloads and plays the
+    file. Carrying the transcript in the SAME message keeps the report readable
+    in-thread (and accessible). Falls back to the bare caption when ``narration``
+    is empty."""
+    caption = voice_caption(report)
+    transcript = _one_line(narration).strip()
+    if not transcript:
+        return caption
+    if len(transcript) > _VOICE_TRANSCRIPT_MAX_CHARS:
+        transcript = transcript[: _VOICE_TRANSCRIPT_MAX_CHARS - 1].rstrip() + "…"
+    return f"{caption}\n\n📝 Transcript: {transcript}"
+
+
 def render_markdown(report: ResolutionReport) -> str:
     """Render the resolution report to Markdown (§6).
 
@@ -167,6 +233,13 @@ def _report_filename(report: ResolutionReport) -> str:
     return f"issue-{safe}.md"
 
 
+def report_disk_ref(report: ResolutionReport) -> str:
+    """The repo-relative on-disk report path (``reports/issue-<id>.md``) used in
+    the Chat confirmation. Single source of truth for the disk reference so the
+    confirmation and the runner never drift."""
+    return f"reports/{_report_filename(report)}"
+
+
 def write_report(report: ResolutionReport, reports_dir: str) -> str:
     """Render and write the report atomically to ``<reports_dir>/issue-<id>.md``.
 
@@ -198,16 +271,23 @@ def write_report(report: ResolutionReport, reports_dir: str) -> str:
     return path
 
 
-def confirmation_line(report: ResolutionReport) -> str:
+def confirmation_line(
+    report: ResolutionReport, report_ref: str | None = None
+) -> str:
     """The ≤2-line Chat-thread confirmation (§6 template):
 
     ``✅ Issue "<title>" resolved — <one-line resolution>. Report: reports/issue-<id>.md``
-    """
+
+    ``report_ref`` overrides the trailing report reference (the whole
+    ``Report: …`` clause) so the voice path can say where the spoken report went
+    instead of pointing at an on-disk Markdown file that wasn't written; when
+    omitted the default on-disk path is used (unchanged for the disk path)."""
     title = _one_line(report.title) or "issue"
     resolution = _one_line(report.resolution) or "Clarified and ready to close."
     resolution = resolution.rstrip(".")
-    rel_path = f"reports/{_report_filename(report)}"
-    return (
-        f'✅ Issue "{title}" resolved — {resolution}. '
-        f"Report: {rel_path}"
+    ref = (
+        report_ref
+        if report_ref is not None
+        else f"Report: {report_disk_ref(report)}"
     )
+    return f'✅ Issue "{title}" resolved — {resolution}. {ref}'

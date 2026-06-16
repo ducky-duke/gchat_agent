@@ -164,6 +164,12 @@ class Issue:
     reporter_id: str | None = None
     source_message_ids: list[str] = field(default_factory=list)
     missing_info: list[str] = field(default_factory=list)
+    # Opening clarifying questions the DETECTION call produced inline (Lever 1:
+    # one merged LLM round-trip instead of detect-then-generate). Consumed once by
+    # the runner's first-contact `_ask` and cleared; empty ⇒ fall back to a
+    # dedicated `generate_questions` call. Transient suggestion, persisted only so
+    # a crash between detection and the first ask replays the same questions.
+    pending_questions: list[str] = field(default_factory=list)
     questions_asked: list[str] = field(default_factory=list)
     qa: list[QAPair] = field(default_factory=list)
     # Set once the bot has posted a top-level @mention nudge for an idle
@@ -180,6 +186,16 @@ class Issue:
     # reporter who answered in the nudge thread keeps the back-and-forth there).
     # Also a collection home (like the nudge thread). None ⇒ the issue thread.
     active_thread_id: str | None = None
+    # Production redirect-on-capture (config.REDIRECT_OUT_OF_THREAD_REPLY): ids of
+    # the reporter's OUT-OF-THREAD messages already accounted for. LOW-TRUST
+    # evidence used ONLY to decide whether to post the single templated in-thread
+    # redirect nudge — NEVER merged into the resolution transcript, the Q&A, the
+    # report/voice, or any LLM prompt, and never moves `active_thread_id`.
+    # Persisted so a restart doesn't re-nudge for the same out-of-thread replies.
+    out_of_thread_evidence_ids: list[str] = field(default_factory=list)
+    # Set once the templated redirect nudge has been posted, so it fires at most
+    # once per issue (no nudge loop; no double-nag with the top-level escalation).
+    redirect_nudged: bool = False
     last_bot_message_id: str | None = None
     # Server `create_time` of the last bot question (RFC-3339). Lets `_new_replies`
     # recover replies after a restart, when the working conversation — rebuilt from
@@ -213,11 +229,14 @@ class Issue:
             reporter_id=data.get("reporter_id"),
             source_message_ids=list(data.get("source_message_ids", [])),
             missing_info=list(data.get("missing_info", [])),
+            pending_questions=list(data.get("pending_questions", [])),
             questions_asked=list(data.get("questions_asked", [])),
             qa=[QAPair.from_dict(item) for item in data.get("qa", [])],
             escalated=_coerce_bool(data.get("escalated", False)),
             escalation_thread_id=data.get("escalation_thread_id"),
             active_thread_id=data.get("active_thread_id"),
+            out_of_thread_evidence_ids=list(data.get("out_of_thread_evidence_ids", [])),
+            redirect_nudged=_coerce_bool(data.get("redirect_nudged", False)),
             last_bot_message_id=data.get("last_bot_message_id"),
             last_bot_create_time=data.get("last_bot_create_time"),
             last_question_at=data.get("last_question_at"),
@@ -237,6 +256,11 @@ class ClarityAssessment:
     confidence: float
     missing_info: list[str] = field(default_factory=list)
     rationale: str = ""
+    # Clarifying questions the clarity call produced inline when the issue is NOT
+    # yet clear (Lever 1: assess + question-generation in one round-trip). Empty
+    # when clear, or when the model returned none — the runner then falls back to
+    # a dedicated `generate_questions` call.
+    questions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -244,6 +268,7 @@ class ClarityAssessment:
             "confidence": self.confidence,
             "missing_info": list(self.missing_info),
             "rationale": self.rationale,
+            "questions": list(self.questions),
         }
 
     @classmethod
@@ -253,6 +278,7 @@ class ClarityAssessment:
             confidence=_coerce_float(data.get("confidence", 0.0)),
             missing_info=list(data.get("missing_info", [])),
             rationale=data.get("rationale", ""),
+            questions=list(data.get("questions", [])),
         )
 
 

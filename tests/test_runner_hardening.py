@@ -40,6 +40,7 @@ from gchat_agent.runner import (
     Runner,
     _acquire_lock,
     _minus_seconds,
+    _now,
     _release_lock,
 )
 from tests.fakes import FakeChatClient
@@ -97,7 +98,10 @@ class StaleTombstoneTest(unittest.TestCase):
 
     def test_idle_issue_goes_stale_tombstoned_and_not_reraised(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = _config(tmp, STALE_AFTER_IDLE_CYCLES=1, MAX_CLARIFY_ROUNDS=3)
+            # Escalation disabled so this test isolates the stale→tombstone path
+            # (otherwise the reminder is owed first and staleness is deferred).
+            config = _config(tmp, STALE_AFTER_IDLE_CYCLES=1, MAX_CLARIFY_ROUNDS=3,
+                             ESCALATE_AFTER_SECONDS=-1)
             chat = FakeChatClient(me=BOT_ID)
             chat.inject(STAFF_ID, SEED_TEXT)
             store = IssueStore(config.STATE_FILE)
@@ -121,8 +125,17 @@ class StaleTombstoneTest(unittest.TestCase):
 
 
 class _NoQuestionsAnalyzer(Analyzer):
-    """Clarity never passes and question generation yields nothing — exercises the
-    'no questions this cycle' path (e.g. a transient empty LLM reply)."""
+    """Clarity never passes and NO questions are available from any source —
+    exercises the 'no questions this cycle' path (e.g. a transient empty LLM
+    reply). With Lever 1 that means detection's inline `pending_questions` must
+    also be empty (else first contact would ask from them), so this strips them
+    AND nulls `generate_questions`, leaving the runner with nothing to post."""
+
+    def detect_issues(self, conversation):  # type: ignore[override]
+        issues = super().detect_issues(conversation)
+        for issue in issues:
+            issue.pending_questions = []  # force the no-questions fallback path
+        return issues
 
     def assess_clarity(self, issue, conversation):  # type: ignore[override]
         return ClarityAssessment(
@@ -160,7 +173,11 @@ class NoQuestionsIdleTest(unittest.TestCase):
 
 class _ClaritySpyAnalyzer(Analyzer):
     """Counts assess_clarity / generate_questions calls so a test can prove the
-    first-contact fast path opens with questions WITHOUT a clarity round-trip."""
+    first-contact fast path opens with the detection call's INLINE questions —
+    no separate clarity round-trip AND no separate generate_questions round-trip
+    (Lever 1). Detection is the real path (super), so `pending_questions` is
+    populated by MockLLM and the runner posts those without calling
+    `generate_questions`."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -179,9 +196,10 @@ class _ClaritySpyAnalyzer(Analyzer):
 
 
 class FirstContactSkipsClarityTest(unittest.TestCase):
-    """A freshly detected issue opens with questions WITHOUT an `assess_clarity`
-    call (it is definitionally not clear yet — skipping that LLM round-trip is the
-    latency win); once a reply arrives, clarity is assessed normally."""
+    """A freshly detected issue opens with the detection call's inline questions:
+    NO `assess_clarity` round-trip (it is definitionally not clear yet) AND NO
+    separate `generate_questions` round-trip (Lever 1 — detect+ask is one call).
+    Once a reply arrives, clarity is assessed normally."""
 
     def test_first_contact_skips_assess_then_resumes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -199,15 +217,177 @@ class FirstContactSkipsClarityTest(unittest.TestCase):
                 analyzer.assess_calls, 0,
                 "first contact must not call assess_clarity",
             )
-            self.assertEqual(analyzer.question_calls, 1)
-
+            # Lever 1: the opening questions came inline from detection, so the
+            # dedicated generation round-trip is never made on first contact.
+            self.assertEqual(
+                analyzer.question_calls, 0,
+                "first contact must reuse detection's inline questions, not regenerate",
+            )
+            # The issue actually opened with those inline questions.
             issue = store.open_issues()[0]
+            self.assertEqual(issue.rounds, 1)
+            self.assertTrue(issue.questions_asked)
+            self.assertEqual(issue.pending_questions, [], "inline questions consumed")
+
             chat.inject(STAFF_ID, "Jane on payments owns it.", thread_id=issue.thread_id)
 
             runner.run_cycle()  # a reply exists -> not first contact -> assess runs
             self.assertGreaterEqual(
                 analyzer.assess_calls, 1,
                 "a reply must re-enable assess_clarity",
+            )
+
+
+class _NoInlineQuestionsSpyAnalyzer(Analyzer):
+    """Detection produces NO inline questions (a model that ignored the merged
+    contract); a real `generate_questions` (counted) still supplies them. Proves
+    the Lever 1 fallback: first contact degrades to the dedicated generation call
+    rather than failing to ask."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.question_calls = 0
+
+    def detect_issues(self, conversation):  # type: ignore[override]
+        issues = super().detect_issues(conversation)
+        for issue in issues:
+            issue.pending_questions = []  # model emitted no inline questions
+        return issues
+
+    def generate_questions(self, issue, conversation, missing_info):  # type: ignore[override]  # noqa: ARG002
+        self.question_calls += 1
+        return ["Who owns this and by when?"]
+
+
+class FirstContactFallsBackToGenerateTest(unittest.TestCase):
+    """When detection supplies no inline questions, first contact still opens the
+    clarification — via the `generate_questions` fallback (Lever 1 never regresses
+    question quality when the merged call comes back empty)."""
+
+    def test_first_contact_falls_back_to_generate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = _config(tmp, STALE_AFTER_IDLE_CYCLES=3, MAX_CLARIFY_ROUNDS=3)
+            chat = FakeChatClient(me=BOT_ID)
+            chat.inject(STAFF_ID, SEED_TEXT)
+            store = IssueStore(config.STATE_FILE)
+            analyzer = _NoInlineQuestionsSpyAnalyzer(MockLLM(), retriever=None, top_k=0)
+            runner = Runner(chat, analyzer, store, config)
+
+            s1 = runner.run_cycle()
+            self.assertEqual(s1["detected"], 1)
+            self.assertEqual(s1["asked"], 1, "must still ask via the fallback")
+            self.assertEqual(
+                analyzer.question_calls, 1,
+                "empty inline questions must fall back to generate_questions",
+            )
+            issue = store.open_issues()[0]
+            self.assertEqual(issue.status, Status.CLARIFYING)
+            self.assertEqual(issue.questions_asked, ["Who owns this and by when?"])
+
+
+class _ClarityInlineSpyAnalyzer(Analyzer):
+    """Real detection (so first contact has inline questions); `assess_clarity`
+    returns not-clear WITH its own inline next-question batch. Counts
+    `generate_questions` to prove the clarify re-ask reuses the inline batch
+    instead of making a second round-trip (the assess+ask half of Lever 1)."""
+
+    INLINE_NEXT = "Which provider is affected and since when?"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.question_calls = 0
+
+    def assess_clarity(self, issue, conversation):  # type: ignore[override]
+        return ClarityAssessment(
+            is_clear=False, confidence=0.0, missing_info=["scope"],
+            rationale="t", questions=[self.INLINE_NEXT],
+        )
+
+    def generate_questions(self, issue, conversation, missing_info):  # type: ignore[override]  # noqa: ARG002
+        self.question_calls += 1
+        return ["fallback question"]
+
+
+class ClarifyReusesInlineQuestionsTest(unittest.TestCase):
+    """The clarify re-ask posts the clarity call's inline `questions` without a
+    separate `generate_questions` round-trip (Lever 1: assess+ask is one call)."""
+
+    def test_clarify_reuses_inline_questions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = _config(tmp, STALE_AFTER_IDLE_CYCLES=3, MAX_CLARIFY_ROUNDS=3)
+            chat = FakeChatClient(me=BOT_ID)
+            chat.inject(STAFF_ID, SEED_TEXT)
+            store = IssueStore(config.STATE_FILE)
+            analyzer = _ClarityInlineSpyAnalyzer(MockLLM(), retriever=None, top_k=0)
+            runner = Runner(chat, analyzer, store, config)
+
+            runner.run_cycle()  # detect -> first-contact ask from inline detect Qs
+            issue = store.open_issues()[0]
+            chat.inject(STAFF_ID, "Some partial reply.", thread_id=issue.thread_id)
+
+            s2 = runner.run_cycle()  # reply -> assess (not clear) -> re-ask inline
+            self.assertEqual(s2["asked"], 1)
+            self.assertEqual(
+                analyzer.question_calls, 0,
+                "clarify must reuse the inline questions, not call generate_questions",
+            )
+            reasked = store.open_issues()[0]
+            self.assertIn(_ClarityInlineSpyAnalyzer.INLINE_NEXT, reasked.questions_asked[-1])
+
+
+class _DetectSpyAnalyzer(Analyzer):
+    """Counts detect_issues calls (delegating to the real detector) so a test can
+    prove a quiet poll skips the detection LLM round-trip."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.detect_calls = 0
+
+    def detect_issues(self, conversation):  # type: ignore[override]
+        self.detect_calls += 1
+        return super().detect_issues(conversation)
+
+
+class QuietPollSkipsDetectTest(unittest.TestCase):
+    """Detection only runs when a cycle brings genuinely new *non-bot* content.
+    A cycle that adds nothing — or only re-sees the bot's own post (which
+    `_detect` would drop via `without_sender`) — must NOT call `detect_issues`,
+    so a tight poll interval costs zero frontier-model round-trips when idle."""
+
+    def test_idle_and_own_only_cycles_skip_detect(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = _config(tmp, STALE_AFTER_IDLE_CYCLES=3, MAX_CLARIFY_ROUNDS=3)
+            chat = FakeChatClient(me=BOT_ID)
+            chat.inject(STAFF_ID, SEED_TEXT)
+            store = IssueStore(config.STATE_FILE)
+            analyzer = _DetectSpyAnalyzer(MockLLM(), retriever=None, top_k=0)
+            runner = Runner(chat, analyzer, store, config)
+
+            s1 = runner.run_cycle()  # foreign seed arrives -> detect runs
+            self.assertEqual(s1["detected"], 1)
+            self.assertEqual(analyzer.detect_calls, 1)
+
+            # s2 only re-sees the bot's own question (posted in s1) -> no foreign
+            # content -> detection is skipped.
+            s2 = runner.run_cycle()
+            self.assertEqual(s2["detected"], 0)
+            self.assertEqual(
+                analyzer.detect_calls, 1, "a bot-own-only cycle must not re-detect"
+            )
+
+            # s3 brings nothing new at all -> still skipped.
+            s3 = runner.run_cycle()
+            self.assertEqual(s3["detected"], 0)
+            self.assertEqual(
+                analyzer.detect_calls, 1, "a fully idle cycle must not re-detect"
+            )
+
+            # A fresh foreign reply re-enables detection.
+            issue = store.open_issues()[0]
+            chat.inject(STAFF_ID, "Jane owns it.", thread_id=issue.thread_id)
+            runner.run_cycle()
+            self.assertEqual(
+                analyzer.detect_calls, 2, "fresh non-bot traffic must re-detect"
             )
 
 
@@ -523,7 +703,7 @@ class OutOfThreadCaptureTest(unittest.TestCase):
 
     def test_top_level_reply_is_captured_and_resolves(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = _config(tmp, ESCALATE_AFTER_IDLE_CYCLES=0,
+            config = _config(tmp, ESCALATE_AFTER_SECONDS=-1,
                              STALE_AFTER_IDLE_CYCLES=3, MAX_CLARIFY_ROUNDS=3)
             chat = FakeChatClient(me=BOT_ID)
             chat.inject(STAFF_ID, SEED_TEXT)
@@ -572,7 +752,7 @@ class FollowReporterThreadTest(unittest.TestCase):
 
     def test_followup_lands_in_the_reporters_reply_thread(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = _config(tmp, ESCALATE_AFTER_IDLE_CYCLES=0,
+            config = _config(tmp, ESCALATE_AFTER_SECONDS=-1,
                              STALE_AFTER_IDLE_CYCLES=5, MAX_CLARIFY_ROUNDS=5)
             chat = FakeChatClient(me=BOT_ID)
             chat.inject(STAFF_ID, SEED_TEXT)
@@ -610,7 +790,7 @@ class EscalateBeforeStaleTest(unittest.TestCase):
 
     def test_idle_clarification_escalates_once_then_stales(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = _config(tmp, ESCALATE_AFTER_IDLE_CYCLES=1,
+            config = _config(tmp, ESCALATE_AFTER_SECONDS=0,
                              STALE_AFTER_IDLE_CYCLES=3, MAX_CLARIFY_ROUNDS=3)
             chat = FakeChatClient(me=BOT_ID)
             chat.inject(STAFF_ID, SEED_TEXT)
@@ -654,12 +834,136 @@ class EscalateBeforeStaleTest(unittest.TestCase):
             self.assertEqual(len(nudges()), 1, "still exactly one nudge total")
 
 
+class ConsolidatedEscalationTest(unittest.TestCase):
+    """Several overdue clarifications from ONE reporter collapse into a SINGLE
+    top-level @mention reminder — not one ping per issue — and only after the
+    wall-clock grace window has elapsed (§ escalate)."""
+
+    @staticmethod
+    def _idle_issue(thread: str, title: str, reporter: str, last_q: str) -> Issue:
+        fp = issue_fingerprint(thread, "root-" + thread, "incident")
+        return Issue(
+            id=fp, fingerprint=fp, title=title, summary="s", category="incident",
+            severity=Severity.HIGH, status=Status.CLARIFYING, thread_id=thread,
+            root_message_id="root-" + thread, reporter_id=reporter,
+            source_message_ids=["root-" + thread], questions_asked=["q?"],
+            last_bot_message_id="botq-" + thread,
+            last_bot_create_time="2026-06-13T10:00:00.000000Z",
+            last_question_at=last_q,
+            idle_cycles=1,  # has sat idle at least one cycle
+        )
+
+    def _runner(self, tmp: str, **over):
+        config = _config(tmp, ESCALATE_AFTER_SECONDS=60, **over)
+        chat = FakeChatClient(me=BOT_ID)
+        store = IssueStore(config.STATE_FILE)
+        return Runner(chat, _analyzer(), store, config), chat, store
+
+    def test_two_overdue_issues_one_reporter_get_a_single_nudge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runner, chat, store = self._runner(tmp)
+            long_ago = "2026-06-13T10:00:00.000000Z"  # well past the 60s grace
+            a = self._idle_issue("spaces/x/threads/tA", "Vector database outage",
+                                  STAFF_ID, long_ago)
+            b = self._idle_issue("spaces/x/threads/tB", "CS page not working",
+                                  STAFF_ID, long_ago)
+            store.state.issues = [a, b]
+            store._reindex()
+
+            escalated = runner._escalate_due()
+
+            self.assertEqual(escalated, 2, "both overdue issues folded into the reminder")
+            nudges = [m for m in chat.messages
+                      if m.sender == BOT_ID and f"<{STAFF_ID}>" in m.text]
+            self.assertEqual(len(nudges), 1, "exactly ONE consolidated @mention")
+            self.assertIn("Vector database outage", nudges[0].text)
+            self.assertIn("CS page not working", nudges[0].text)
+            self.assertTrue(a.escalated and b.escalated, "both marked escalated")
+            # A multi-issue nudge points back to the original threads, so it sets no
+            # shared home thread (a reply there couldn't be attributed to one issue).
+            self.assertIsNone(a.escalation_thread_id)
+            self.assertIsNone(b.escalation_thread_id)
+            # One-shot: a second pass posts nothing more.
+            self.assertEqual(runner._escalate_due(), 0)
+            self.assertEqual(len([m for m in chat.messages if m.sender == BOT_ID]), 1)
+
+    def test_within_grace_window_does_not_nudge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runner, chat, store = self._runner(tmp)
+            # Asked just now ⇒ inside the 60s grace ⇒ no reminder yet.
+            issue = self._idle_issue("spaces/x/threads/tA", "Vector database outage",
+                                      STAFF_ID, _now())
+            store.state.issues = [issue]
+            store._reindex()
+
+            self.assertEqual(runner._escalate_due(), 0, "still inside the grace window")
+            self.assertEqual([m for m in chat.messages if m.sender == BOT_ID], [])
+
+    def test_two_reporters_each_get_their_own_single_nudge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runner, chat, store = self._runner(tmp)
+            other = "users/staff-promo"
+            long_ago = "2026-06-13T10:00:00.000000Z"
+            a = self._idle_issue("spaces/x/threads/tA", "Vector database outage",
+                                  STAFF_ID, long_ago)
+            b = self._idle_issue("spaces/x/threads/tB", "CS page not working", other,
+                                  long_ago)
+            store.state.issues = [a, b]
+            store._reindex()
+
+            self.assertEqual(runner._escalate_due(), 2)
+            bot_msgs = [m for m in chat.messages if m.sender == BOT_ID]
+            self.assertEqual(len(bot_msgs), 2, "one nudge per distinct reporter")
+            self.assertTrue(any(f"<{STAFF_ID}>" in m.text for m in bot_msgs))
+            self.assertTrue(any(f"<{other}>" in m.text for m in bot_msgs))
+
+    def test_each_issue_reminded_once_no_repeat(self) -> None:
+        """Per-issue one-shot: once an issue has been reminded it is never nudged
+        again, even while it stays idle."""
+        with tempfile.TemporaryDirectory() as tmp:
+            runner, chat, store = self._runner(tmp)
+            issue = self._idle_issue("spaces/x/threads/tA", "Vector database outage",
+                                     STAFF_ID, "2026-06-13T10:00:00.000000Z")
+            store.state.issues = [issue]
+            store._reindex()
+
+            self.assertEqual(runner._escalate_due(), 1, "reminded once")
+            self.assertEqual(runner._escalate_due(), 0, "never reminded again")
+            nudges = [m for m in chat.messages if m.sender == BOT_ID]
+            self.assertEqual(len(nudges), 1)
+
+    def test_staggered_issues_each_get_their_own_one_reminder(self) -> None:
+        """Two issues that go overdue in SEPARATE cycles each draw their own single
+        @mention — one reminder per issue, none repeated (the chosen behavior)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            runner, chat, store = self._runner(tmp)
+            long_ago = "2026-06-13T10:00:00.000000Z"
+            a = self._idle_issue("spaces/x/threads/tA", "Vector database outage",
+                                  STAFF_ID, long_ago)
+            store.state.issues = [a]
+            store._reindex()
+            self.assertEqual(runner._escalate_due(), 1)  # cycle N: A overdue
+
+            # A later cycle: a second issue from the same reporter goes overdue.
+            b = self._idle_issue("spaces/x/threads/tB", "CS page not working",
+                                  STAFF_ID, long_ago)
+            store.state.issues = [a, b]
+            store._reindex()
+            self.assertEqual(runner._escalate_due(), 1, "B gets its own one reminder")
+            self.assertEqual(runner._escalate_due(), 0, "and only once")
+
+            nudges = [m for m in chat.messages if m.sender == BOT_ID]
+            self.assertEqual(len(nudges), 2, "one reminder per issue, none repeated")
+            self.assertTrue(any("Vector database outage" in m.text for m in nudges))
+            self.assertTrue(any("CS page not working" in m.text for m in nudges))
+
+
 class EffectiveConversationGuardTest(unittest.TestCase):
     """`_effective_conversation` pulls a reporter's out-of-thread messages in
     only when attribution is unambiguous (§ out-of-thread capture)."""
 
-    def _runner(self, tmp: str) -> Runner:
-        config = _config(tmp)
+    def _runner(self, tmp: str, **over) -> Runner:
+        config = _config(tmp, **over)
         return Runner(FakeChatClient(me=BOT_ID), _analyzer(),
                       IssueStore(config.STATE_FILE), config)
 
@@ -770,6 +1074,254 @@ class EffectiveConversationGuardTest(unittest.TestCase):
             self.assertNotIn(
                 "other", [m.id for m in eff.messages],
                 "only the reporter's own out-of-thread messages are collected",
+            )
+
+    def test_require_in_thread_drops_out_of_thread_reply(self) -> None:
+        """With REQUIRE_IN_THREAD_REPLY, a reporter's bare out-of-thread reply is
+        NOT attributed to the issue (source B is off): only the strict thread (and
+        the issue's own home threads, A) advance it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp, REQUIRE_IN_THREAD_REPLY=True)
+            issue = self._awaiting("spaces/x/threads/tA", STAFF_ID)
+            r.store.state.issues = [issue]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botq-spaces/x/threads/tA", "spaces/x/threads/tA", BOT_ID, "q?",
+                     "2026-06-13T10:00:00.000000Z"),
+                _msg("ans1", "spaces/x/threads/tZ", STAFF_ID, "owner is Jane",
+                     "2026-06-13T10:00:05.000000Z"),
+            ])
+            eff = r._effective_conversation(issue, BOT_ID)
+            self.assertNotIn(
+                "ans1", [m.id for m in eff.messages],
+                "an out-of-thread reply must be ignored when in-thread is required",
+            )
+
+    def test_require_in_thread_still_pulls_own_nudge_thread_reply(self) -> None:
+        """REQUIRE_IN_THREAD_REPLY disables source B only; a reply in the issue's
+        OWN nudge/escalation thread (A) — a 1:1 home for it — still attributes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp, REQUIRE_IN_THREAD_REPLY=True)
+            issue = self._awaiting("spaces/x/threads/tA", STAFF_ID,
+                                   esc="spaces/x/threads/tEscA")
+            r.store.state.issues = [issue]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botqA", "spaces/x/threads/tA", BOT_ID, "qA?",
+                     "2026-06-13T10:00:00.000000Z"),
+                _msg("ansEsc", "spaces/x/threads/tEscA", STAFF_ID, "owner is Jane",
+                     "2026-06-13T10:00:05.000000Z"),
+            ])
+            eff = r._effective_conversation(issue, BOT_ID)
+            self.assertIn(
+                "ansEsc", [m.id for m in eff.messages],
+                "a reply in the issue's own nudge thread (A) still attributes",
+            )
+
+
+class RedirectOnCaptureTest(unittest.TestCase):
+    """Production redirect-on-capture (`REDIRECT_OUT_OF_THREAD_REPLY`): a reporter's
+    OUT-OF-THREAD reply is never trusted to resolve — it is recorded as evidence
+    (ids only) and answered with ONE templated, LLM-free in-thread nudge; the issue
+    still advances solely from in-thread + home-thread (A) replies, and no
+    out-of-thread text ever reaches the nudge / Q&A / report (§ out-of-thread)."""
+
+    T0 = "2026-06-13T10:00:00.000000Z"
+    T5 = "2026-06-13T10:00:05.000000Z"
+    # A substring of the templated nudge, used to spot it among posted messages.
+    NUDGE_MARK = "confirm the key details"
+
+    def _runner(self, tmp: str, **over) -> Runner:
+        config = _config(tmp, REDIRECT_OUT_OF_THREAD_REPLY=True,
+                         ESCALATE_AFTER_SECONDS=-1, STALE_AFTER_IDLE_CYCLES=99,
+                         **over)
+        return Runner(FakeChatClient(me=BOT_ID), _analyzer(),
+                      IssueStore(config.STATE_FILE), config)
+
+    @staticmethod
+    def _awaiting(thread: str, reporter: str, title: str = "Payments failing",
+                  esc: str | None = None) -> Issue:
+        fp = issue_fingerprint(thread, "root-" + thread, "incident")
+        return Issue(
+            id=fp, fingerprint=fp, title=title, summary="s", category="incident",
+            severity=Severity.HIGH, status=Status.CLARIFYING, thread_id=thread,
+            root_message_id="root-" + thread, reporter_id=reporter,
+            source_message_ids=["root-" + thread],
+            questions_asked=["What is the owner?"],
+            last_bot_message_id="botq-" + thread,
+            last_bot_create_time="2026-06-13T10:00:00.000000Z",
+            escalation_thread_id=esc,
+        )
+
+    def _nudges(self, chat) -> list[Message]:
+        return [m for m in chat.messages
+                if m.sender == BOT_ID and self.NUDGE_MARK in m.text]
+
+    def test_out_of_thread_reply_redirects_not_resolves_and_is_one_shot(self) -> None:
+        """An out-of-thread reporter reply records evidence + posts ONE in-thread
+        nudge (pinned to the issue thread, @mentioning the reporter), keeps the
+        issue CLARIFYING (never resolves on it), and never nudges twice."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            issue = self._awaiting("spaces/x/threads/tA", STAFF_ID)
+            r.store.state.issues = [issue]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botq-spaces/x/threads/tA", "spaces/x/threads/tA", BOT_ID,
+                     "What is the owner?", self.T0),
+                _msg("ans1", "spaces/x/threads/tZ", STAFF_ID,
+                     "I'll own it, target tomorrow EOD", self.T5),
+            ])
+
+            outcome = r._step_issue(issue, BOT_ID)
+            self.assertEqual(outcome, "redirected")
+            self.assertTrue(issue.redirect_nudged)
+            self.assertIn("ans1", issue.out_of_thread_evidence_ids)
+            self.assertEqual(issue.status, Status.CLARIFYING,
+                             "an out-of-thread reply must NOT resolve the issue")
+            nudges = self._nudges(r.chat)
+            self.assertEqual(len(nudges), 1, "exactly one redirect nudge")
+            self.assertEqual(nudges[0].thread_id, "spaces/x/threads/tA",
+                             "the nudge must land in the issue's OWN thread")
+            self.assertIn(f"<{STAFF_ID}>", nudges[0].text,
+                          "the nudge @mentions the reporter")
+
+            # One-shot: a second step with no NEW evidence must not nudge again.
+            outcome2 = r._step_issue(issue, BOT_ID)
+            self.assertNotEqual(outcome2, "redirected")
+            self.assertEqual(len(self._nudges(r.chat)), 1,
+                             "the redirect nudge fires at most once per issue")
+
+    def test_redirect_records_no_evidence_when_the_post_fails(self) -> None:
+        """Defensive ordering: if the in-thread nudge post raises, NO evidence id is
+        recorded and the one-shot flag stays clear, so the next cycle retries the
+        redirect cleanly (state is persisted only at end-of-cycle, after the post)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            issue = self._awaiting("spaces/x/threads/tA", STAFF_ID)
+            r.store.state.issues = [issue]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botq-spaces/x/threads/tA", "spaces/x/threads/tA", BOT_ID,
+                     "What is the owner?", self.T0),
+                _msg("ans1", "spaces/x/threads/tZ", STAFF_ID, "owner is Jane", self.T5),
+            ])
+
+            def _boom(*a, **k):
+                raise RuntimeError("chat post failed")
+            r.chat.post_message = _boom  # type: ignore[method-assign]
+            r.chat.post_reply = _boom    # type: ignore[method-assign]
+
+            with self.assertRaises(RuntimeError):
+                r._redirect_out_of_thread(issue, BOT_ID)
+            self.assertEqual(issue.out_of_thread_evidence_ids, [],
+                             "evidence is recorded only after a successful post")
+            self.assertFalse(issue.redirect_nudged,
+                             "a failed post must leave the redirect retryable")
+
+    def test_redirect_nudge_never_leaks_out_of_thread_text(self) -> None:
+        """The nudge may name the issue TITLE (it derives from the reporter's
+        original in-thread report) but must contain NO substring of the
+        out-of-thread message — and that text must never enter the Q&A."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            issue = self._awaiting("spaces/x/threads/tA", STAFF_ID,
+                                   title="Payments failing in checkout")
+            r.store.state.issues = [issue]
+            r.store._reindex()
+            secret = "CONFIDENTIAL the CEO wants to fire vendor Acme"
+            r._conversation = Conversation([
+                _msg("botq-spaces/x/threads/tA", "spaces/x/threads/tA", BOT_ID,
+                     "What is the owner?", self.T0),
+                _msg("ans1", "spaces/x/threads/tZ", STAFF_ID, secret, self.T5),
+            ])
+
+            self.assertEqual(r._step_issue(issue, BOT_ID), "redirected")
+            nudges = self._nudges(r.chat)
+            self.assertEqual(len(nudges), 1)
+            text = nudges[0].text
+            self.assertIn("Payments failing in checkout", text,
+                          "the safe issue title may be named")
+            for leak in ("CONFIDENTIAL", "CEO", "fire vendor", "Acme"):
+                self.assertNotIn(leak, text,
+                                 f"out-of-thread text leaked into the nudge: {leak!r}")
+            self.assertEqual(issue.qa, [],
+                             "out-of-thread evidence must never enter the Q&A")
+
+    def test_two_awaiting_issues_suppress_the_redirect(self) -> None:
+        """The ambiguity guard: with two open awaiting issues for the same
+        reporter, a bare out-of-thread reply triggers NO nudge for either."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            a = self._awaiting("spaces/x/threads/tA", STAFF_ID)
+            b = self._awaiting("spaces/x/threads/tB", STAFF_ID)
+            r.store.state.issues = [a, b]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botq-spaces/x/threads/tA", "spaces/x/threads/tA", BOT_ID,
+                     "What is the owner?", self.T0),
+                _msg("ans1", "spaces/x/threads/tZ", STAFF_ID, "owner is Jane", self.T5),
+            ])
+
+            self.assertFalse(r._redirect_out_of_thread(a, BOT_ID),
+                             "an ambiguous reporter reply must not trigger a nudge")
+            self.assertFalse(a.redirect_nudged)
+            self.assertEqual(a.out_of_thread_evidence_ids, [])
+            self.assertEqual(self._nudges(r.chat), [])
+
+    def test_redirect_mode_still_pulls_home_thread_reply(self) -> None:
+        """REDIRECT mode gates source B only; a reply in the issue's OWN
+        escalation thread (home A) is still merged into the resolution view, so
+        home-thread answers keep resolving normally (no redirect needed)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._runner(tmp)
+            issue = self._awaiting("spaces/x/threads/tA", STAFF_ID,
+                                   esc="spaces/x/threads/tEscA")
+            r.store.state.issues = [issue]
+            r.store._reindex()
+            r._conversation = Conversation([
+                _msg("botqA", "spaces/x/threads/tA", BOT_ID, "qA?", self.T0),
+                _msg("ansEsc", "spaces/x/threads/tEscA", STAFF_ID, "owner is Jane",
+                     self.T5),
+            ])
+            eff = r._effective_conversation(issue, BOT_ID)
+            self.assertIn("ansEsc", [m.id for m in eff.messages],
+                          "a home-thread (A) reply still attributes under REDIRECT mode")
+
+    def test_in_thread_reply_still_resolves_without_a_redirect(self) -> None:
+        """End-to-end: under REDIRECT mode a reply IN the issue thread resolves the
+        issue as usual, and no redirect nudge is ever posted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            config = _config(tmp, REDIRECT_OUT_OF_THREAD_REPLY=True,
+                             ESCALATE_AFTER_SECONDS=-1, STALE_AFTER_IDLE_CYCLES=5,
+                             MAX_CLARIFY_ROUNDS=3)
+            chat = FakeChatClient(me=BOT_ID)
+            chat.inject(STAFF_ID, SEED_TEXT)
+            store = IssueStore(config.STATE_FILE)
+            runner = Runner(chat, _analyzer(), store, config)
+
+            runner.run_cycle()  # detect + first-contact ask
+            issue = store.open_issues()[0]
+            chat.inject(STAFF_ID, "I'll own it, target tomorrow EOD, scaling to 4 nodes",
+                        thread_id=issue.thread_id)  # answer IN the issue thread
+
+            redirected = 0
+            for _ in range(4):
+                s = runner.run_cycle()
+                redirected += s["redirected"]
+                if not store.open_issues():
+                    break
+
+            resolved = [i for i in store.all_issues() if i.status == Status.RESOLVED]
+            self.assertEqual(len(resolved), 1,
+                             "an in-thread reply must still resolve under REDIRECT mode")
+            self.assertEqual(redirected, 0,
+                             "a redirect must never fire for an in-thread reply")
+            self.assertFalse(resolved[0].redirect_nudged)
+            self.assertEqual(
+                [m for m in chat.messages
+                 if m.sender == BOT_ID and self.NUDGE_MARK in m.text],
+                [], "no redirect nudge for an in-thread reply",
             )
 
 

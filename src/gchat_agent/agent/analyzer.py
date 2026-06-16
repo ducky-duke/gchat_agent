@@ -17,8 +17,10 @@ Retrieval *supplements* — never replaces — the transcript:
 
 Detected candidates are turned into full `Issue`s: status OPEN, fingerprint =
 `models.issue_fingerprint(thread_id, root_message_id, category)` (also the id),
-`source_message_ids` mapped to ids actually present in the transcript, and
-`root_message_id` = the earliest such source id. The `IssueStore` (§5.6) owns
+`source_message_ids` mapped to ids actually present in the transcript, anchored
+to a single thread (the one owning the most cited messages — never a stray
+greeting in another thread, see `_anchor_thread`), and `root_message_id` = the
+earliest source id within that anchor thread. The `IssueStore` (§5.6) owns
 dedup/merge against open issues + the tombstone set; the analyzer only mints
 self-consistent candidates.
 
@@ -26,6 +28,7 @@ Stdlib only.
 """
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from gchat_agent import models
@@ -54,6 +57,15 @@ _SEVERITY_BY_VALUE: dict[str, Severity] = {s.value: s for s in Severity}
 # Cap on how much passage text we inject per retrieved chunk so the context block
 # stays compact (retrieval only supplements the transcript).
 _PASSAGE_CHARS = 600
+
+# Lower-cased alphanumeric word tokens, used to anchor a cross-thread issue to the
+# thread whose message text best matches its title/summary (`_anchor_thread`).
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _word_tokens(text: str) -> set[str]:
+    """The set of lower-cased word tokens in `text` (empty for falsy input)."""
+    return set(_WORD_RE.findall((text or "").lower()))
 
 
 class Analyzer:
@@ -131,7 +143,23 @@ class Analyzer:
         if not source_ids:
             return None
 
-        root_message_id = source_ids[0]  # earliest in transcript order
+        title = str(raw.get("title", "") or "").strip() or "Possible issue"
+        summary = str(raw.get("summary", "") or "").strip()
+
+        # Anchor the issue to a SINGLE thread, even when the model cited source
+        # messages spanning several top-level threads (in Google Chat each
+        # top-level message is its own thread). Taking the globally-earliest cited
+        # message as the root would drag the whole issue — and every clarifying
+        # reply the bot later posts — into whatever came first, which is often an
+        # unrelated greeting in a *different* thread (the "bot replies in the wrong
+        # thread" bug). Instead anchor to the thread the issue is genuinely ABOUT —
+        # the one whose cited messages best match the model's own title/summary —
+        # then drop the cross-thread stragglers so the root, thread, evidence, and
+        # every post stay coherent. A single-thread issue is unaffected.
+        anchor_thread = self._anchor_thread(source_ids, by_id, f"{title} {summary}")
+        in_thread = [mid for mid in source_ids if by_id[mid].thread_id == anchor_thread]
+        source_ids = in_thread or source_ids
+        root_message_id = source_ids[0]  # earliest in the anchor thread
         thread_id = by_id[root_message_id].thread_id
         reporter_id = by_id[root_message_id].sender or None
         category = str(raw.get("category", "") or "").strip() or "issue"
@@ -140,13 +168,14 @@ class Analyzer:
         )
         fingerprint = models.issue_fingerprint(thread_id, root_message_id, category)
 
-        title = str(raw.get("title", "") or "").strip() or "Possible issue"
-        summary = str(raw.get("summary", "") or "").strip()
         missing_info = [
             str(m).strip()
             for m in self._as_list(raw.get("missing_info"))
             if str(m).strip()
         ]
+        # The opening clarifying questions detection produced inline (Lever 1 —
+        # the runner posts these on first contact, skipping a second LLM call).
+        pending_questions = self._clean_questions(raw.get("clarifying_questions"))
 
         return Issue(
             id=fingerprint,
@@ -161,6 +190,7 @@ class Analyzer:
             reporter_id=reporter_id,
             source_message_ids=source_ids,
             missing_info=missing_info,
+            pending_questions=pending_questions,
             created_at=latest_create_time or "",
             updated_at=latest_create_time or "",
         )
@@ -179,7 +209,11 @@ class Analyzer:
         retrieved_context = self._retrieve_context(self._issue_query(issue, transcript))
         system, user = clarity_prompt(issue, transcript, retrieved_context)
         data = self.llm.complete_json(system, user)
-        return ClarityAssessment.from_dict(data if isinstance(data, dict) else {})
+        assessment = ClarityAssessment.from_dict(data if isinstance(data, dict) else {})
+        # Normalize the inline next-question batch (Lever 1) the same way a
+        # dedicated generation call would, so the runner can post it verbatim.
+        assessment.questions = self._clean_questions(assessment.questions)
+        return assessment
 
     # --- clarifying question generation --------------------------------------
     def generate_questions(
@@ -199,12 +233,22 @@ class Analyzer:
             issue, transcript, missing_info, retrieved_context
         )
         data = self.llm.complete_json(system, user)
-        questions: list[str] = []
-        for q in self._as_list(data.get("questions") if isinstance(data, dict) else None):
+        return self._clean_questions(
+            data.get("questions") if isinstance(data, dict) else None
+        )
+
+    @staticmethod
+    def _clean_questions(raw: object) -> list[str]:
+        """Coerce a model's `questions`/`clarifying_questions` value to a clean
+        list: stringified, stripped, empties dropped, order-preserving dedupe.
+        Shared by `generate_questions`, detection's inline questions, and the
+        clarity assessment's inline questions so all three normalize identically."""
+        cleaned: list[str] = []
+        for q in Analyzer._as_list(raw):
             text = str(q).strip()
-            if text and text not in questions:
-                questions.append(text)
-        return questions
+            if text and text not in cleaned:
+                cleaned.append(text)
+        return cleaned
 
     # --- retrieval -----------------------------------------------------------
     def _retrieve_context(self, query: str) -> str:
@@ -261,6 +305,44 @@ class Analyzer:
         parts.extend(issue.missing_info)
         query = " ".join(p for p in parts if p)
         return query.strip() or transcript
+
+    @staticmethod
+    def _anchor_thread(
+        source_ids: list[str], by_id: dict[str, "Message"], issue_text: str
+    ) -> str:
+        """Choose the one thread to anchor an issue to when its cited source
+        messages span several top-level threads. Anchor to the thread the issue is
+        genuinely ABOUT: the one whose cited message text shares the most word
+        tokens with the issue's own `title`/`summary` (`issue_text`). Ties — and
+        the common no-overlap case — fall back to the EARLIEST cited thread, so a
+        single-thread issue and a coherent one keep their existing root.
+
+        Why content, not recency or count: a greeting cited *before* the real
+        report and a follow-up reply cited *after* it look identical by position
+        and count, but the issue's title matches the report's words, never the
+        greeting's. `source_ids` is in transcript (chronological) order; returns
+        the chosen `thread_id`.
+        """
+        threads: list[tuple[str, int]] = []  # (thread_id, earliest cited index)
+        seen: set[str] = set()
+        for idx, mid in enumerate(source_ids):
+            tid = by_id[mid].thread_id
+            if tid not in seen:
+                seen.add(tid)
+                threads.append((tid, idx))
+        if len(threads) == 1:
+            return threads[0][0]
+        issue_tokens = _word_tokens(issue_text)
+
+        def score(item: tuple[str, int]) -> tuple[int, int]:
+            tid, earliest_idx = item
+            text = " ".join(by_id[m].text for m in source_ids if by_id[m].thread_id == tid)
+            overlap = len(issue_tokens & _word_tokens(text))
+            # Most title/summary overlap first; tie-break toward the earliest
+            # cited thread (smallest index ⇒ largest -index).
+            return (overlap, -earliest_idx)
+
+        return max(threads, key=score)[0]
 
     @staticmethod
     def _latest_create_time(messages: "list[Message]") -> str:

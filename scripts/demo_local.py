@@ -37,6 +37,7 @@ from gchat_agent.agent.staff import StaffAgent, load_personas  # noqa: E402
 from gchat_agent.agent.state import IssueStore  # noqa: E402
 from gchat_agent.config import load_config  # noqa: E402
 from gchat_agent.llm.openrouter import build_llm  # noqa: E402
+from gchat_agent.llm.tts import build_tts  # noqa: E402
 from gchat_agent.models import Status  # noqa: E402
 from gchat_agent.rag.store import build_retriever  # noqa: E402
 from gchat_agent.runner import Runner  # noqa: E402
@@ -77,6 +78,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="safety cap on run_cycle iterations (default: 12).")
     parser.add_argument("--scenarios", default="data/scenarios.json",
                         help="path to the staff scenarios file.")
+    parser.add_argument("--voice", action="store_true",
+                        help="deliver resolution reports as TTS voice notes "
+                             "instead of Markdown; the synthesized MP3s are saved "
+                             "under reports/demo/ so you can play them.")
     args = parser.parse_args(argv)
 
     FakeChatClient, StaffChatView = _import_fakes()
@@ -95,6 +100,9 @@ def main(argv: list[str] | None = None) -> int:
         # the first cycle fetches the seed instead of pinning the cursor to "now".
         POLL_BACKFILL_SINCE="2020-01-01T00:00:00Z",
         MAX_CLARIFY_ROUNDS=args.max_rounds,
+        # Voice mode: synthesize a spoken report and "post" it (recorded in the
+        # FakeChatClient); GOOGLE_VOICE_SPACE stays empty so it threads in-place.
+        REPORT_DELIVERY="voice" if args.voice else base.REPORT_DELIVERY,
     )
 
     provider = config.LLM_PROVIDER
@@ -110,13 +118,16 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 72)
 
     llm = build_llm(config)
+    tts = build_tts(config)  # None unless --voice
     retriever = build_retriever(config.KB_DIR, history=None, dense=config.RAG_DENSE)
     print(f"  retriever: {'BM25+boost over KB' if retriever else 'none (direct-context)'}")
+    if args.voice:
+        print(f"  delivery : voice (TTS model={config.TTS_MODEL}, voice={config.TTS_VOICE})")
 
     chat = FakeChatClient(me=BOT_ID)
     store = IssueStore(config.STATE_FILE)
     analyzer = Analyzer(llm, retriever, config.RAG_TOP_K)
-    runner = Runner(chat, analyzer, store, config, reports_dir=reports_dir, llm=llm)
+    runner = Runner(chat, analyzer, store, config, reports_dir=reports_dir, llm=llm, tts=tts)
 
     personas = load_personas(args.scenarios)
     pids = ["ops", "promo"] if args.persona == "both" else [args.persona]
@@ -190,7 +201,18 @@ def main(argv: list[str] | None = None) -> int:
               f"(rounds={iss.rounds}, q&a={len(iss.qa)})")
 
     resolved = [i for i in issues if i.status == Status.RESOLVED]
-    if resolved:
+    if resolved and args.voice:
+        print("\n--- voice report(s) ------------------------------------------------")
+        os.makedirs(reports_dir, exist_ok=True)
+        for post in chat.voice_posts:
+            audio = post.get("audio") or b""
+            out = os.path.join(reports_dir, post.get("filename", "report.mp3"))
+            with open(out, "wb") as fh:
+                fh.write(audio)
+            print(f"  🔊 {out}  ({len(audio)} bytes)  caption: {post.get('text', '')}")
+        if not chat.voice_posts:
+            print("  (no voice reports were produced)")
+    elif resolved:
         print("\n--- resolution report(s) -------------------------------------------")
         for iss in resolved:
             path = os.path.join(reports_dir, f"issue-{iss.id}.md")

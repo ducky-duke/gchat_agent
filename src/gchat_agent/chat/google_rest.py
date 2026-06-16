@@ -15,6 +15,7 @@ Reads via `spaces.messages.list` with a double-quoted `createTime >` filter,
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 import urllib.error
@@ -27,6 +28,8 @@ from ..models import Message, SenderType
 from . import oauth
 
 _API_BASE: Final[str] = "https://chat.googleapis.com/v1"
+# Media uploads use a distinct upload host/path (not the /v1 resource base).
+_UPLOAD_BASE: Final[str] = "https://chat.googleapis.com/upload/v1"
 
 # Backoff on transient 429 / 5xx (RESOURCE_EXHAUSTED): base * 2**attempt.
 _MAX_RETRIES: Final[int] = 5
@@ -71,7 +74,7 @@ class GoogleChatClient:
         path: str,
         body: dict[str, Any] | None = None,
     ) -> tuple[int, dict[str, Any]]:
-        """One HTTP call to the Chat API with retries on transient failures.
+        """One JSON HTTP call to the Chat API (`/v1` resource base) with retries.
 
         Mirrors `smoke/smoke_test_chat.py`'s `call()`: Bearer auth, JSON
         content-type, optional `x-goog-user-project`, and `HTTPError` decoding.
@@ -80,13 +83,34 @@ class GoogleChatClient:
         """
         url = f"{_API_BASE}{path}"
         data = json.dumps(body).encode() if body is not None else None
+        return self._request(
+            method, url, data, "application/json", label=f"{method} {path}"
+        )
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        data: bytes | None,
+        content_type: str,
+        *,
+        label: str,
+    ) -> tuple[int, dict[str, Any]]:
+        """Low-level authed request with retries + a single 401-reauth, shared by
+        the JSON API (`_call`) and the media upload (`_upload_attachment`).
+
+        `content_type` is the request body's MIME type (JSON, or a
+        multipart/related boundary for uploads); `label` is a short `METHOD path`
+        tag woven into error messages. Returns `(status, parsed_json)`.
+        """
         last_status = 0
         last_payload: dict[str, Any] = {}
         reauthed = False
         for attempt in range(_MAX_RETRIES + 1):
             req = urllib.request.Request(url, data=data, method=method)
             req.add_header("Authorization", f"Bearer {self._token()}")
-            req.add_header("Content-Type", "application/json")
+            if content_type:
+                req.add_header("Content-Type", content_type)
             if self.quota_project:
                 req.add_header("x-goog-user-project", self.quota_project)
             try:
@@ -98,7 +122,7 @@ class GoogleChatClient:
                         return resp.status, json.loads(raw)
                     except json.JSONDecodeError as exc:
                         raise RuntimeError(
-                            f"Chat API {method} {path} returned non-JSON "
+                            f"Chat API {label} returned non-JSON "
                             f"(HTTP {resp.status}): {raw[:400]!r}"
                         ) from exc
             except urllib.error.HTTPError as exc:
@@ -118,7 +142,7 @@ class GoogleChatClient:
                     self._sleep_backoff(attempt)
                     continue
                 raise RuntimeError(
-                    f"Chat API {method} {path} failed (HTTP {exc.code}): "
+                    f"Chat API {label} failed (HTTP {exc.code}): "
                     f"{json.dumps(payload)[:800]}"
                 ) from exc
             except (urllib.error.URLError, TimeoutError) as exc:
@@ -129,10 +153,10 @@ class GoogleChatClient:
                     self._sleep_backoff(attempt)
                     continue
                 raise RuntimeError(
-                    f"Chat API {method} {path} unreachable: {exc}"
+                    f"Chat API {label} unreachable: {exc}"
                 ) from exc
         raise RuntimeError(
-            f"Chat API {method} {path} failed after retries "
+            f"Chat API {label} failed after retries "
             f"(HTTP {last_status}): {json.dumps(last_payload)[:800]}"
         )
 
@@ -240,6 +264,85 @@ class GoogleChatClient:
         return self.post_message(
             text, thread_id=message.thread_id, request_id=request_id
         )
+
+    def post_voice(
+        self,
+        audio: bytes,
+        filename: str,
+        text: str,
+        space: str | None = None,
+        thread_id: str | None = None,
+        request_id: str | None = None,
+    ) -> Message:
+        """Upload `audio` and create a message carrying it as a file attachment
+        with a short `text` caption (§ voice reports).
+
+        Two REST steps, both on user OAuth (the `chat.messages` scope covers the
+        media upload): `media.upload` returns an `attachmentDataRef`, then
+        `spaces.messages.create` references it in the message's `attachment`. The
+        upload and the post target the SAME space (`space` or this client's
+        default) — an attachment token is only valid in the space it was uploaded
+        to. `thread_id` threads the message (fallback into the issue's own space);
+        `request_id` makes the post idempotent on retry."""
+        target_space = space or self._require_space()
+        ref = self._upload_attachment(target_space, filename, audio)
+
+        body: dict[str, Any] = {
+            "text": text,
+            "attachment": [{"attachmentDataRef": ref}],
+        }
+        query: dict[str, str] = {}
+        if thread_id:
+            body["thread"] = {"name": thread_id}
+            query["messageReplyOption"] = "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
+        query["requestId"] = request_id or self._default_request_id(
+            filename, thread_id
+        )
+
+        path = f"/{target_space}/messages?{urllib.parse.urlencode(query)}"
+        _status, payload = self._call("POST", path, body)
+        created = self._to_message(payload)
+        self._learn_self(payload)
+        return created
+
+    def _upload_attachment(
+        self,
+        space: str,
+        filename: str,
+        data: bytes,
+        content_type: str = "audio/mpeg",
+    ) -> dict[str, Any]:
+        """Upload `data` to `space` via `media.upload` (multipart/related) and
+        return its `attachmentDataRef` (an opaque upload token used to attach the
+        file when creating a message). Raises if the response carries no ref."""
+        # A content-derived boundary cannot appear in the binary payload.
+        boundary = "gchat-agent-" + hashlib.sha256(data).hexdigest()[:24]
+        bsep = boundary.encode("ascii")
+        meta = json.dumps({"filename": filename}).encode("utf-8")
+        body = b"".join([
+            b"--", bsep, b"\r\n",
+            b"Content-Type: application/json; charset=UTF-8\r\n\r\n",
+            meta, b"\r\n",
+            b"--", bsep, b"\r\n",
+            b"Content-Type: ", content_type.encode("ascii"), b"\r\n\r\n",
+            data, b"\r\n",
+            b"--", bsep, b"--\r\n",
+        ])
+        url = f"{_UPLOAD_BASE}/{space}/attachments:upload?uploadType=multipart"
+        _status, payload = self._request(
+            "POST",
+            url,
+            body,
+            f"multipart/related; boundary={boundary}",
+            label=f"POST {space}/attachments:upload",
+        )
+        ref = payload.get("attachmentDataRef")
+        if not isinstance(ref, dict) or not ref:
+            raise RuntimeError(
+                f"media.upload for {space} returned no attachmentDataRef: "
+                f"{json.dumps(payload)[:400]}"
+            )
+        return ref
 
     # --- helpers -----------------------------------------------------------
     def _learn_self(self, raw: dict[str, Any]) -> None:

@@ -214,6 +214,103 @@ class CitedIdMarkerTest(unittest.TestCase):
         self._assert_two_real_sources(_ShortCitingLLM())  # minimax form
 
 
+class _CrossThreadCitingLLM:
+    """An `LLMClient` stub whose detection lumps a greeting (one top-level thread)
+    and the real incident (another top-level thread) into a single issue, citing
+    BOTH source messages with the greeting first — the live failure where a model
+    groups consecutive top-level messages from one reporter into one issue."""
+
+    def __init__(self, source_ids: list[str]) -> None:
+        self._source_ids = source_ids
+
+    def complete_json(self, system, user, schema_hint=None):  # noqa: ARG002
+        return {
+            "issues": [
+                {
+                    "title": "Homepage returning 404",
+                    "summary": "Homepage is down with a 404",
+                    "category": "incident",
+                    "severity": "high",
+                    "source_message_ids": list(self._source_ids),
+                    "missing_info": ["scope"],
+                }
+            ]
+        }
+
+    def chat(self, system, messages):  # noqa: ARG002
+        return ""
+
+
+class CrossThreadAnchorTest(unittest.TestCase):
+    """An issue whose cited sources span several top-level threads must anchor to
+    the thread that actually holds the report — never a stray greeting in another
+    thread. Otherwise every clarifying reply lands in the wrong thread (the
+    screenshot bug: 404 questions posted under a "hi" greeting)."""
+
+    _GREET = f"{_SPACE}/threads/greet"
+    _INCIDENT = f"{_SPACE}/threads/incident"
+    _M1 = f"{_SPACE}/messages/m1"  # greeting (thread greet), earliest
+    _M2 = f"{_SPACE}/messages/m2"  # the real report (thread incident), latest
+
+    def _conv(self) -> Conversation:
+        return Conversation(messages=[
+            _msg(1, "users/ty", "hi, anyone around?", thread=self._GREET),
+            _msg(2, "users/ty", "our homepage is 404 now", thread=self._INCIDENT),
+        ])
+
+    def test_anchors_to_incident_thread_not_greeting(self) -> None:
+        conv = self._conv()
+        # Greeting cited FIRST (earliest in transcript) — the old "root = earliest
+        # cited" rule would have anchored the whole issue to the greeting thread.
+        issue = Analyzer(
+            _CrossThreadCitingLLM([self._M1, self._M2]), retriever=None
+        ).detect_issues(conv)[0]
+
+        self.assertEqual(issue.thread_id, self._INCIDENT)
+        self.assertEqual(issue.root_message_id, self._M2)
+        # The cross-thread greeting is dropped so root/thread/evidence stay coherent.
+        self.assertEqual(issue.source_message_ids, [self._M2])
+        self.assertNotIn(self._M1, issue.source_message_ids)
+        # Reporter is the author of the real report (here the same user, but it is
+        # resolved from the anchor root, not the earliest cited message).
+        self.assertEqual(issue.reporter_id, "users/ty")
+
+    def test_followup_reply_does_not_steal_the_anchor(self) -> None:
+        # The mirror case: the real report comes FIRST, and a later out-of-thread
+        # follow-up reply (here carrying an issue-signal word) is lumped in. The
+        # title matches the report, so the issue stays anchored to the report's
+        # thread — a recency rule would wrongly anchor to the trailing reply.
+        conv = Conversation(messages=[
+            _msg(1, "users/ty", "our homepage is 404 now", thread=self._INCIDENT),
+            _msg(2, "users/ty", "here's some context on the outage", thread=self._GREET),
+        ])
+        issue = Analyzer(
+            _CrossThreadCitingLLM([self._M1, self._M2]), retriever=None
+        ).detect_issues(conv)[0]
+        self.assertEqual(issue.thread_id, self._INCIDENT)
+        self.assertEqual(issue.root_message_id, self._M1)
+        self.assertNotIn(self._M2, issue.source_message_ids)
+
+    def test_anchor_thread_helper(self) -> None:
+        by_id = {m.id: m for m in self._conv().messages}
+        # Cross-thread: anchor to the thread the title/summary is about (incident).
+        self.assertEqual(
+            Analyzer._anchor_thread(
+                [self._M1, self._M2], by_id, "Homepage returning 404"
+            ),
+            self._INCIDENT,
+        )
+        # No overlap with either thread → fall back to the earliest cited thread.
+        self.assertEqual(
+            Analyzer._anchor_thread([self._M1, self._M2], by_id, "unrelated words"),
+            self._GREET,
+        )
+        # Single thread → that thread.
+        self.assertEqual(
+            Analyzer._anchor_thread([self._M1], by_id, "anything"), self._GREET
+        )
+
+
 class ClarityFlowTest(unittest.TestCase):
     """assess_clarity / generate_questions flow (§6) with MockLLM + retriever=None."""
 

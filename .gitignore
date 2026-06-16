@@ -1,0 +1,16 @@
+# Secrets — never commit
+client_secret*.json
+*.apps.googleusercontent.com.json
+*service-account*.json
+.env
+# Smoke test token
+smoke/.token
+# Python
+__pycache__/
+*.pyc
+# Generated state, reports, and per-account secrets
+reports/
+.state/
+secrets/
+*.token
+token_*.json

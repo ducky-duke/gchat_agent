@@ -39,15 +39,17 @@ flowchart TB
         subgraph agentpkg["agent/"]
             ANALYZER["analyzer.Analyzer<br/>detect / assess / questions"]
             STORE["state.IssueStore<br/>cursor + issues + tombstones (atomic)"]
-            REPORT["report.py<br/>build / render / write / confirm"]
+            REPORT["report.py<br/>build / render / write / confirm / narrate"]
             PROMPTS["prompts.py<br/>detect/clarity/questions/resolution"]
             STAFF_A["staff.StaffAgent<br/>seed + progressive answers"]
         end
 
-        subgraph llmpkg["llm/ — LLMClient Protocol"]
+        subgraph llmpkg["llm/ — LLMClient + TTSClient Protocols"]
             OR["openrouter.OpenRouterClient<br/>openai SDK (lazy)"]
             MOCK["mock.MockLLM<br/>offline, deterministic"]
             BLLM["build_llm(config)"]
+            TTS["tts.OpenRouterTTS / MockTTS<br/>audio.speech (lazy, in-memory)"]
+            BTTS["build_tts(config)"]
         end
 
         subgraph ragpkg["rag/ — Retriever Protocol"]
@@ -62,7 +64,7 @@ flowchart TB
     GOOGLE[("Google Chat<br/>REST API")]
 
     POLLER --> BUILD --> RUNNER
-    BUILD --> GREST & BLLM & RSTORE & STORE & ANALYZER
+    BUILD --> GREST & BLLM & BTTS & RSTORE & STORE & ANALYZER
     STAFF_S --> STAFF_A
     STAFF_S --> GREST
     STAFF_S --> BLLM
@@ -81,6 +83,8 @@ flowchart TB
     STAFF_A --> OR
 
     BLLM --> OR & MOCK
+    BTTS --> TTS
+    RUNNER -.synthesize.-> TTS
     RSTORE --> BM25R & FUSED
     OR -.->|"lazy openai / langfuse.openai"| OBS
 
@@ -92,9 +96,14 @@ flowchart TB
 ### Runner — `runner.py`
 
 The orchestration loop. `Runner(chat, analyzer, store, config, reports_dir=None,
-llm=None)` holds a working `Conversation` that accumulates fetched messages across
+llm=None, tts=None)` holds a working `Conversation` that accumulates fetched messages across
 cycles (full thread context preserved; detection is still windowed). `run_cycle()`
-runs one fetch → detect → clarify/resolve iteration and returns a summary dict;
+runs one fetch → detect → clarify/resolve iteration and returns a summary dict.
+Detection's `detect_issues` LLM call is skipped on a quiet poll — a cycle that
+brought no new *non-bot* message leaves the (own-filtered) detection window
+unchanged, so re-running it would only re-derive the same candidates. This makes
+an idle poll free of frontier-model round-trips, so `POLL_INTERVAL_SECONDS` can be
+small without multiplying LLM cost.
 `run_forever()` loops it under a single-runner lock, sleeping `POLL_INTERVAL_SECONDS`
 between cycles. `build_runner(config)` wires the live stack (Google REST client +
 OpenRouter LLM + optional retriever + analyzer + store) and is what `run_poller.py`
@@ -189,9 +198,23 @@ issue's fields + its clarifying Q&A; an optional `llm.complete_json` call tighte
 the summary/resolution prose (any LLM failure is swallowed — the report still
 builds). `render_markdown(report)` produces the on-disk Markdown;
 `write_report(report, reports_dir)` writes it **atomically** to
-`reports/issue-<id>.md` (returns the path); `confirmation_line(report)` renders the
-one-line `✅ Issue "<title>" resolved — … Report: reports/issue-<id>.md` posted into
-the thread.
+`reports/issue-<id>.md` (returns the path); `confirmation_line(report, report_ref=None)`
+renders the one-line `✅ Issue "<title>" resolved — … Report: reports/issue-<id>.md`
+posted into the thread (`report_ref` overrides the trailing reference for the voice
+path).
+
+**Voice delivery.** When `REPORT_DELIVERY` is `voice`/`both`, `build_narration(report,
+llm)` writes a concise **spoken** script (plain prose, no Markdown — a deterministic
+fallback covers `llm=None` / failures), `voice_caption(report)` is the attachment's
+short caption, and the report is synthesized by an `llm/tts.py` `TTSClient`
+(`OpenRouterTTS` over OpenRouter's `audio.speech`, or `MockTTS` offline) and posted
+as an MP3 attachment via `chat.post_voice(...)`. The audio is built **in memory** and
+never touches disk. Two user-OAuth REST steps deliver it: `media.upload` (the
+`chat.messages` scope covers it) returns an `attachmentDataRef`, then
+`spaces.messages.create` references it in the message's `attachment`. It targets
+`GOOGLE_VOICE_SPACE` (a separate space / DM with another account) or, if unset,
+threads into the issue's own space. Voice is **best-effort**: any failure (or no TTS
+configured) falls back to the on-disk report so a resolution is never lost.
 
 ### StaffAgent — `agent/staff.py`
 
@@ -239,8 +262,10 @@ flowchart TD
         APPEND --> ADV["advance cursor:<br/>name = latest create_time,<br/>seen += new ids (bounded 500)"]
     end
 
-    ADV --> DETECT
-    subgraph detectgrp["2. detect (§6)"]
+    ADV --> NEWFOREIGN{any new message<br/>from a non-bot sender<br/>this cycle?}
+    NEWFOREIGN -- "no (idle, or bot's own post only)" --> LOOP
+    NEWFOREIGN -- yes --> DETECT
+    subgraph detectgrp["2. detect (§6) — skipped on a quiet poll (no detect_issues LLM call)"]
         DETECT["window = conversation.tail(DETECT_WINDOW_MESSAGES)"]
         DETECT --> NOSELF["window.without_sender(own_id)<br/>(drop bot's own msgs — never a sender_type rule)"]
         NOSELF --> RUNLLM["analyzer.detect_issues → candidate Issues"]
@@ -252,7 +277,7 @@ flowchart TD
     subgraph procgrp["3. process open issues (§6) — observability.trace('issue', issue_id)"]
         LOOP --> QA["capture new replies after last bot Q<br/>(issue thread + nudge thread + reporter's out-of-thread answers, any sender ≠ bot) → QAPair"]
         QA --> GATE{CLARIFYING<br/>and no fresh reply?}
-        GATE -- yes --> IDLE["idle_cycles += 1<br/>→ ESCALATE (top-level @mention) once at ESCALATE_AFTER_IDLE_CYCLES<br/>→ STALE if ≥ STALE_AFTER_IDLE_CYCLES<br/>else wait (anti-spam)"]
+        GATE -- yes --> IDLE["idle_cycles += 1<br/>→ STALE if ≥ STALE_AFTER_IDLE_CYCLES (deferred while a reminder is owed)<br/>else wait (anti-spam)"]
         GATE -- no --> ASSESS["analyzer.assess_clarity"]
         ASSESS --> CLEAR{is_clear AND<br/>confidence ≥ RESOLVE_CONFIDENCE_THRESHOLD<br/>AND no missing_info?}
         CLEAR -- yes --> RESOLVE["RESOLVE: write report once + post confirmation,<br/>mark RESOLVED, tombstone"]
@@ -266,7 +291,8 @@ flowchart TD
     ASK --> NEXT
     STALE2 --> NEXT
     NEXT --> LOOP
-    LOOP -- done --> PERSIST["persist freshly-learned bot id<br/>+ store.save() (atomic)"]
+    LOOP -- done --> ESC["batch reminders (§ escalate):<br/>one @mention per reporter for issues idle ≥ ESCALATE_AFTER_SECONDS<br/>(same-cycle issues consolidated) — once per issue"]
+    ESC --> PERSIST["persist freshly-learned bot id<br/>+ store.save() (atomic)"]
     PERSIST --> SUMMARY([return summary:<br/>fetched / detected / asked / resolved / stale / escalated])
 ```
 
@@ -325,17 +351,26 @@ For each open issue (wrapped in an `observability.trace("issue", issue_id=…)` 
    the next question and the confirmation are posted *there* — wherever they chose
    to answer — not always the original issue thread.
 2. **Anti-spam gate** — if the issue is `CLARIFYING` and there is **no fresh reply**,
-   the bot does not re-ask: it increments `idle_cycles` and waits. At
-   `ESCALATE_AFTER_IDLE_CYCLES` it posts **one** top-level `<users/…>` @mention nudge
-   (the reporter may not be watching the thread) and resets the idle budget;
-   escalates at most once. It goes `STALE` once `idle_cycles ≥ STALE_AFTER_IDLE_CYCLES`.
+   the bot does not re-ask: it increments `idle_cycles` and waits. Once a question
+   has gone unanswered for `ESCALATE_AFTER_SECONDS` wall-clock, the reporter is due
+   a reminder. Each issue is reminded **exactly once** (`Issue.escalated`,
+   persisted). Reminders are **batched after the per-issue loop** (`_escalate_due`):
+   a reporter's issues that go overdue in the *same* cycle are folded into **one**
+   top-level `<users/…>` @mention nudge, so they aren't pinged once-per-issue at the
+   same moment; issues that go overdue at different times each get their own single
+   reminder. Staleness is **deferred** while a reminder is still owed, so the bot
+   always nudges before giving up; afterwards it goes `STALE` once `idle_cycles ≥
+   STALE_AFTER_IDLE_CYCLES`.
 3. **Assess** — `analyzer.assess_clarity`. If `is_clear` **and** `confidence ≥
    RESOLVE_CONFIDENCE_THRESHOLD` **and** no `missing_info`, the issue **resolves**.
 4. **Resolve** (`_resolve`) — gated on `report_written_at` (persisted) for
-   idempotency: build + write `reports/issue-<id>.md` (skipped if the file already
-   exists), post the confirmation line with a stable `request_id`, mark `RESOLVED`,
-   tombstone. A crash after the write but before the post still lets the next cycle
-   post the confirmation.
+   idempotency: build the report, **deliver** it per `REPORT_DELIVERY` (write
+   `reports/issue-<id>.md`, and/or post a voice attachment via `_deliver_voice` —
+   best-effort, falling back to disk so a report is never lost), post the
+   confirmation line (its trailing reference names where the report went) with a
+   stable `request_id`, mark `RESOLVED`, tombstone. Each step is individually
+   idempotent (file-exists skip, stable voice/confirmation `request_id`s), so a
+   crash mid-delivery lets the next cycle finish rather than skip it.
 5. Otherwise, if `rounds < MAX_CLARIFY_ROUNDS`, **ask** the next question batch
    (`_ask` → `CLARIFYING`); if the model produces no questions, or rounds are
    exhausted, the issue goes **stale**.
@@ -377,8 +412,9 @@ defaults — so the mock/CI path needs no configuration. Every key is documented
 `.env.example`. Notable defaults: `LLM_PROVIDER=openrouter`,
 `STATE_FILE=.state/issues.json`, `REPORTS_DIR=reports`,
 `KB_DIR=data/knowledge_base`, `DETECT_WINDOW_MESSAGES=50`, `MAX_CLARIFY_ROUNDS=3`,
-`STALE_AFTER_IDLE_CYCLES=3`, `ESCALATE_AFTER_IDLE_CYCLES=2` (idle cycles before a
-one-time top-level @mention nudge; must be `< STALE_AFTER_IDLE_CYCLES` to fire, `0`
+`STALE_AFTER_IDLE_CYCLES=3`, `ESCALATE_AFTER_SECONDS=300` (wall-clock grace before a
+one-time top-level @mention reminder per issue; same-cycle issues for one reporter are
+consolidated into a single nudge; `0` reminds on the first idle cycle, a negative value
 disables), `RESOLVE_CONFIDENCE_THRESHOLD=0.8`,
 `POLL_INTERVAL_SECONDS=15`, `OPENROUTER_REASONING=true` (sends
 `extra_body={"reasoning": {"enabled": True}}` on every completion; set `false`
