@@ -35,6 +35,18 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   tracked via `Issue.no_progress_rounds`/`last_missing_info`). A gap-close routes
   through `_resolve(..., gaps=...)` → `ResolutionReport.open_questions` → an "Open
   questions" report section + an honest "recorded with open questions" confirmation.
+- **Self-filtering (no self-loop)**: detection drops the bot's OWN messages via
+  `_detect`'s `without_sender(own_id)` (never a `sender_type` rule — staff post as
+  HUMAN). `own_id` comes from `chat.me()`, which the live client only learns *after
+  its first post*; `build_runner` seeds it from persisted `.state/`. So on a **fresh
+  start** (deleted `.state/`, the `start_bot.sh` default) cycle 1 had no self id and
+  the bot could detect + clarify its own account's messages (the self-loop). Fix:
+  **`GOOGLE_BOT_USER_ID`** (`users/<id>` or bare id; `runner._normalize_user_id`)
+  pins the id so `build_runner` seeds the client from cycle 1 — config wins over
+  persisted, falls back to it when unset. The runner logs `learned bot user id …`
+  (stderr, once) the first time it learns one so the operator can pin it; the poller
+  banner's `self:` line shows pinned vs learn-after-first-post. Tests:
+  `tests/test_self_filter.py`.
 - **Voice reports** (`REPORT_DELIVERY=voice|both`): a resolved issue is narrated to a concise
   spoken script (`report.build_narration`) → TTS (`llm/tts.py`, OpenRouter `audio.speech`, default
   `x-ai/grok-voice-tts-1.0`) → posted as an in-memory MP3 attachment to `GOOGLE_VOICE_SPACE` (a

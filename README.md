@@ -121,6 +121,13 @@ payout webhook; `promo` = a vague welcome-bonus launch request); `--token`
 overrides `GOOGLE_TOKEN_FILE` so that process posts as the right Gmail account.
 Resolution reports land in `reports/issue-<id>.md`.
 
+> **Set `GOOGLE_BOT_USER_ID`** to the bot account's own `users/<id>` so the bot
+> skips its own messages from the first poll cycle. It otherwise only learns its
+> id *after posting once*, so a fresh start (deleted `.state/`) can detect and
+> clarify the bot's own messages — a self-loop. The poller logs the id it learns
+> (stderr, `learned bot user id …`) the first time it posts; copy that into
+> `.env`. The startup banner's `self:` line shows whether it's pinned.
+
 ## Voice reports (text-to-speech)
 
 Instead of (or alongside) the on-disk Markdown, a resolved issue can be delivered

@@ -50,6 +50,17 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize_user_id(raw: str | None) -> str | None:
+    """Normalize a configured bot id to the Chat `users/<id>` resource name —
+    the exact form a message's `sender` carries, so self-filtering compares
+    like-for-like. Accepts a bare id (`1234567890`) or the full `users/1234567890`
+    form; blank/`None` ⇒ `None` (no configured id)."""
+    val = (raw or "").strip()
+    if not val:
+        return None
+    return val if val.startswith("users/") else f"users/{val}"
+
+
 def _mention(reporter_id: str | None) -> str:
     """A Google Chat text @mention for a `users/<id>` resource name.
 
@@ -161,9 +172,7 @@ class Runner:
 
         # Persist a freshly-learned bot id (the client may have learned its own
         # users/<id> from a post this cycle) so a restart self-filters at once.
-        live = self.chat.me()
-        if live and not self.store.get_bot_user_id():
-            self.store.set_bot_user_id(live)
+        self._remember_bot_id(self.chat.me())
 
         self.store.save()
         return {
@@ -182,10 +191,26 @@ class Runner:
         persist it the first time the client knows it."""
         live = self.chat.me()
         if live is not None:
-            if not self.store.get_bot_user_id():
-                self.store.set_bot_user_id(live)
+            self._remember_bot_id(live)
             return live
         return self.store.get_bot_user_id()
+
+    def _remember_bot_id(self, live: str | None) -> None:
+        """Persist a freshly-learned bot `users/<id>` and log it ONCE so the user
+        can pin it via `GOOGLE_BOT_USER_ID` and get self-filtering from the first
+        cycle on a fresh start. No-op once an id is already stored (the persisted
+        guard makes the log fire exactly once per learned id)."""
+        if not live or self.store.get_bot_user_id():
+            return
+        self.store.set_bot_user_id(live)
+        import sys
+
+        print(
+            f"[issue-spotter] learned bot user id {live}; set "
+            f"GOOGLE_BOT_USER_ID={live} in .env so the bot self-filters its own "
+            "messages from the first cycle on a fresh start.",
+            file=sys.stderr,
+        )
 
     # --- step 2: fetch ------------------------------------------------------
     def _fetch_new_messages(self) -> list[Message]:
@@ -1140,7 +1165,17 @@ def build_runner(config: Config) -> Runner:
 
     store = IssueStore(config.STATE_FILE)
     store.load()
-    bot_id = store.get_bot_user_id()
+    # Prefer an explicitly configured bot id so the client knows its own
+    # users/<id> from the FIRST cycle — even on a fresh start with no persisted
+    # state, before it has posted once (otherwise `me()` is None on cycle 1 and
+    # detection can't drop the bot's own messages → a self-loop). Fall back to
+    # the persisted id learned on a previous run.
+    configured_id = _normalize_user_id(config.GOOGLE_BOT_USER_ID)
+    bot_id = configured_id or store.get_bot_user_id()
+    # Persist a configured id up front so it survives as the known self id and the
+    # runner's "learned bot user id" hint stays quiet (the user already set it).
+    if configured_id:
+        store.set_bot_user_id(configured_id)
 
     chat = GoogleChatClient(config, user_id=bot_id)
     llm = build_llm(config)

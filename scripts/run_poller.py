@@ -33,6 +33,12 @@ def _banner(config) -> str:
     kb = "on" if (config.KB_DIR and os.path.isdir(config.KB_DIR)) else "off"
     dense = " (dense)" if config.RAG_DENSE else ""
     obs = config.OBSERVABILITY
+    bot_id = config.GOOGLE_BOT_USER_ID.strip()
+    self_filter = (
+        f"on (bot id {bot_id})" if bot_id
+        else "learned after first post — set GOOGLE_BOT_USER_ID to self-filter "
+             "from cycle 1 on a fresh start"
+    )
     return (
         "gchat issue-spotter poller\n"
         f"  space:    {space}\n"
@@ -41,6 +47,7 @@ def _banner(config) -> str:
         f"  reports:  {config.REPORTS_DIR}\n"
         f"  state:    {config.STATE_FILE}\n"
         f"  obs:      {obs}\n"
+        f"  self:     {self_filter}\n"
         f"  poll:     every {config.POLL_INTERVAL_SECONDS}s"
     )
 

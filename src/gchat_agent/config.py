@@ -195,6 +195,14 @@ class Config:
     GOOGLE_OAUTH_CLIENT: str = "secrets/oauth_client.json"
     GOOGLE_TOKEN_FILE: str = "secrets/token_bot.json"
     GOOGLE_QUOTA_PROJECT: str = ""
+    # The bot's own `users/<id>` resource name. Pin this so the bot self-filters
+    # its OWN account's messages from the very FIRST cycle — including on a fresh
+    # start (deleted `.state/`), before it has posted once and learned its id via
+    # `me()`. Without it, cycle 1 has no self-filter and the bot can detect and
+    # clarify its own messages (a self-loop with itself). Accepts a bare numeric
+    # id (`1234567890`) or the full `users/1234567890` form. The poller logs the
+    # id it learns after the first post — copy that value here for fresh starts.
+    GOOGLE_BOT_USER_ID: str = ""
     POLL_INTERVAL_SECONDS: int = 15
     POLL_BACKFILL_SINCE: str = ""
 
