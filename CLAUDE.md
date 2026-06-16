@@ -14,6 +14,11 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   `chat/` (base, google_rest, oauth, Phase-2 webhook stub), `rag/` (bm25, boost, chunk, fuse,
   store, optional dense), `agent/` (prompts, `state`·IssueStore, analyzer, report, staff). Entry
   scripts in `scripts/`; tests in `tests/` (+ `fakes.FakeChatClient`).
+- **Nested indexes** (per-subtree maps, read the local one before touching files there):
+  [`src/gchat_agent/CLAUDE.md`](src/gchat_agent/CLAUDE.md) (+ `agent/`, `llm/`, `chat/`,
+  `rag/` subpackage indexes), [`tests/CLAUDE.md`](tests/CLAUDE.md),
+  [`scripts/CLAUDE.md`](scripts/CLAUDE.md), [`docs/CLAUDE.md`](docs/CLAUDE.md). This root
+  file keeps the cross-cutting behavioral specs; the nested files hold per-directory layout.
 - **Run the tests** (offline, no key — the functional gate, currently **268 green**):
   `PYTHONPATH=src python -m unittest discover -s tests -t . -p "test_*.py"`.
 - **Merged LLM calls (Lever 1, latency)**: detection emits opening
