@@ -27,7 +27,7 @@ from gchat_agent.llm.tts import MockTTS
 from gchat_agent.models import Conversation, Issue, Severity, Status
 from gchat_agent.runner import Runner
 from gchat_agent.agent.state import IssueStore
-from tests.fakes import FakeChatClient
+from tests.fakes import FakeChatClient, InlineExecutor
 
 
 def _cfg(tmp: str, **over):
@@ -116,8 +116,11 @@ class _Harness:
         self.store.load()
         cfg = _cfg(tmp, REPORT_DELIVERY=delivery, GOOGLE_VOICE_SPACE=voice_space)
         analyzer = Analyzer(MockLLM(), None, 5)
+        # Run background voice delivery synchronously so assertions can inspect
+        # the voice post / disk fallback right after `resolve()`.
         self.runner = Runner(self.chat, analyzer, self.store, cfg,
-                             reports_dir=tmp, llm=MockLLM(), tts=tts)
+                             reports_dir=tmp, llm=MockLLM(), tts=tts,
+                             voice_executor=InlineExecutor())
         self.tmp = tmp
         self.issue = _issue()
 
@@ -229,6 +232,90 @@ class RunnerDeliveryTest(unittest.TestCase):
             h.issue.report_written_at = h.issue.report_written_at or "2026-01-01T00:00:00Z"
             h.resolve()  # second pass must not re-deliver
             self.assertEqual(len(h.chat.voice_posts), 1)
+
+
+class _DeferredExecutor:
+    """Captures submitted tasks WITHOUT running them, so a test can assert the
+    resolve cycle finished (issue closed in-thread) before the slow voice work
+    even started, then run it explicitly."""
+
+    def __init__(self) -> None:
+        self.tasks: list = []
+
+    def submit(self, fn, *args, **kwargs):
+        self.tasks.append((fn, args, kwargs))
+
+    def run_all(self) -> None:
+        for fn, args, kwargs in self.tasks:
+            fn(*args, **kwargs)
+
+    def shutdown(self, wait: bool = True) -> None:
+        pass
+
+
+class BackgroundVoiceTest(unittest.TestCase):
+    """Voice delivery (narration + TTS + upload) must run OFF the resolve cycle's
+    critical path: the issue is closed in-thread (confirmation + RESOLVED +
+    tombstone) immediately, and only the queued background task posts the audio."""
+
+    def _runner(self, tmp, ex, *, delivery="voice", voice_space="spaces/REPORTS"):
+        chat = FakeChatClient(me="users/bot", space="spaces/MAIN")
+        store = IssueStore(os.path.join(tmp, "issues.json"))
+        store.load()
+        cfg = _cfg(tmp, REPORT_DELIVERY=delivery, GOOGLE_VOICE_SPACE=voice_space)
+        runner = Runner(chat, Analyzer(MockLLM(), None, 5), store, cfg,
+                        reports_dir=tmp, llm=MockLLM(), tts=MockTTS(),
+                        voice_executor=ex)
+        return runner, chat, store
+
+    def test_voice_is_deferred_issue_closed_before_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ex = _DeferredExecutor()
+            runner, chat, store = self._runner(tmp, ex)
+            issue = _issue()
+
+            runner._resolve(issue, Conversation())
+
+            # The issue is closed the instant _resolve returns — no waiting on TTS.
+            self.assertEqual(issue.status, Status.RESOLVED)
+            self.assertTrue(issue.report_written_at)
+            self.assertTrue(store.is_tombstoned(issue.fingerprint))
+            self.assertTrue(any(m.text.startswith("✅") for m in chat.messages))
+            # ...but the voice has NOT been posted yet (it's queued, not run).
+            self.assertEqual(len(ex.tasks), 1, "voice must be queued, not inline")
+            self.assertEqual(chat.voice_posts, [])
+
+            # Draining the queue (what the background worker would do) posts it.
+            ex.run_all()
+            self.assertEqual(len(chat.voice_posts), 1)
+            self.assertFalse(os.path.isfile(os.path.join(tmp, f"issue-{issue.id}.md")))
+
+    def test_attempted_voice_failure_writes_disk_from_background(self) -> None:
+        class _BoomTTS:
+            def synthesize(self, text: str) -> bytes:
+                raise RuntimeError("tts down")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ex = _DeferredExecutor()
+            chat = FakeChatClient(me="users/bot", space="spaces/MAIN")
+            store = IssueStore(os.path.join(tmp, "issues.json"))
+            store.load()
+            cfg = _cfg(tmp, REPORT_DELIVERY="voice", GOOGLE_VOICE_SPACE="spaces/REPORTS")
+            runner = Runner(chat, Analyzer(MockLLM(), None, 5), store, cfg,
+                            reports_dir=tmp, llm=MockLLM(), tts=_BoomTTS(),
+                            voice_executor=ex)
+            issue = _issue()
+
+            runner._resolve(issue, Conversation())
+            # Foreground wrote NO disk file (it optimistically assumed voice).
+            self.assertFalse(os.path.isfile(os.path.join(tmp, f"issue-{issue.id}.md")))
+
+            # The background task fails to synthesize, so it writes the disk
+            # safety net itself — the report is never lost.
+            with contextlib.redirect_stderr(io.StringIO()):
+                ex.run_all()
+            self.assertEqual(chat.voice_posts, [])
+            self.assertTrue(os.path.isfile(os.path.join(tmp, f"issue-{issue.id}.md")))
 
 
 if __name__ == "__main__":

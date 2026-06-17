@@ -15,6 +15,7 @@ Stdlib only at module top level; `openai`/`langfuse` are imported lazily.
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -67,6 +68,11 @@ class OpenRouterClient:
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+        # One client instance is shared by the analyzer (foreground detect/assess)
+        # AND the runner's background voice narration, so the usage dict can be
+        # mutated from two threads at once. A lock keeps the read-modify-write of
+        # each counter (and the snapshot copy) consistent.
+        self._usage_lock = threading.Lock()
 
     # --- client construction (lazy import) -----------------------------------
     def _get_client(self) -> Any:
@@ -107,17 +113,19 @@ class OpenRouterClient:
         usage = getattr(response, "usage", None)
         if usage is None:
             return
-        self._usage["calls"] += 1
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-            try:
-                self._usage[key] += int(getattr(usage, key, 0) or 0)
-            except (TypeError, ValueError):
-                pass
+        with self._usage_lock:
+            self._usage["calls"] += 1
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                try:
+                    self._usage[key] += int(getattr(usage, key, 0) or 0)
+                except (TypeError, ValueError):
+                    pass
 
     def usage_snapshot(self) -> dict[str, int]:
         """A copy of cumulative token usage since construction. The runner diffs
         `total_tokens` across a cycle to report per-cycle spend."""
-        return dict(self._usage)
+        with self._usage_lock:
+            return dict(self._usage)
 
     def _create(self, messages: list[dict[str, str]], **kwargs: Any) -> Any:
         """Call chat.completions.create with extra backoff on 429/5xx.

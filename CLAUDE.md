@@ -19,7 +19,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   `rag/` subpackage indexes), [`tests/CLAUDE.md`](tests/CLAUDE.md),
   [`scripts/CLAUDE.md`](scripts/CLAUDE.md), [`docs/CLAUDE.md`](docs/CLAUDE.md). This root
   file keeps the cross-cutting behavioral specs; the nested files hold per-directory layout.
-- **Run the tests** (offline, no key — the functional gate, currently **285 green**):
+- **Run the tests** (offline, no key — the functional gate, currently **287 green**):
   `PYTHONPATH=src python -m unittest discover -s tests -t . -p "test_*.py"`.
 - **Merged LLM calls (Lever 1, latency)**: detection emits opening
   `clarifying_questions` per issue and clarity emits the next `questions` batch
@@ -39,6 +39,22 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   `tail(N)` across ALL threads (top-level + replies), so a new issue raised inside a
   clarification thread is only deferred, not lost — the next out-of-thread traffic
   re-detects over it while it's still in-window.
+- **Background voice delivery (Lever C, latency)**: the resolve cycle was the
+  slowest (~33s: assess + report + narration + TTS synth + MP3 upload, all
+  serial). Now only `build_resolution_report` + the in-thread confirmation /
+  RESOLVED / tombstone stay on the cycle's critical path; for
+  `REPORT_DELIVERY=voice|both` the narration + TTS + upload (~17s) run on a
+  background single-worker pool (`runner._deliver_voice_bg`, scheduled by
+  `_submit_voice`, drained in `run_once`/`run_forever` finally). The reporter sees
+  the ✅ at once; audio follows seconds later. The shared OpenRouter client's
+  token counter is now lock-guarded (`openrouter._usage_lock`) since foreground
+  detect/assess and background narration mutate it concurrently. The disk safety
+  net moved into the worker: an *attempted* voice that fails writes the report to
+  disk itself (so a resolution is never lost). Trade-off: the confirmation is
+  posted before the voice outcome, so attempted-voice always uses the "recorded"
+  wording even in the rare fail-to-disk case. Tests inject a synchronous
+  `tests.fakes.InlineExecutor`; `tests/test_voice_report.BackgroundVoiceTest` pins
+  the "issue closed before audio" contract.
 - **No duplicate questions (loop-breaker)**: the bot never re-asks a question the
   reporter can't answer. Two layers: (1) `clarity_prompt`/`questions_prompt` show
   the model every already-asked question (`prompts._asked_block`) and instruct it
@@ -136,7 +152,7 @@ Accumulated findings, setup gotchas, and the smoke-test environment live in
 
 ## goclaw-inspired hardening
 A batch of low-risk hardening ported from a review of the `goclaw/` Go platform
-(all pure-stdlib, gated by the offline suite — now **285 green**; tests in
+(all pure-stdlib, gated by the offline suite — now **287 green**; tests in
 [`tests/test_goclaw_hardening.py`](tests/test_goclaw_hardening.py)):
 - **Observability is actually wired**: `@observe` (was applied to nothing) now
   decorates the 5 LLM boundaries — `analyzer.{detect_issues,assess_clarity,

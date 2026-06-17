@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from . import observability
 from .agent import report as report_mod
@@ -160,6 +160,7 @@ class Runner:
         reports_dir: str | None = None,
         llm: "Optional[LLMClient]" = None,
         tts: "Optional[TTSClient]" = None,
+        voice_executor: "Optional[Any]" = None,
     ) -> None:
         self.chat = chat
         self.analyzer = analyzer
@@ -172,6 +173,15 @@ class Runner:
         # Optional TTS for voice-report delivery (REPORT_DELIVERY=voice|both).
         # `None` ⇒ the disk path; voice delivery degrades to disk if it's absent.
         self._tts: "Optional[TTSClient]" = tts
+        # Voice delivery (narration + TTS synth + MP3 upload, ~17s) is the slowest
+        # part of a resolve and is best-effort, so it runs OFF the cycle's critical
+        # path on a background worker — the issue is closed in-thread immediately
+        # and the audio follows. An injected executor (tests pass a synchronous
+        # one) is used as-is; otherwise a single-worker pool is created lazily on
+        # first use and drained on shutdown. Single-worker = voice posts serialize,
+        # which also respects Chat's per-space 1-write/sec limit.
+        self._voice_executor: "Optional[Any]" = voice_executor
+        self._owns_voice_executor = voice_executor is None
         # The working conversation accumulates fetched messages across cycles so
         # threads keep their full context (detection is still windowed).
         self._conversation = Conversation()
@@ -968,8 +978,8 @@ class Runner:
         return True
 
     def _resolve(self, issue, thread_conv: Conversation, gaps: list[str] | None = None) -> None:
-        """Resolve once: build the report, deliver it (disk and/or voice), post
-        the in-thread confirmation, mark resolved, tombstone.
+        """Resolve once: build the report, close the issue in-thread, then deliver
+        voice OFF the critical path.
 
         `gaps` are the core facts still missing when the issue is closed WITHOUT
         them (the loop-breaker path: the reporter said "I don't know" or the
@@ -978,35 +988,49 @@ class Runner:
         questions") instead of claiming a clean resolution; `None` ⇒ a clean
         resolve, unchanged.
 
-        Delivery follows `REPORT_DELIVERY` (`disk` | `voice` | `both`). Voice
-        delivery is best-effort: if it is unavailable or fails, the disk report is
-        written as a safety net so a resolution is never lost. The confirmation
-        always lands in the issue thread; its trailing reference names where the
-        report actually went.
+        Critical-path vs background. Only `build_resolution_report` (one LLM call)
+        and the in-thread confirmation/RESOLVED/tombstone stay on the cycle's
+        critical path — so a resolve cycle returns in ~report-time, not
+        report+narration+TTS+upload (~17s slower). For `REPORT_DELIVERY=voice|both`
+        with a TTS client, narration + speech synthesis + the MP3 upload run on a
+        background worker (`_deliver_voice_bg`); the reporter sees the ✅ at once
+        and the audio follows seconds later.
+
+        Delivery follows `REPORT_DELIVERY` (`disk` | `voice` | `both`). Voice is
+        best-effort: when it cannot even be attempted (no TTS) the disk report is
+        written synchronously as the safety net; when an *attempted* voice fails at
+        runtime the background worker writes the disk report instead, so a
+        resolution is never lost. Trade-off of the speedup: the confirmation is
+        posted before the voice outcome is known, so for attempted-voice delivery
+        it uses the voice wording ("recorded", no on-disk ref) even in the rare
+        case voice then fails and falls back to disk — the report still survives on
+        disk, only the confirmation's wording is optimistic.
 
         Idempotency: the whole block is gated on `report_written_at` (persisted
-        state) so a state reload can't redo it. The file write is skipped when the
-        report already exists, the voice post carries a stable `request_id`, and
-        the confirmation a second one — each individually idempotent — so a crash
-        mid-delivery lets the next cycle finish rather than skip it forever (§5.7)."""
+        state) so a state reload can't redo it (and can't re-submit the background
+        voice). The disk write is skipped when the report already exists, the voice
+        post carries a stable `request_id`, and the confirmation a second one —
+        each individually idempotent (§5.7)."""
         now = _now()
         if not issue.report_written_at:
             report = report_mod.build_resolution_report(issue, self._llm, open_questions=gaps)
             delivery = (self.config.REPORT_DELIVERY or "disk").strip().lower()
             want_voice = delivery in ("voice", "both")
             want_disk = delivery in ("disk", "both")
+            # Voice is attempted iff requested AND a TTS client exists. When it
+            # can't be attempted, the disk report is the synchronous safety net.
+            voice_attempted = want_voice and self._tts is not None
 
-            voice_target = self._deliver_voice(issue, report) if want_voice else None
-            # Disk write for disk/both, and as a safety net when voice was wanted
-            # but could not be delivered — so a report is never silently lost.
-            disk_written = want_disk or (want_voice and voice_target is None)
+            # Foreground disk write for disk/both, and as the safety net when voice
+            # was wanted but can't even be attempted (no TTS) — so a report is
+            # never silently lost. An attempted voice writes disk only on failure,
+            # from the background worker.
+            disk_written = want_disk or (want_voice and not voice_attempted)
             if disk_written:
-                report_path = os.path.join(self.reports_dir, f"issue-{issue.id}.md")
-                if not os.path.exists(report_path):
-                    report_mod.write_report(
-                        report, self.reports_dir, redact=self.config.REDACT_REPORTS
-                    )
+                self._write_report_once(issue.id, report)
 
+            # Close the issue in-thread NOW — the confirmation, RESOLVED status and
+            # tombstone never wait on the slow voice pipeline.
             self._post_to_thread(
                 issue,
                 report_mod.confirmation_line(
@@ -1015,40 +1039,77 @@ class Runner:
                 request_id=f"client-issue-{issue.id}-report",
             )
             issue.report_written_at = now
+
+            # Hand the slow part (narration + TTS synth + MP3 upload) to a
+            # background worker so it falls outside the measured cycle.
+            if voice_attempted:
+                self._submit_voice(issue, report)
         issue.status = Status.RESOLVED
         issue.updated_at = now
         self.store.tombstone(issue)
 
-    def _deliver_voice(self, issue, report) -> str | None:
-        """Best-effort voice delivery: narrate the report, synthesize speech, and
-        post it as an audio attachment. Returns a short phrase of where it went
-        (the target space, or "this thread" on fallback) on success, else None so
-        the caller writes the disk report instead. Never raises — voice is a
-        delivery channel, not a correctness requirement."""
-        if self._tts is None:
-            return None
+    def _write_report_once(self, issue_id: str, report) -> None:
+        """Write the resolution report to disk unless its file already exists
+        (idempotent — a crash-and-retry won't overwrite, and the background voice
+        fallback won't clobber a foreground write)."""
+        report_path = os.path.join(self.reports_dir, f"issue-{issue_id}.md")
+        if not os.path.exists(report_path):
+            report_mod.write_report(
+                report, self.reports_dir, redact=self.config.REDACT_REPORTS
+            )
+
+    def _submit_voice(self, issue, report) -> None:
+        """Schedule `_deliver_voice_bg` on the background voice worker (lazily
+        created). The future is fire-and-forget: the worker is self-contained
+        (never raises, writes the disk safety net on failure), and `run_once` /
+        `run_forever` drain the pool on shutdown so an in-flight upload is not lost
+        when the daemon stops."""
+        if self._voice_executor is None:
+            from concurrent.futures import ThreadPoolExecutor
+
+            self._voice_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="gchat-voice"
+            )
+        self._voice_executor.submit(self._deliver_voice_bg, issue, report)
+
+    def _drain_voice(self) -> None:
+        """Wait for any in-flight background voice delivery, then dispose of a
+        pool we created. Called from the lock-guarded entrypoints' `finally` so a
+        `--once` run or a daemon shutdown doesn't drop an upload mid-flight. A
+        caller-injected executor (tests) is left untouched."""
+        ex = self._voice_executor
+        if ex is not None and self._owns_voice_executor:
+            ex.shutdown(wait=True)
+            self._voice_executor = None
+
+    def _deliver_voice_bg(self, issue, report) -> None:
+        """Background voice delivery: narrate the report, synthesize speech, and
+        post it as an audio attachment. Self-contained and best-effort — runs on a
+        worker thread, so it NEVER raises; on any failure (no TTS audio, synth or
+        upload error) it writes the on-disk report as the safety net the foreground
+        skipped, so an attempted-but-failed voice still preserves the report."""
         try:
             narration = report_mod.build_narration(report, self._llm)
-            audio = self._tts.synthesize(narration)
-            if not audio:
-                return None
-            target_space = (self.config.GOOGLE_VOICE_SPACE or "").strip() or None
-            # A separate space is posted top-level; the fallback threads into the
-            # issue's own space so the voice still reaches the discussion.
-            thread_id = None if target_space else issue.thread_id
-            self.chat.post_voice(
-                audio,
-                filename=f"issue-{issue.id}.mp3",
-                # Carry the spoken transcript in the message body — a Chat audio
-                # attachment is a download-only file card, so the transcript is
-                # what keeps the report readable in-thread (and accessible).
-                text=report_mod.voice_message_text(report, narration),
-                space=target_space,
-                thread_id=thread_id,
-                request_id=f"client-issue-{issue.id}-voice",
-            )
-            return target_space or "this thread"
-        except Exception as exc:  # noqa: BLE001 — fall back to disk, never crash
+            audio = self._tts.synthesize(narration) if self._tts is not None else None
+            if audio:
+                target_space = (self.config.GOOGLE_VOICE_SPACE or "").strip() or None
+                # A separate space is posted top-level; the fallback threads into
+                # the issue's own space so the voice still reaches the discussion.
+                thread_id = None if target_space else issue.thread_id
+                self.chat.post_voice(
+                    audio,
+                    filename=f"issue-{issue.id}.mp3",
+                    # Carry the spoken transcript in the message body — a Chat audio
+                    # attachment is a download-only file card, so the transcript is
+                    # what keeps the report readable in-thread (and accessible).
+                    text=report_mod.voice_message_text(report, narration),
+                    space=target_space,
+                    thread_id=thread_id,
+                    request_id=f"client-issue-{issue.id}-voice",
+                )
+                return
+            # No audio produced → fall through to the disk safety net.
+        except Exception as exc:  # noqa: BLE001 — background, never crash the worker
             import sys
 
             print(
@@ -1056,7 +1117,17 @@ class Runner:
                 "falling back to the on-disk report",
                 file=sys.stderr,
             )
-            return None
+        # Safety net: an attempted voice that produced nothing (or raised) must
+        # still leave the report on disk so the resolution is never lost.
+        try:
+            self._write_report_once(issue.id, report)
+        except Exception as exc:  # noqa: BLE001 — last-ditch, just log
+            import sys
+
+            print(
+                f"disk fallback for issue {issue.id} also failed: {exc}",
+                file=sys.stderr,
+            )
 
     @staticmethod
     def _report_ref(report, disk_written: bool) -> str:
@@ -1126,6 +1197,7 @@ class Runner:
         try:
             return self.run_cycle()
         finally:
+            self._drain_voice()  # don't drop an in-flight voice upload on exit
             _release_lock(lock_path)
             observability.flush()
 
@@ -1178,6 +1250,7 @@ class Runner:
                 self._log_cycle(summary, time.monotonic() - started)
                 time.sleep(base)
         finally:
+            self._drain_voice()  # let any in-flight voice upload finish on shutdown
             _release_lock(lock_path)
             observability.flush()
 

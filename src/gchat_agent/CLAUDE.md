@@ -20,7 +20,8 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
   escalate), `build_runner()` factory, single-instance file-lock, and the module-level
   `_looks_like_decline()` heuristic. Key methods: `run_cycle`, `_detect`,
   `_process_open_issues`, **`_step_issue`** (loop-breaker), `_ask`, `_resolve`,
-  `_escalate_due`, `_redirect_out_of_thread`, `_deliver_voice`, `run_forever`.
+  `_escalate_due`, `_redirect_out_of_thread`, `_deliver_voice_bg` (background voice,
+  off the resolve critical path — see root CLAUDE.md "Lever C"), `run_forever`.
 - **`observability.py`** — Langfuse shim (`observe`/`trace`/`flush`); no-op by default,
   lazy when `LANGFUSE_*` is set. `@observe` is wired onto the 5 LLM boundaries (3 analyzer
   methods + 2 report builders).

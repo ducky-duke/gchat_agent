@@ -276,3 +276,34 @@ class StaffChatView:
         if request_id is not None:
             self._by_request[request_id] = message
         return message
+
+
+class _DoneFuture:
+    """Minimal `Future` stand-in: an already-completed result (or captured
+    exception), so `InlineExecutor.submit` mirrors `ThreadPoolExecutor` semantics
+    where a task's exception surfaces on `.result()`, not at submit time."""
+
+    def __init__(self, result=None, exc: BaseException | None = None) -> None:
+        self._result = result
+        self._exc = exc
+
+    def result(self, timeout=None):
+        if self._exc is not None:
+            raise self._exc
+        return self._result
+
+
+class InlineExecutor:
+    """A synchronous `Executor` for tests: `submit(fn)` runs `fn()` *immediately*
+    on the calling thread, so background voice delivery is deterministic (no real
+    worker thread, no race against the assertions). Injected into `Runner` so the
+    resolve path's voice work completes before the test inspects it."""
+
+    def submit(self, fn, *args, **kwargs) -> _DoneFuture:
+        try:
+            return _DoneFuture(result=fn(*args, **kwargs))
+        except BaseException as exc:  # noqa: BLE001 — mirror ThreadPoolExecutor
+            return _DoneFuture(exc=exc)
+
+    def shutdown(self, wait: bool = True) -> None:  # noqa: ARG002 — no-op
+        pass
