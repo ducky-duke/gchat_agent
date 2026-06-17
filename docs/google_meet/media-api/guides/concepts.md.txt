@@ -1,0 +1,442 @@
+> [!WARNING]
+> **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features.  
+>
+> **To use the Meet Media API to access real-time media from a conference, the Google Cloud project, OAuth principal, and all participants in the conference must be enrolled in the Developer Preview Program.**
+
+The Google Meet Media API lets your app join a Google Meet
+[conference](https://developers.google.com/workspace/meet/media-api/guides/overview#conference) and consume real-time
+media streams.
+
+Clients use WebRTC to communicate with Meet servers. The provided
+reference clients ([C++](https://developers.google.com/workspace/meet/media-api/guides/cpp),
+[TypeScript](https://developers.google.com/workspace/meet/media-api/guides/ts)) demonstrate recommended practices and
+you are encouraged to build directly upon them.
+
+However, you may also build fully custom WebRTC clients that adhere to
+the Meet Media API's [technical
+requirements](https://developers.google.com/workspace/meet/media-api/guides/get-started#technical-requirements).
+
+This page outlines key WebRTC concepts required for a successful
+Meet Media API session.
+
+## Offer-answer signaling
+
+WebRTC is a peer-to-peer (P2P) framework, where peers communicate by signaling
+each other. To begin a session, the initiating peer sends an [SDP
+offer](https://developers.google.com/workspace/meet/media-api/guides/overview#sdp-offer) to a remote peer. This offer
+includes the following important details:
+
+### Media descriptions for audio and video
+
+Media descriptions indicate what's communicated during P2P sessions. Three
+types of descriptions exist: audio, video, and data.
+
+To indicate `n` audio streams, the offerer includes `n` audio media descriptions
+in the offer. The same is true for video. However, there will only be one *data*
+media description at most.
+
+#### Directionality
+
+Each audio or video description describes individual *Secure Real-time Transport
+Protocol* (SRTP) streams, governed by [`RFC
+3711`](https://datatracker.ietf.org/doc/html/rfc3711). These are bi-directional,
+allowing two peers to send and receive media across the same connection.
+
+Because of this, each media description (in both the offer and answer) contains
+one of three attributes describing how the stream should be used:
+
+- **`sendonly`**: Only sends media from the offering peer. The remote peer
+  won't send media on this stream.
+
+- **`recvonly`**: Only receives media from the remote peer. The offering peer
+  won't send media on this stream.
+
+- **`sendrecv`**: Both peers may send and receive on this stream.
+
+#### Codecs
+
+Each media description also specifies the codecs a peer supports. In the case of
+the Meet Media API, client offers are rejected unless they support
+(at least) the codecs specified in the [technical
+requirements](https://developers.google.com/workspace/meet/media-api/guides/get-started#technical-requirements).
+
+#### DTLS handshake
+
+SRTP streams are secured by an initial
+*Datagram Transport Layer Security* ("DTLS", [`RFC
+9147`](https://datatracker.ietf.org/doc/rfc9147/)) handshake between the peers.
+DTLS is traditionally a client-to-server protocol; during the signaling process,
+one peer agrees to act as the server while the other acts as a peer.
+
+Because each SRTP stream might have its own dedicated DTLS connection, each
+media description specifies one of three attributes to indicate the peer's role
+in the DTLS handshake:
+
+- **`a=setup:actpass`** : The *offering* peer defers to the choice of the
+  remote peer.
+
+- **`a=setup:active`**: This peer acts as the client.
+
+- **`a=setup:passive`**: This peer acts as the server.
+
+### Application media descriptions
+
+Data channels ([`RFC 8831`](https://datatracker.ietf.org/doc/html/rfc8831)) are
+an abstraction of the *Stream Control Transmission Protocol* ("SCTP", [`RFC
+9260`](https://datatracker.ietf.org/doc/html/rfc9260)).
+
+To open data channels during the initial signaling phase, the offer must contain
+an *application media description*. Unlike audio and video descriptions,
+application descriptions don't specify direction or codecs.
+
+### ICE candidates
+
+A peer's *Interactive Connectivity Establishment* ("ICE", [`RFC
+8445`](https://datatracker.ietf.org/doc/html/rfc8445)) candidates are a list of
+routes that a remote peer may use to establish a connection.
+
+The cartesian product of the two peers' lists, known as the *candidate pairs*,
+represents the potential routes between two peers. These pairs are tested to
+determine the optimal route.
+
+## Signal through the Meet REST API
+
+Use the [Meet REST API](https://developers.google.com/workspace/meet/api/guides/overview) to perform this
+[offer-answer](https://developers.google.com/workspace/meet/media-api/guides/concepts#offer-answer) signaling. Your app provides an
+[SDP offer](https://developers.google.com/workspace/meet/media-api/guides/overview#sdp-offer) to the
+[`connectActiveConference()`](https://developers.google.com/workspace/meet/media-api/reference/rest/connectActiveConference)
+method and receives an
+[SDP answer](https://developers.google.com/workspace/meet/media-api/guides/overview#sdp-answer) in return.
+
+The following code samples show how to call the method:
+
+### Java
+
+java-meet/samples/snippets/generated/com/google/apps/meet/v2beta/spacesservice/connectactiveconference/AsyncConnectActiveConference.java [View on GitHub](https://github.com/googleapis/google-cloud-java/blob/main/java-meet/samples/snippets/generated/com/google/apps/meet/v2beta/spacesservice/connectactiveconference/AsyncConnectActiveConference.java)
+
+```java
+import com.google.api.core.ApiFuture;
+import com.google.apps.meet.v2beta.ConnectActiveConferenceRequest;
+import com.google.apps.meet.v2beta.ConnectActiveConferenceResponse;
+import com.google.apps.meet.v2beta.SpaceName;
+import com.google.apps.meet.v2beta.SpacesServiceClient;
+
+public class AsyncConnectActiveConference {
+
+  public static void main(String[] args) throws Exception {
+    asyncConnectActiveConference();
+  }
+
+  public static void asyncConnectActiveConference() throws Exception {
+    // This snippet has been automatically generated and should be regarded as a code template only.
+    // It will require modifications to work:
+    // - It may require correct/in-range values for request initialization.
+    // - It may require specifying regional endpoints when creating the service client as shown in
+    // https://cloud.google.com/java/docs/setup#configure_endpoints_for_the_client_library
+    try (SpacesServiceClient spacesServiceClient = SpacesServiceClient.create()) {
+      ConnectActiveConferenceRequest request =
+          ConnectActiveConferenceRequest.newBuilder()
+              .setName(SpaceName.of("[SPACE]").toString())
+              .setOffer("offer105650780")
+              .build();
+      ApiFuture<ConnectActiveConferenceResponse> future =
+          spacesServiceClient.connectActiveConferenceCallable().futureCall(request);
+      // Do something.
+      ConnectActiveConferenceResponse response = future.get();
+    }
+  }
+}
+```
+
+### C#
+
+apis/Google.Apps.Meet.V2Beta/Google.Apps.Meet.V2Beta.GeneratedSnippets/SpacesServiceClient.ConnectActiveConferenceAsyncSnippet.g.cs [View on GitHub](https://github.com/googleapis/google-cloud-dotnet/blob/main/apis/Google.Apps.Meet.V2Beta/Google.Apps.Meet.V2Beta.GeneratedSnippets/SpacesServiceClient.ConnectActiveConferenceAsyncSnippet.g.cs)
+
+```c#
+using Google.Apps.Meet.V2Beta;
+using System.Threading.Tasks;
+
+public sealed partial class GeneratedSpacesServiceClientSnippets
+{
+    /// <summary>Snippet for ConnectActiveConferenceAsync</summary>
+    /// <remarks>
+    /// This snippet has been automatically generated and should be regarded as a code template only.
+    /// It will require modifications to work:
+    /// - It may require correct/in-range values for request initialization.
+    /// - It may require specifying regional endpoints when creating the service client as shown in
+    ///   https://cloud.google.com/dotnet/docs/reference/help/client-configuration#endpoint.
+    /// </remarks>
+    public async Task ConnectActiveConferenceAsync()
+    {
+        // Create client
+        SpacesServiceClient spacesServiceClient = await SpacesServiceClient.CreateAsync();
+        // Initialize request argument(s)
+        string name = "spaces/[SPACE]";
+        // Make the request
+        ConnectActiveConferenceResponse response = await spacesServiceClient.ConnectActiveConferenceAsync(name);
+    }
+}
+```
+
+### Node.js
+
+packages/google-apps-meet/samples/generated/v2beta/spaces_service.connect_active_conference.js [View on GitHub](https://github.com/googleapis/google-cloud-node/blob/main/packages/google-apps-meet/samples/generated/v2beta/spaces_service.connect_active_conference.js)
+
+```javascript
+/**
+ * This snippet has been automatically generated and should be regarded as a code template only.
+ * It will require modifications to work.
+ * It may require correct/in-range values for request initialization.
+ * TODO(developer): Uncomment these variables before running the sample.
+ */
+/**
+ *  Required. Resource name of the space.
+ *  Format: spaces/{spaceId}
+ */
+// const name = 'abc123'
+/**
+ *  Required. WebRTC SDP (Session Description Protocol) offer from the client.
+ *  The format is defined by RFC
+ *  8866 (https://www.rfc-editor.org/rfc/rfc8866) with mandatory keys defined
+ *  by RFC 8829 (https://www.rfc-editor.org/rfc/rfc8829). This is the standard
+ *  SDP format generated by a peer connection's createOffer() and
+ *  createAnswer() methods.
+ */
+// const offer = 'abc123'
+
+// Imports the Meet library
+const {SpacesServiceClient} = require('@google-apps/meet').v2beta;
+
+// Instantiates a client
+const meetClient = new SpacesServiceClient();
+
+async function callConnectActiveConference() {
+  // Construct request
+  const request = {
+    name,
+    offer,
+  };
+
+  // Run request
+  const response = await meetClient.connectActiveConference(request);
+  console.log(response);
+}
+
+callConnectActiveConference();
+```
+
+### Python
+
+packages/google-apps-meet/samples/generated_samples/meet_v2beta_generated_spaces_service_connect_active_conference_async.py [View on GitHub](https://github.com/googleapis/google-cloud-python/blob/main/packages/google-apps-meet/samples/generated_samples/meet_v2beta_generated_spaces_service_connect_active_conference_async.py)
+
+```python
+# This snippet has been automatically generated and should be regarded as a
+# code template only.
+# It will require modifications to work:
+# - It may require correct/in-range values for request initialization.
+# - It may require specifying regional endpoints when creating the service
+#   client as shown in:
+#   https://googleapis.dev/python/google-api-core/latest/client_options.html
+from google.apps import meet_v2beta
+
+
+async def sample_connect_active_conference():
+    # Create a client
+    client = meet_v2beta.SpacesServiceAsyncClient()
+
+    # Initialize request argument(s)
+    request = meet_v2beta.ConnectActiveConferenceRequest(
+        name="name_value",
+        offer="offer_value",
+    )
+
+    # Make the request
+    response = await client.connect_active_conference(request=request)
+
+    # Handle the response
+    print(response)
+```
+
+## Example connection flow
+
+Here's an offer with an audio media description:
+![Example offer with an audio media description.](https://developers.google.com/static/workspace/meet/media-api/images/audio-media-description.svg) **Figure 1.** Example offer with an audio media description.
+
+The remote peer responds with an [SDP
+answer](https://developers.google.com/workspace/meet/media-api/guides/overview#sdp-answer) containing the same number
+of media description lines. Each line indicates what media, if any, the remote
+peer sends back to the offering client across the SRTP streams. The remote
+peer might also reject specific streams from the offerer by setting that media
+description entry to `recvonly`.
+
+For the Meet Media API, clients always send the SDP offer to initiate
+a connection. Meet is never the initiator.
+
+This behavior is managed internally by the reference clients
+([C++](https://developers.google.com/workspace/meet/media-api/guides/cpp), [TypeScript](https://developers.google.com/workspace/meet/media-api/guides/ts)),
+but developers of custom clients can use WebRTC's `PeerConnectionInterface` to
+generate an offer.
+
+To connect to Meet Meet, the offer must adhere to specific
+[requirements](https://developers.google.com/workspace/meet/media-api/guides/get-started#technical-requirements):
+
+1. The client must always act as the client in the DTLS handshake, so every
+   media description in the offer must specify either `a=setup:actpass` or
+   `a=setup:active`.
+
+2. Each media description line must support all [required
+   codecs](https://developers.google.com/workspace/meet/media-api/guides/get-started#technical-requirements) for that media
+   type:
+
+   - **Audio:** `Opus`
+   - **Video:** `VP8`, `VP9`, `AV1`
+3. To receive audio, the offer must include exactly 3 receive-only audio media
+   descriptions. You can do this by setting transceivers on the peer connection
+   object.
+
+   ### C++
+
+       // ...
+       rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection;
+
+       for (int i = 0; i < 3; ++i) {
+         webrtc::RtpTransceiverInit audio_init;
+         audio_init.direction = webrtc::RtpTransceiverDirection::kRecvOnly;
+         audio_init.stream_ids = {absl::StrCat("audio_stream_", i)};
+
+         webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::RtpTransceiverInterface>>
+           audio_result = peer_connection->AddTransceiver(
+             cricket::MediaType::MEDIA_TYPE_AUDIO, audio_init);
+
+         if (!audio_result.ok()) {
+           return absl::InternalError(absl::StrCat("Failed to add audio transceiver: ",
+                                                   audio_result.error().message()));
+         }
+       }
+
+   ### JavaScript
+
+       pc = new RTCPeerConnection();
+
+       // Configure client to receive audio from Meet servers.
+       pc.addTransceiver('audio', {'direction':'recvonly'});
+       pc.addTransceiver('audio', {'direction':'recvonly'});
+       pc.addTransceiver('audio', {'direction':'recvonly'});
+
+4. To receive video, the offer must include 1--3 receive-only video media
+   descriptions. You can do this by setting transceivers on the peer connection
+   object.
+
+   ### C++
+
+       // ...
+       rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection;
+
+       for (uint32_t i = 0; i < configurations.receiving_video_stream_count; ++i) {
+         webrtc::RtpTransceiverInit video_init;
+         video_init.direction = webrtc::RtpTransceiverDirection::kRecvOnly;
+         video_init.stream_ids = {absl::StrCat("video_stream_", i)};
+
+         webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::RtpTransceiverInterface>>
+             video_result = peer_connection->AddTransceiver(
+               cricket::MediaType::MEDIA_TYPE_VIDEO, video_init);
+
+         if (!video_result.ok()) {
+           return absl::InternalError(absl::StrCat("Failed to add video transceiver: ",
+                                                   video_result.error().message()));
+         }
+       }
+
+   ### JavaScript
+
+       pc = new RTCPeerConnection();
+
+       // Configure client to receive video from Meet servers.
+       pc.addTransceiver('video', {'direction':'recvonly'});
+       pc.addTransceiver('video', {'direction':'recvonly'});
+       pc.addTransceiver('video', {'direction':'recvonly'});
+
+5. The offer must always include data channels. At minimum, the
+   `session-control` and `media-stats` channels should always be open. All data
+   channels must be `ordered`.
+
+   ### C++
+
+       // ...
+       // All data channels must be ordered.
+       constexpr webrtc::DataChannelInit kDataChannelConfig = {.ordered = true};
+
+       rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection;
+
+       // Signal session-control data channel.
+       webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::DataChannelInterface>>
+         session_create_result = peer_connection->CreateDataChannelOrError(
+           "session-control", &kDataChannelConfig);
+
+       if (!session_create_result.ok()) {
+         return absl::InternalError(absl::StrCat("Failed to create data channel ",
+                                                 data_channel_label, ": ",
+                                                 session_create_result.error().message()));
+       }
+
+       // Signal media-stats data channel.
+       webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::DataChannelInterface>>
+         stats_create_result = peer_connection->CreateDataChannelOrError(
+           "media-stats", &kDataChannelConfig);
+
+       if (!stats_create_result.ok()) {
+         return absl::InternalError(absl::StrCat("Failed to create data channel ",
+                                                 data_channel_label, ": ",
+                                                 stats_create_result.error().message()));
+       }
+
+   ### JavaScript
+
+       // ...
+       pc = new RTCPeerConnection();
+
+       // All data channels must be ordered.
+       const dataChannelConfig = {
+         ordered: true,
+       };
+
+       // Signal session-control data channel.
+       sessionControlChannel = pc.createDataChannel('session-control', dataChannelConfig);
+       sessionControlChannel.onopen = () => console.log("data channel is now open");
+       sessionControlChannel.onclose = () => console.log("data channel is now closed");
+       sessionControlChannel.onmessage = async (e) => {
+         console.log("data channel message", e.data);
+       };
+
+       // Signal media-stats data channel.
+       mediaStatsChannel = pc.createDataChannel('media-stats', dataChannelConfig);
+       mediaStatsChannel.onopen = () => console.log("data channel is now open");
+       mediaStatsChannel.onclose = () => console.log("data channel is now closed");
+       mediaStatsChannel.onmessage = async (e) => {
+         console.log("data channel message", e.data);
+       };
+
+## Example SDP offer and answer
+
+Here's a full example of a valid SDP offer and matching SDP answer. This offer
+negotiates a Meet Media API session with audio and a single video
+stream.
+
+Observe there are three audio media descriptions, one video media
+description, and the required application media description.
+
+> [!NOTE]
+> **Note:** Sections are separated into rows for easier viewing.
+
+| Client SDP offer | Meet Media API SDP answer |
+|---|---|
+| ` v=0 o=- 1479484780199836840 3 IN IP4 127.0.0.1 s=- t=0 0 a=group:BUNDLE 0 1 2 3 4 a=extmap-allow-mixed a=msid-semantic: WMS ` | ` v=0 o=- 0 2 IN IP4 127.0.0.1 s=- t=0 0 a=group:BUNDLE 0 1 2 3 4 a=msid-semantic: WMS virtual-6666 virtual-video-7777/7777 a=ice-lite ` |
+| ` m=audio 59905 UDP/TLS/RTP/SAVPF 111 63 9 0 8 13 110 126 c=IN IP4 136.55.18.35 a=rtcp:9 IN IP4 0.0.0.0 a=candidate:3490152339 1 udp 2113937151 46ae665f-23fd-49df-a002-6d12bc897a54.local 59905 typ host generation 0 network-cost 999 a=candidate:1937170525 1 udp 2113939711 aa575ae6-68fc-4155-83c1-007a1f5e8e55.local 58304 typ host generation 0 network-cost 999 a=candidate:2999458021 1 udp 1677732095 2605:a601:55ab:b000:615a:2317:bf6b:7a30 58304 typ srflx raddr :: rport 0 generation 0 network-cost 999 a=candidate:2517543359 1 udp 1677729535 136.55.18.35 59905 typ srflx raddr 0.0.0.0 rport 0 generation 0 network-cost 999 a=ice-ufrag:0HPF a=ice-pwd:GcBv48eO/q64iPxb7MHKS87y a=ice-options:trickle a=fingerprint:sha-256 71:0A:DD:DF:D1:63:8E:D5:CB:E6:2B:6D:41:1D:D4:EE:79:B2:95:97:8A:F0:64:FF:10:37:8D:41:ED:DB:EC:C4 a=setup:actpass a=mid:0 a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid a=recvonly a=rtcp-mux a=rtcp-rsize a=rtpmap:111 opus/48000/2 a=rtcp-fb:111 transport-cc a=fmtp:111 minptime=10;useinbandfec=1 a=rtpmap:63 red/48000/2 a=fmtp:63 111/111 a=rtpmap:9 G722/8000 a=rtpmap:0 PCMU/8000 a=rtpmap:8 PCMA/8000 a=rtpmap:13 CN/8000 a=rtpmap:110 telephone-event/48000 a=rtpmap:126 telephone-event/8000 ` | ` m=audio 19306 UDP/TLS/RTP/SAVPF 111 c=IN IP4 142.250.82.213 a=rtcp:9 IN IP4 0.0.0.0 a=candidate: 1 udp 2113932031 142.250.82.213 19306 typ host generation 0 a=candidate: 1 tcp 2113932030 142.250.82.253 19306 typ host tcptype passive generation 0 a=candidate: 1 ssltcp 2113932029 142.250.82.253 19313 typ host generation 0 a=candidate: 1 udp 2113939711 2001:4860:4864:6:4000::19 19306 typ host generation 0 a=candidate: 1 tcp 2113939710 2001:4860:4864:6:8000::5 19306 typ host tcptype passive generation 0 a=candidate: 1 ssltcp 2113939709 2001:4860:4864:6:8000::5 19313 typ host generation 0 a=ice-ufrag:K8mRD3UolM6pjwoKAhgCCIoBnCgCIAEQ a=ice-pwd:+7DfqMEDEFB6dLAKfGjT41l7ygg= a=fingerprint:sha-256 32:C0:9D:17:AD:99:E2:B8:2D:FD:5D:87:D4:36:44:4A:5B:3E:EE:EA:F2:BE:BE:72:3B:66:4C:F2:57:3C:0D:FF a=setup:passive a=mid:0 a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 a=sendonly a=msid:virtual-6666 virtual-6666 a=rtcp-mux a=rtpmap:111 opus/48000/2 a=fmtp:111 minptime=10;useinbandfec=1 a=ssrc:6666 cname:6666 ` |
+| ` m=audio 9 UDP/TLS/RTP/SAVPF 111 63 9 0 8 13 110 126 c=IN IP4 0.0.0.0 a=rtcp:9 IN IP4 0.0.0.0 a=ice-ufrag:0HPF a=ice-pwd:GcBv48eO/q64iPxb7MHKS87y a=ice-options:trickle a=fingerprint:sha-256 71:0A:DD:DF:D1:63:8E:D5:CB:E6:2B:6D:41:1D:D4:EE:79:B2:95:97:8A:F0:64:FF:10:37:8D:41:ED:DB:EC:C4 a=setup:actpass a=mid:1 a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid a=recvonly a=rtcp-mux a=rtcp-rsize a=rtpmap:111 opus/48000/2 a=rtcp-fb:111 transport-cc a=fmtp:111 minptime=10;useinbandfec=1 a=rtpmap:63 red/48000/2 a=fmtp:63 111/111 a=rtpmap:9 G722/8000 a=rtpmap:0 PCMU/8000 a=rtpmap:8 PCMA/8000 a=rtpmap:13 CN/8000 a=rtpmap:110 telephone-event/48000 a=rtpmap:126 telephone-event/8000 ` | ` m=audio 9 UDP/TLS/RTP/SAVPF 111 c=IN IP4 0.0.0.0 a=rtcp:9 IN IP4 0.0.0.0 a=ice-ufrag:K8mRD3UolM6pjwoKAhgCCIoBnCgCIAEQ a=ice-pwd:+7DfqMEDEFB6dLAKfGjT41l7ygg= a=fingerprint:sha-256 32:C0:9D:17:AD:99:E2:B8:2D:FD:5D:87:D4:36:44:4A:5B:3E:EE:EA:F2:BE:BE:72:3B:66:4C:F2:57:3C:0D:FF a=setup:passive a=mid:1 a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 a=sendonly a=msid:virtual-6667 virtual-6667 a=rtcp-mux a=rtpmap:111 opus/48000/2 a=fmtp:111 minptime=10;useinbandfec=1 a=ssrc:6667 cname:6667 ` |
+| ` m=audio 9 UDP/TLS/RTP/SAVPF 111 63 9 0 8 13 110 126 c=IN IP4 0.0.0.0 a=rtcp:9 IN IP4 0.0.0.0 a=ice-ufrag:0HPF a=ice-pwd:GcBv48eO/q64iPxb7MHKS87y a=ice-options:trickle a=fingerprint:sha-256 71:0A:DD:DF:D1:63:8E:D5:CB:E6:2B:6D:41:1D:D4:EE:79:B2:95:97:8A:F0:64:FF:10:37:8D:41:ED:DB:EC:C4 a=setup:actpass a=mid:2 a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid a=recvonly a=rtcp-mux a=rtcp-rsize a=rtpmap:111 opus/48000/2 a=rtcp-fb:111 transport-cc a=fmtp:111 minptime=10;useinbandfec=1 a=rtpmap:63 red/48000/2 a=fmtp:63 111/111 a=rtpmap:9 G722/8000 a=rtpmap:0 PCMU/8000 a=rtpmap:8 PCMA/8000 a=rtpmap:13 CN/8000 a=rtpmap:110 telephone-event/48000 a=rtpmap:126 telephone-event/8000 ` | ` m=audio 9 UDP/TLS/RTP/SAVPF 111 c=IN IP4 0.0.0.0 a=rtcp:9 IN IP4 0.0.0.0 a=ice-ufrag:K8mRD3UolM6pjwoKAhgCCIoBnCgCIAEQ a=ice-pwd:+7DfqMEDEFB6dLAKfGjT41l7ygg= a=fingerprint:sha-256 32:C0:9D:17:AD:99:E2:B8:2D:FD:5D:87:D4:36:44:4A:5B:3E:EE:EA:F2:BE:BE:72:3B:66:4C:F2:57:3C:0D:FF a=setup:passive a=mid:2 a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 a=sendonly a=msid:virtual-6668 virtual-6668 a=rtcp-mux a=rtpmap:111 opus/48000/2 a=fmtp:111 minptime=10;useinbandfec=1 a=ssrc:6668 cname:6668 ` |
+| ` m=application 9 UDP/DTLS/SCTP webrtc-datachannel c=IN IP4 0.0.0.0 a=ice-ufrag:0HPF a=ice-pwd:GcBv48eO/q64iPxb7MHKS87y a=ice-options:trickle a=fingerprint:sha-256 71:0A:DD:DF:D1:63:8E:D5:CB:E6:2B:6D:41:1D:D4:EE:79:B2:95:97:8A:F0:64:FF:10:37:8D:41:ED:DB:EC:C4 a=setup:actpass a=mid:3 a=sctp-port:5000 a=max-message-size:262144 ` | ` m=application 9 DTLS/SCTP 5000 c=IN IP4 0.0.0.0 a=ice-ufrag:K8mRD3UolM6pjwoKAhgCCIoBnCgCIAEQ a=ice-pwd:+7DfqMEDEFB6dLAKfGjT41l7ygg= a=fingerprint:sha-256 32:C0:9D:17:AD:99:E2:B8:2D:FD:5D:87:D4:36:44:4A:5B:3E:EE:EA:F2:BE:BE:72:3B:66:4C:F2:57:3C:0D:FF a=setup:passive a=mid:3 a=sctpmap:5000 webrtc-datachannel 1024 ` |
+| ` m=video 9 UDP/TLS/RTP/SAVPF 96 97 98 99 100 101 35 36 37 38 102 103 104 105 106 107 108 109 127 125 39 40 41 42 43 44 45 46 47 48 112 113 114 115 116 117 118 49 c=IN IP4 0.0.0.0 a=rtcp:9 IN IP4 0.0.0.0 a=ice-ufrag:0HPF a=ice-pwd:GcBv48eO/q64iPxb7MHKS87y a=ice-options:trickle a=fingerprint:sha-256 71:0A:DD:DF:D1:63:8E:D5:CB:E6:2B:6D:41:1D:D4:EE:79:B2:95:97:8A:F0:64:FF:10:37:8D:41:ED:DB:EC:C4 a=setup:actpass a=mid:4 a=extmap:14 urn:ietf:params:rtp-hdrext:toffset a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time a=extmap:13 urn:3gpp:video-orientation a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 a=extmap:5 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/video-content-type a=extmap:7 http://www.webrtc.org/experiments/rtp-hdrext/video-timing a=extmap:8 http://www.webrtc.org/experiments/rtp-hdrext/color-space a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid a=extmap:10 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id a=extmap:11 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id a=recvonly a=rtcp-mux a=rtcp-rsize a=rtpmap:96 VP8/90000 a=rtcp-fb:96 goog-remb a=rtcp-fb:96 transport-cc a=rtcp-fb:96 ccm fir a=rtcp-fb:96 nack a=rtcp-fb:96 nack pli a=rtpmap:97 rtx/90000 a=fmtp:97 apt=96 a=rtpmap:98 VP9/90000 a=rtcp-fb:98 goog-remb a=rtcp-fb:98 transport-cc a=rtcp-fb:98 ccm fir a=rtcp-fb:98 nack a=rtcp-fb:98 nack pli a=fmtp:98 profile-id=0 a=rtpmap:99 rtx/90000 a=fmtp:99 apt=98 a=rtpmap:100 VP9/90000 a=rtcp-fb:100 goog-remb a=rtcp-fb:100 transport-cc a=rtcp-fb:100 ccm fir a=rtcp-fb:100 nack a=rtcp-fb:100 nack pli a=fmtp:100 profile-id=2 a=rtpmap:101 rtx/90000 a=fmtp:101 apt=100 a=rtpmap:35 VP9/90000 a=rtcp-fb:35 goog-remb a=rtcp-fb:35 transport-cc a=rtcp-fb:35 ccm fir a=rtcp-fb:35 nack a=rtcp-fb:35 nack pli a=fmtp:35 profile-id=1 a=rtpmap:36 rtx/90000 a=fmtp:36 apt=35 a=rtpmap:37 VP9/90000 a=rtcp-fb:37 goog-remb a=rtcp-fb:37 transport-cc a=rtcp-fb:37 ccm fir a=rtcp-fb:37 nack a=rtcp-fb:37 nack pli a=fmtp:37 profile-id=3 a=rtpmap:38 rtx/90000 a=fmtp:38 apt=37 a=rtpmap:102 H264/90000 a=rtcp-fb:102 goog-remb a=rtcp-fb:102 transport-cc a=rtcp-fb:102 ccm fir a=rtcp-fb:102 nack a=rtcp-fb:102 nack pli a=fmtp:102 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f a=rtpmap:103 rtx/90000 a=fmtp:103 apt=102 a=rtpmap:104 H264/90000 a=rtcp-fb:104 goog-remb a=rtcp-fb:104 transport-cc a=rtcp-fb:104 ccm fir a=rtcp-fb:104 nack a=rtcp-fb:104 nack pli a=fmtp:104 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42001f a=rtpmap:105 rtx/90000 a=fmtp:105 apt=104 a=rtpmap:106 H264/90000 a=rtcp-fb:106 goog-remb a=rtcp-fb:106 transport-cc a=rtcp-fb:106 ccm fir a=rtcp-fb:106 nack a=rtcp-fb:106 nack pli a=fmtp:106 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f a=rtpmap:107 rtx/90000 a=fmtp:107 apt=106 a=rtpmap:108 H264/90000 a=rtcp-fb:108 goog-remb a=rtcp-fb:108 transport-cc a=rtcp-fb:108 ccm fir a=rtcp-fb:108 nack a=rtcp-fb:108 nack pli a=fmtp:108 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f a=rtpmap:109 rtx/90000 a=fmtp:109 apt=108 a=rtpmap:127 H264/90000 a=rtcp-fb:127 goog-remb a=rtcp-fb:127 transport-cc a=rtcp-fb:127 ccm fir a=rtcp-fb:127 nack a=rtcp-fb:127 nack pli a=fmtp:127 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f a=rtpmap:125 rtx/90000 a=fmtp:125 apt=127 a=rtpmap:39 H264/90000 a=rtcp-fb:39 goog-remb a=rtcp-fb:39 transport-cc a=rtcp-fb:39 ccm fir a=rtcp-fb:39 nack a=rtcp-fb:39 nack pli a=fmtp:39 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=4d001f a=rtpmap:40 rtx/90000 a=fmtp:40 apt=39 a=rtpmap:41 H264/90000 a=rtcp-fb:41 goog-remb a=rtcp-fb:41 transport-cc a=rtcp-fb:41 ccm fir a=rtcp-fb:41 nack a=rtcp-fb:41 nack pli a=fmtp:41 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=f4001f a=rtpmap:42 rtx/90000 a=fmtp:42 apt=41 a=rtpmap:43 H264/90000 a=rtcp-fb:43 goog-remb a=rtcp-fb:43 transport-cc a=rtcp-fb:43 ccm fir a=rtcp-fb:43 nack a=rtcp-fb:43 nack pli a=fmtp:43 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=f4001f a=rtpmap:44 rtx/90000 a=fmtp:44 apt=43 a=rtpmap:45 AV1/90000 a=rtcp-fb:45 goog-remb a=rtcp-fb:45 transport-cc a=rtcp-fb:45 ccm fir a=rtcp-fb:45 nack a=rtcp-fb:45 nack pli a=fmtp:45 level-idx=5;profile=0;tier=0 a=rtpmap:46 rtx/90000 a=fmtp:46 apt=45 a=rtpmap:47 AV1/90000 a=rtcp-fb:47 goog-remb a=rtcp-fb:47 transport-cc a=rtcp-fb:47 ccm fir a=rtcp-fb:47 nack a=rtcp-fb:47 nack pli a=fmtp:47 level-idx=5;profile=1;tier=0 a=rtpmap:48 rtx/90000 a=fmtp:48 apt=47 a=rtpmap:112 H264/90000 a=rtcp-fb:112 goog-remb a=rtcp-fb:112 transport-cc a=rtcp-fb:112 ccm fir a=rtcp-fb:112 nack a=rtcp-fb:112 nack pli a=fmtp:112 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f a=rtpmap:113 rtx/90000 a=fmtp:113 apt=112 a=rtpmap:114 H264/90000 a=rtcp-fb:114 goog-remb a=rtcp-fb:114 transport-cc a=rtcp-fb:114 ccm fir a=rtcp-fb:114 nack a=rtcp-fb:114 nack pli a=fmtp:114 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=64001f a=rtpmap:115 rtx/90000 a=fmtp:115 apt=114 a=rtpmap:116 red/90000 a=rtpmap:117 rtx/90000 a=fmtp:117 apt=116 a=rtpmap:118 ulpfec/90000 a=rtpmap:49 flexfec-03/90000 a=rtcp-fb:49 goog-remb a=rtcp-fb:49 transport-cc a=fmtp:49 repair-window=10000000 ` | ` m=video 9 UDP/TLS/RTP/SAVPF 96 97 98 99 c=IN IP4 0.0.0.0 a=rtcp:9 IN IP4 0.0.0.0 a=ice-ufrag:K8mRD3UolM6pjwoKAhgCCIoBnCgCIAEQ a=ice-pwd:+7DfqMEDEFB6dLAKfGjT41l7ygg= a=fingerprint:sha-256 32:C0:9D:17:AD:99:E2:B8:2D:FD:5D:87:D4:36:44:4A:5B:3E:EE:EA:F2:BE:BE:72:3B:66:4C:F2:57:3C:0D:FF a=setup:passive a=mid:4 a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time a=extmap:13 urn:3gpp:video-orientation a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 a=sendonly a=msid:virtual-video-7777/7777 virtual-video-7777/7777 a=rtcp-mux a=rtpmap:96 VP8/90000 a=rtcp-fb:96 ccm fir a=rtcp-fb:96 nack a=rtcp-fb:96 nack pli a=rtcp-fb:96 goog-remb a=rtpmap:97 rtx/90000 a=fmtp:97 apt=96 a=rtpmap:98 VP9/90000 a=rtcp-fb:98 ccm fir a=rtcp-fb:98 nack a=rtcp-fb:98 nack pli a=rtcp-fb:98 goog-remb a=fmtp:98 profile-id=0 a=rtpmap:99 rtx/90000 a=fmtp:99 apt=98 a=ssrc-group:FID 7777 7778 a=ssrc:7777 cname:7777 a=ssrc:7778 cname:7777 ` |
+
+## Related topics
+
+- [Get started](https://developers.google.com/workspace/meet/media-api/guides/get-started)

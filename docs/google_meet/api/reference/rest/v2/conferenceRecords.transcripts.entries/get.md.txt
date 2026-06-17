@@ -1,0 +1,41 @@
+# Method: conferenceRecords.transcripts.entries.get
+
+- [HTTP request](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/get#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/get#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/get#body.request_body)
+- [Response body](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/get#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/get#body.aspect)
+- [Try it!](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/get#try-it)
+
+Gets a `TranscriptEntry` resource by entry ID.
+
+Note: The transcript entries returned by the Google Meet API might not match the transcription found in the Google Docs transcript file. This can occur when 1) we have interleaved speakers within milliseconds, or 2) the Google Docs transcript file is modified after generation.
+
+### HTTP request
+
+`GET https://meet.googleapis.com/v2/{name=conferenceRecords/*/transcripts/*/entries/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. Resource name of the `TranscriptEntry`. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries#TranscriptEntry`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/meetings.space.created`
+- `https://www.googleapis.com/auth/meetings.space.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/guides/configure-oauth-consent).

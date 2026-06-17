@@ -1,0 +1,788 @@
+This guide explains how to get details about participants who attended a past
+conference or who are in an active conference, along with their session info,
+using the Google Meet REST API.
+
+A [participant](https://developers.google.com/workspace/meet/api/guides/overview#participant) is a person
+joined to a call or that uses [Companion
+mode](https://support.google.com/meet/answer/11295507), watching as a viewer, or
+a room device connected to a call. There's one
+[`participants`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants)
+resource for each person.
+
+A [participant session](https://developers.google.com/workspace/meet/api/guides/overview#participant-session)
+is a unique session ID created for each participant-device pair that joins a
+call. There's one
+[`participantSessions`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions)
+resource for each session. If the participant joins the same call multiple times
+from the same participant-device pair, they're each assigned unique session IDs.
+
+If you're a meeting space owner or participant, you can call the `get` and
+`list` methods on both the `participants` and the `participantSessions`
+resources to retrieve participant records.
+
+Authenticating and authorizing with [user
+credentials](https://developers.google.com/workspace/meet/api/guides/authenticate-authorize) lets
+Google Meet apps access user data and perform operations on the authenticated
+user's behalf. Authenticating with [domain-wide
+delegation](https://developers.google.com/workspace/meet/api/guides/authenticate-authorize#domain-wide-delegation)
+lets you authorize an application's service account to access your users' data
+without requiring each user to give consent.
+
+## Participants
+
+The following sections detail how to get information about participants in a
+conference record.
+
+The
+[`participants`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants)
+resource unions with the `user` field. A `user` can be only one of the following
+objects:
+
+- A [`signedinUser`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#signedinuser)
+  is either:
+
+  - An individual joining from a personal computer, a mobile device, or
+    through Companion mode.
+
+  - A robot account used by conference room devices.
+
+- An
+  [`anonymousUser`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#anonymoususer)
+  is an unidentified user who's not signed in to a Google Account.
+
+- A
+  [`phoneUser`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#phoneuser)
+  is a user dialing in from a phone where the user's identity is unknown
+  because they haven't signed in with a Google Account.
+
+Note that while all three objects return a `displayName`, `signedinUser` also
+returns a unique `user` ID that's interoperable with the Admin SDK API and the
+People API. Format: `users/{user}`. For more information on using the `user`
+ID with the People API, see [Retrieve participant details with the
+People API](https://developers.google.com/workspace/meet/api/guides/participants#participant-details-people-api).
+
+### Get details about a participant
+
+To get details about a specific participant, use the
+[`get`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants/get)
+method on the
+[`participants`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants)
+resource. Set the `name` path parameter using the format
+`conferenceRecords/{conferenceRecord}/participants/{participantRecord}`.
+
+If you don't know the participant name, you can [list all participant
+names](https://developers.google.com/workspace/meet/api/guides/participants#list-participants) using the `list` method.
+
+The method returns a participant data as an instance of a `participants`
+resource.
+
+The following code sample shows how to retrieve a specific participant:
+
+### Java
+
+java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/getparticipant/AsyncGetParticipant.java [View on GitHub](https://github.com/googleapis/google-cloud-java/blob/main/java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/getparticipant/AsyncGetParticipant.java)
+
+```java
+import com.google.api.core.ApiFuture;
+import com.google.apps.meet.v2.ConferenceRecordsServiceClient;
+import com.google.apps.meet.v2.GetParticipantRequest;
+import com.google.apps.meet.v2.Participant;
+import com.google.apps.meet.v2.ParticipantName;
+
+public class AsyncGetParticipant {
+
+  public static void main(String[] args) throws Exception {
+    asyncGetParticipant();
+  }
+
+  public static void asyncGetParticipant() throws Exception {
+    // This snippet has been automatically generated and should be regarded as a code template only.
+    // It will require modifications to work:
+    // - It may require correct/in-range values for request initialization.
+    // - It may require specifying regional endpoints when creating the service client as shown in
+    // https://cloud.google.com/java/docs/setup#configure_endpoints_for_the_client_library
+    try (ConferenceRecordsServiceClient conferenceRecordsServiceClient =
+        ConferenceRecordsServiceClient.create()) {
+      GetParticipantRequest request =
+          GetParticipantRequest.newBuilder()
+              .setName(ParticipantName.of("[CONFERENCE_RECORD]", "[PARTICIPANT]").toString())
+              .build();
+      ApiFuture<Participant> future =
+          conferenceRecordsServiceClient.getParticipantCallable().futureCall(request);
+      // Do something.
+      Participant response = future.get();
+    }
+  }
+}
+```
+
+### Node.js
+
+packages/google-apps-meet/samples/generated/v2/conference_records_service.get_participant.js [View on GitHub](https://github.com/googleapis/google-cloud-node/blob/main/packages/google-apps-meet/samples/generated/v2/conference_records_service.get_participant.js)
+
+```javascript
+/**
+ * This snippet has been automatically generated and should be regarded as a code template only.
+ * It will require modifications to work.
+ * It may require correct/in-range values for request initialization.
+ * TODO(developer): Uncomment these variables before running the sample.
+ */
+/**
+ *  Required. Resource name of the participant.
+ */
+// const name = 'abc123'
+
+// Imports the Meet library
+const {ConferenceRecordsServiceClient} = require('@google-apps/meet').v2;
+
+// Instantiates a client
+const meetClient = new ConferenceRecordsServiceClient();
+
+async function callGetParticipant() {
+  // Construct request
+  const request = {
+    name,
+  };
+
+  // Run request
+  const response = await meetClient.getParticipant(request);
+  console.log(response);
+}
+
+callGetParticipant();
+```
+
+### Python
+
+packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_get_participant_async.py [View on GitHub](https://github.com/googleapis/google-cloud-python/blob/main/packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_get_participant_async.py)
+
+```python
+# This snippet has been automatically generated and should be regarded as a
+# code template only.
+# It will require modifications to work:
+# - It may require correct/in-range values for request initialization.
+# - It may require specifying regional endpoints when creating the service
+#   client as shown in:
+#   https://googleapis.dev/python/google-api-core/latest/client_options.html
+from google.apps import meet_v2
+
+
+async def sample_get_participant():
+    # Create a client
+    client = meet_v2.ConferenceRecordsServiceAsyncClient()
+
+    # Initialize request argument(s)
+    request = meet_v2.GetParticipantRequest(
+        name="name_value",
+    )
+
+    # Make the request
+    response = await client.get_participant(request=request)
+
+    # Handle the response
+    print(response)
+```
+
+### cURL
+
+    curl -X GET "https://meet.googleapis.com/v2/conferenceRecords/CONFERENCE_RECORD_NAME/participants/PARTICIPANT_NAME" \
+    -H "Authorization: Bearer ACCESS_TOKEN"
+
+Replace <var translate="no">ACCESS_TOKEN</var> with the access token that grants access to the API.
+
+Replace the following:
+
+- The conference record name with the name of the specific conference ID in a conference record.
+- The participant name with the name of the specific participant ID in a conference record.
+
+### List all participants
+
+To list details about all participants in a conference record, use the
+[`list`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants/list)
+method on the
+[`participants`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants)
+resource. Set the `parent` path parameter using the format
+`conferenceRecords/{conferenceRecord}`.
+
+The method returns a list of conference participants, ordered by
+`earliestStartTime` in descending order, as an instance of a `participants`
+resource. To adjust the page size and filter the query results, see [Customize
+pagination or filter the participants list](https://developers.google.com/workspace/meet/api/guides/participants#customize-pagination-participants).
+
+The following code sample shows how to list all participants in a conference
+record:
+
+### Java
+
+java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/listparticipants/AsyncListParticipants.java [View on GitHub](https://github.com/googleapis/google-cloud-java/blob/main/java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/listparticipants/AsyncListParticipants.java)
+
+```java
+import com.google.api.core.ApiFuture;
+import com.google.apps.meet.v2.ConferenceRecordName;
+import com.google.apps.meet.v2.ConferenceRecordsServiceClient;
+import com.google.apps.meet.v2.ListParticipantsRequest;
+import com.google.apps.meet.v2.Participant;
+
+public class AsyncListParticipants {
+
+  public static void main(String[] args) throws Exception {
+    asyncListParticipants();
+  }
+
+  public static void asyncListParticipants() throws Exception {
+    // This snippet has been automatically generated and should be regarded as a code template only.
+    // It will require modifications to work:
+    // - It may require correct/in-range values for request initialization.
+    // - It may require specifying regional endpoints when creating the service client as shown in
+    // https://cloud.google.com/java/docs/setup#configure_endpoints_for_the_client_library
+    try (ConferenceRecordsServiceClient conferenceRecordsServiceClient =
+        ConferenceRecordsServiceClient.create()) {
+      ListParticipantsRequest request =
+          ListParticipantsRequest.newBuilder()
+              .setParent(ConferenceRecordName.of("[CONFERENCE_RECORD]").toString())
+              .setPageSize(883849137)
+              .setPageToken("pageToken873572522")
+              .setFilter("filter-1274492040")
+              .build();
+      ApiFuture<Participant> future =
+          conferenceRecordsServiceClient.listParticipantsPagedCallable().futureCall(request);
+      // Do something.
+      for (Participant element : future.get().iterateAll()) {
+        // doThingsWith(element);
+      }
+    }
+  }
+}
+```
+
+### Node.js
+
+packages/google-apps-meet/samples/generated/v2/conference_records_service.list_participants.js [View on GitHub](https://github.com/googleapis/google-cloud-node/blob/main/packages/google-apps-meet/samples/generated/v2/conference_records_service.list_participants.js)
+
+```javascript
+/**
+ * This snippet has been automatically generated and should be regarded as a code template only.
+ * It will require modifications to work.
+ * It may require correct/in-range values for request initialization.
+ * TODO(developer): Uncomment these variables before running the sample.
+ */
+/**
+ *  Required. Format: `conferenceRecords/{conference_record}`
+ */
+// const parent = 'abc123'
+/**
+ *  Maximum number of participants to return. The service might return fewer
+ *  than this value.
+ *  If unspecified, at most 100 participants are returned.
+ *  The maximum value is 250; values above 250 are coerced to 250.
+ *  Maximum might change in the future.
+ */
+// const pageSize = 1234
+/**
+ *  Page token returned from previous List Call.
+ */
+// const pageToken = 'abc123'
+/**
+ *  Optional. User specified filtering condition in EBNF
+ *  format (https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form).
+ *  The following are the filterable fields:
+ *  * `earliest_start_time`
+ *  * `latest_end_time`
+ *  For example, `latest_end_time IS NULL` returns active participants in
+ *  the conference.
+ */
+// const filter = 'abc123'
+
+// Imports the Meet library
+const {ConferenceRecordsServiceClient} = require('@google-apps/meet').v2;
+
+// Instantiates a client
+const meetClient = new ConferenceRecordsServiceClient();
+
+async function callListParticipants() {
+  // Construct request
+  const request = {
+    parent,
+  };
+
+  // Run request
+  const iterable = meetClient.listParticipantsAsync(request);
+  for await (const response of iterable) {
+      console.log(response);
+  }
+}
+
+callListParticipants();
+```
+
+### Python
+
+packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_list_participants_async.py [View on GitHub](https://github.com/googleapis/google-cloud-python/blob/main/packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_list_participants_async.py)
+
+```python
+# This snippet has been automatically generated and should be regarded as a
+# code template only.
+# It will require modifications to work:
+# - It may require correct/in-range values for request initialization.
+# - It may require specifying regional endpoints when creating the service
+#   client as shown in:
+#   https://googleapis.dev/python/google-api-core/latest/client_options.html
+from google.apps import meet_v2
+
+
+async def sample_list_participants():
+    # Create a client
+    client = meet_v2.ConferenceRecordsServiceAsyncClient()
+
+    # Initialize request argument(s)
+    request = meet_v2.ListParticipantsRequest(
+        parent="parent_value",
+    )
+
+    # Make the request
+    page_result = client.list_participants(request=request)
+
+    # Handle the response
+    async for response in page_result:
+        print(response)
+```
+
+### cURL
+
+    curl -X GET "https://meet.googleapis.com/v2/conferenceRecords/PARENT_NAME/participants" \
+    -H "Authorization: Bearer ACCESS_TOKEN"
+
+Replace <var translate="no">ACCESS_TOKEN</var> with the access token that grants access to the API.
+
+Replace the parent name with the name of the specific conference ID in a
+conference record.
+
+### Customize pagination or filter the participants list
+
+Pass the following query parameters to customize pagination of, or filter,
+participants:
+
+- `pageSize`: The maximum number of participants to return. The service might
+  return fewer than this value. If unspecified, at most 100 participants are
+  returned. The maximum value is 250; values more than 250 are automatically
+  changed to 250.
+
+- `pageToken`: A page token, received from a previous list call. Provide this
+  token to retrieve the subsequent page.
+
+- `filter`: Optional. A query filter to retrieve specific items in the
+  `participants` resource results.
+
+  You can use the `earliestStartTime` or `latestEndTime` fields to filter for
+  users who joined before or left after a certain time. Both fields use the
+  [Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp)
+  format in [RFC 3339](https://www.ietf.org/rfc/rfc3339.txt) UTC "Zulu"
+  format, with nanosecond resolution and up to nine fractional digits:
+  `{year}-{month}-{day}T{hour}:{min}:{sec}[.{frac_sec}]Z`. For example:
+  - `earliestStartTime < 2023-10-01T15:01:23Z`
+  - `latestEndTime < 2023-10-01T15:01:23Z`
+
+  To list all active participants in an existing conference, use
+  `latestEndTime IS NULL`.
+
+### Retrieve participant details with the People API
+
+To retrieve details about a participant, use the
+[`get`](https://developers.google.com/people/api/rest/v1/people/get) method on the
+[`people`](https://developers.google.com/people/api/rest/v1/people) resource in the People API.
+
+1. Extract the ID of the person from the `participant` resource using the
+   trailing component of the path. For example, if the `participant` resource
+   value is `conferenceRecords/abc-123/participants/12345` the ID for the
+   People API is `12345`.
+
+2. Include the `READ_SOURCE_TYPE_PROFILE`, `READ_SOURCE_TYPE_CONTACT`, and
+   `READ_SOURCE_TYPE_OTHER_CONTACT`
+   [`ReadSourceType`](https://developers.google.com/people/api/rest/v1/ReadSourceType). This makes sure both
+   internal users to a Google Workspace organization and external contacts
+   are included in the response.
+
+> [!CAUTION]
+> **Caution:** For privacy reasons, profile information might not be available for all participants.
+
+The following code sample shows how to search both organization profiles and
+contacts for a person:
+
+### cURL
+
+    curl \
+       'https://people.googleapis.com/v1/people/PERSON_ID?personFields=names%2CemailAddresses&sources=READ_SOURCE_TYPE_OTHER_CONTACT&sources=READ_SOURCE_TYPE_PROFILE&sources=READ_SOURCE_TYPE_CONTACT' \
+       --header 'Authorization: Bearer ACCESS_TOKEN' \
+       --header 'Accept: application/json' \
+       --compressed
+
+Replace the following:
+
+- <var translate="no">PERSON_ID</var>: the ID of the person to find.
+- <var translate="no">ACCESS_TOKEN</var>: the access token that grants access to multiple APIs.
+
+## Participant sessions
+
+The following sections detail how to get information about participant sessions
+of a participant in a conference record.
+
+### Get details about a participant session
+
+To get details about a specific participant session, use the
+[`get`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/get)
+method on the
+[`participantSessions`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions)
+resource. Set the `name` path parameter using the format
+`conferenceRecords/{conferenceRecord}/participants/{participantRecord}/participantSessions/{participantSessionRecord}`.
+
+If you don't know the participant session name, you can [list all participant
+sessions of a participant](https://developers.google.com/workspace/meet/api/guides/participants#list-participant-sessions) using the `list` method.
+
+The method returns a participant name as an instance of a `participantSessions`
+resource.
+
+The following code sample shows how to retrieve a specific participant session:
+
+### Java
+
+java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/getparticipantsession/AsyncGetParticipantSession.java [View on GitHub](https://github.com/googleapis/google-cloud-java/blob/main/java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/getparticipantsession/AsyncGetParticipantSession.java)
+
+```java
+import com.google.api.core.ApiFuture;
+import com.google.apps.meet.v2.ConferenceRecordsServiceClient;
+import com.google.apps.meet.v2.GetParticipantSessionRequest;
+import com.google.apps.meet.v2.ParticipantSession;
+import com.google.apps.meet.v2.ParticipantSessionName;
+
+public class AsyncGetParticipantSession {
+
+  public static void main(String[] args) throws Exception {
+    asyncGetParticipantSession();
+  }
+
+  public static void asyncGetParticipantSession() throws Exception {
+    // This snippet has been automatically generated and should be regarded as a code template only.
+    // It will require modifications to work:
+    // - It may require correct/in-range values for request initialization.
+    // - It may require specifying regional endpoints when creating the service client as shown in
+    // https://cloud.google.com/java/docs/setup#configure_endpoints_for_the_client_library
+    try (ConferenceRecordsServiceClient conferenceRecordsServiceClient =
+        ConferenceRecordsServiceClient.create()) {
+      GetParticipantSessionRequest request =
+          GetParticipantSessionRequest.newBuilder()
+              .setName(
+                  ParticipantSessionName.of(
+                          "[CONFERENCE_RECORD]", "[PARTICIPANT]", "[PARTICIPANT_SESSION]")
+                      .toString())
+              .build();
+      ApiFuture<ParticipantSession> future =
+          conferenceRecordsServiceClient.getParticipantSessionCallable().futureCall(request);
+      // Do something.
+      ParticipantSession response = future.get();
+    }
+  }
+}
+```
+
+### Node.js
+
+packages/google-apps-meet/samples/generated/v2/conference_records_service.get_participant_session.js [View on GitHub](https://github.com/googleapis/google-cloud-node/blob/main/packages/google-apps-meet/samples/generated/v2/conference_records_service.get_participant_session.js)
+
+```javascript
+/**
+ * This snippet has been automatically generated and should be regarded as a code template only.
+ * It will require modifications to work.
+ * It may require correct/in-range values for request initialization.
+ * TODO(developer): Uncomment these variables before running the sample.
+ */
+/**
+ *  Required. Resource name of the participant.
+ */
+// const name = 'abc123'
+
+// Imports the Meet library
+const {ConferenceRecordsServiceClient} = require('@google-apps/meet').v2;
+
+// Instantiates a client
+const meetClient = new ConferenceRecordsServiceClient();
+
+async function callGetParticipantSession() {
+  // Construct request
+  const request = {
+    name,
+  };
+
+  // Run request
+  const response = await meetClient.getParticipantSession(request);
+  console.log(response);
+}
+
+callGetParticipantSession();
+```
+
+### Python
+
+packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_get_participant_session_async.py [View on GitHub](https://github.com/googleapis/google-cloud-python/blob/main/packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_get_participant_session_async.py)
+
+```python
+# This snippet has been automatically generated and should be regarded as a
+# code template only.
+# It will require modifications to work:
+# - It may require correct/in-range values for request initialization.
+# - It may require specifying regional endpoints when creating the service
+#   client as shown in:
+#   https://googleapis.dev/python/google-api-core/latest/client_options.html
+from google.apps import meet_v2
+
+
+async def sample_get_participant_session():
+    # Create a client
+    client = meet_v2.ConferenceRecordsServiceAsyncClient()
+
+    # Initialize request argument(s)
+    request = meet_v2.GetParticipantSessionRequest(
+        name="name_value",
+    )
+
+    # Make the request
+    response = await client.get_participant_session(request=request)
+
+    # Handle the response
+    print(response)
+```
+
+### cURL
+
+    curl -X GET "https://meet.googleapis.com/v2/conferenceRecords/CONFERENCE_RECORD_NAME/participants/PARTICIPANT_NAME/participantSessions/PARTICIPANT_SESSION_ID" \
+    -H "Authorization: Bearer ACCESS_TOKEN"
+
+Replace <var translate="no">ACCESS_TOKEN</var> with the access token that grants access to the API.
+
+Replace the following:
+
+- The conference record name with the name of the specific conference ID in a conference record.
+- The participant name with the name of the specific participant ID in a conference record.
+- The participant session ID with the ID of the specific participant session.
+
+### List all participant sessions
+
+To list details about all participant sessions of a participant in a conference
+record, use the
+[`list()`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list)
+method on the
+[`participantSessions`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions)
+resource. Set the `parent` path parameter using the format
+`conferenceRecords/{conferenceRecord}/participants/{participantRecord}`.
+
+The method returns a list of participant sessions, ordered by `startTime` in
+descending order, as an instance of a `participantSession` resource. To adjust
+the page size and filter the query results, see [Customize pagination or filter
+the participant sessions list](https://developers.google.com/workspace/meet/api/guides/participants#customize-pagination-participant-sessions).
+
+The following code sample shows how to list all participant sessions in a
+conference record:
+
+### Java
+
+java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/listparticipantsessions/AsyncListParticipantSessions.java [View on GitHub](https://github.com/googleapis/google-cloud-java/blob/main/java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/listparticipantsessions/AsyncListParticipantSessions.java)
+
+```java
+import com.google.api.core.ApiFuture;
+import com.google.apps.meet.v2.ConferenceRecordsServiceClient;
+import com.google.apps.meet.v2.ListParticipantSessionsRequest;
+import com.google.apps.meet.v2.ParticipantName;
+import com.google.apps.meet.v2.ParticipantSession;
+
+public class AsyncListParticipantSessions {
+
+  public static void main(String[] args) throws Exception {
+    asyncListParticipantSessions();
+  }
+
+  public static void asyncListParticipantSessions() throws Exception {
+    // This snippet has been automatically generated and should be regarded as a code template only.
+    // It will require modifications to work:
+    // - It may require correct/in-range values for request initialization.
+    // - It may require specifying regional endpoints when creating the service client as shown in
+    // https://cloud.google.com/java/docs/setup#configure_endpoints_for_the_client_library
+    try (ConferenceRecordsServiceClient conferenceRecordsServiceClient =
+        ConferenceRecordsServiceClient.create()) {
+      ListParticipantSessionsRequest request =
+          ListParticipantSessionsRequest.newBuilder()
+              .setParent(ParticipantName.of("[CONFERENCE_RECORD]", "[PARTICIPANT]").toString())
+              .setPageSize(883849137)
+              .setPageToken("pageToken873572522")
+              .setFilter("filter-1274492040")
+              .build();
+      ApiFuture<ParticipantSession> future =
+          conferenceRecordsServiceClient.listParticipantSessionsPagedCallable().futureCall(request);
+      // Do something.
+      for (ParticipantSession element : future.get().iterateAll()) {
+        // doThingsWith(element);
+      }
+    }
+  }
+}
+```
+
+### Node.js
+
+packages/google-apps-meet/samples/generated/v2/conference_records_service.list_participant_sessions.js [View on GitHub](https://github.com/googleapis/google-cloud-node/blob/main/packages/google-apps-meet/samples/generated/v2/conference_records_service.list_participant_sessions.js)
+
+```javascript
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// ** This file is automatically generated by gapic-generator-typescript. **
+// ** https://github.com/googleapis/gapic-generator-typescript **
+// ** All changes to this file may be overwritten. **
+
+
+
+'use strict';
+
+function main(parent) {
+  /**
+   * This snippet has been automatically generated and should be regarded as a code template only.
+   * It will require modifications to work.
+   * It may require correct/in-range values for request initialization.
+   * TODO(developer): Uncomment these variables before running the sample.
+   */
+  /**
+   *  Required. Format:
+   *  `conferenceRecords/{conference_record}/participants/{participant}`
+   */
+  // const parent = 'abc123'
+  /**
+   *  Optional. Maximum number of participant sessions to return. The service
+   *  might return fewer than this value. If unspecified, at most 100
+   *  participants are returned. The maximum value is 250; values above 250 are
+   *  coerced to 250. Maximum might change in the future.
+   */
+  // const pageSize = 1234
+  /**
+   *  Optional. Page token returned from previous List Call.
+   */
+  // const pageToken = 'abc123'
+  /**
+   *  Optional. User specified filtering condition in EBNF
+   *  format (https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form).
+   *  The following are the filterable fields:
+   *  * `start_time`
+   *  * `end_time`
+   *  For example, `end_time IS NULL` returns active participant sessions in
+   *  the conference record.
+   */
+  // const filter = 'abc123'
+
+  // Imports the Meet library
+  const {ConferenceRecordsServiceClient} = require('@google-apps/meet').v2;
+
+  // Instantiates a client
+  const meetClient = new ConferenceRecordsServiceClient();
+
+  async function callListParticipantSessions() {
+    // Construct request
+    const request = {
+      parent,
+    };
+
+    // Run request
+    const iterable = meetClient.listParticipantSessionsAsync(request);
+    for await (const response of iterable) {
+        console.log(response);
+    }
+  }
+
+  callListParticipantSessions();
+}
+
+process.on('unhandledRejection', err => {
+  console.error(err.message);
+  process.exitCode = 1;
+});
+main(...process.argv.slice(2));
+```
+
+### Python
+
+packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_list_participant_sessions_async.py [View on GitHub](https://github.com/googleapis/google-cloud-python/blob/main/packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_list_participant_sessions_async.py)
+
+```python
+# This snippet has been automatically generated and should be regarded as a
+# code template only.
+# It will require modifications to work:
+# - It may require correct/in-range values for request initialization.
+# - It may require specifying regional endpoints when creating the service
+#   client as shown in:
+#   https://googleapis.dev/python/google-api-core/latest/client_options.html
+from google.apps import meet_v2
+
+
+async def sample_list_participant_sessions():
+    # Create a client
+    client = meet_v2.ConferenceRecordsServiceAsyncClient()
+
+    # Initialize request argument(s)
+    request = meet_v2.ListParticipantSessionsRequest(
+        parent="parent_value",
+    )
+
+    # Make the request
+    page_result = client.list_participant_sessions(request=request)
+
+    # Handle the response
+    async for response in page_result:
+        print(response)
+```
+
+### cURL
+
+    curl -X GET "https://meet.googleapis.com/v2/conferenceRecords/CONFERENCE_RECORD_NAME/participants/PARENT_NAME/participantSessions" \
+    -H "Authorization: Bearer ACCESS_TOKEN"
+
+Replace <var translate="no">ACCESS_TOKEN</var> with the access token that grants access to the API.
+
+Replace the following:
+
+- The conference record name with the name of the specific conference ID in a conference record.
+- The parent name with the name of the participant sessions of a participant in a conference record.
+
+### Customize pagination or filter the participant sessions list
+
+Pass the following optional query parameters to customize pagination of, or
+filter, participant sessions:
+
+- `pageSize`: The maximum number of participant sessions to return. The
+  service might return fewer than this value. If unspecified, at most 100
+  participant sessions are returned. The maximum value is 250; values more
+  than 250 are automatically changed to 250.
+
+- `pageToken`: A page token, received from a previous list call. Provide this
+  token to retrieve the subsequent page.
+
+- `filter`: Optional. A query filter to retrieve specific items in the
+  `participants` resource results.
+
+  You can use the `startTime` or `endTime` fields to filter for users who
+  joined before or left after a certain time. Both fields use the
+  [Timestamp](https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp)
+  format in [RFC 3339](https://www.ietf.org/rfc/rfc3339.txt) UTC "Zulu"
+  format, with nanosecond resolution and up to nine fractional digits:
+  `{year}-{month}-{day}T{hour}:{min}:{sec}[.{frac_sec}]Z`. For example:
+  - `startTime < 2023-10-01T15:01:23Z`
+  - `endTime < 2023-10-01T15:01:23Z`
+
+  To list all active participant sessions in the conference record, use
+  `endTime IS NULL`.

@@ -1,0 +1,54 @@
+# REST Resource: conferenceRecords.recordings
+
+- [Resource: Recording](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#Recording)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#Recording.SCHEMA_REPRESENTATION)
+- [DriveDestination](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#DriveDestination)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#DriveDestination.SCHEMA_REPRESENTATION)
+- [State](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#State)
+- [Methods](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#METHODS_SUMMARY)
+
+## Resource: Recording
+
+Metadata about a recording created during a conference.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "state": enum (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#State`), "startTime": string, "endTime": string, "driveDestination": { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#DriveDestination`) } } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Output only. Resource name of the recording. Format: `conferenceRecords/{conferenceRecord}/recordings/{recording}` where `{recording}` is a 1:1 mapping to each unique recording session during the conference. |
+| `state` | ``enum (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#State`)`` Output only. Current state. |
+| `startTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the recording started. |
+| `endTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the recording ended. |
+| Union field `destination`. `destination` can be only one of the following: ||
+| `driveDestination` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#DriveDestination`)`` Output only. Recording is saved to Google Drive as an MP4 file. The `driveDestination` includes the Drive `fileId` that can be used to download the file using the `files.get` method of the Drive API. |
+
+## DriveDestination
+
+Export location where a recording file is saved in Google Drive.
+
+| JSON representation |
+|---|
+| ``` { "file": string, "exportUri": string } ``` |
+
+| Fields ||
+|---|---|
+| `file` | `string` Output only. The `fileId` for the underlying MP4 file. For example, "1kuceFZohVoCh6FulBHxwy6I15Ogpc4hP". Use `$ GET https://www.googleapis.com/drive/v3/files/{$fileId}?alt=media` to download the blob. For more information, see <https://developers.google.com/drive/api/v3/reference/files/get>. |
+| `exportUri` | `string` Output only. Link used to play back the recording file in the browser. For example, `https://drive.google.com/file/d/{$fileId}/view`. |
+
+## State
+
+Current state of the recording session.
+
+| Enums ||
+|---|---|
+| `STATE_UNSPECIFIED` | Default, never used. |
+| `STARTED` | An active recording session has started. |
+| `ENDED` | This recording session has ended, but the recording file hasn't been generated yet. |
+| `FILE_GENERATED` | Recording file is generated and ready to download. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/get` | Gets a recording by recording ID. |
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list` | Lists the recording resources from the conference record. |

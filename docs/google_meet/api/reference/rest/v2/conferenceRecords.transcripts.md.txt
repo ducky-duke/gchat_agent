@@ -1,0 +1,39 @@
+# REST Resource: conferenceRecords.transcripts
+
+- [Resource: Transcript](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts#Transcript)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts#Transcript.SCHEMA_REPRESENTATION)
+- [State](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts#State)
+- [Methods](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts#METHODS_SUMMARY)
+
+## Resource: Transcript
+
+Metadata for a transcript generated from a conference. It refers to the ASR (Automatic Speech Recognition) result of user's speech during the conference.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "state": enum (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts#State`), "startTime": string, "endTime": string, "docsDestination": { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/DocsDestination`) } } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Output only. Resource name of the transcript. Format: `conferenceRecords/{conferenceRecord}/transcripts/{transcript}`, where `{transcript}` is a 1:1 mapping to each unique transcription session of the conference. |
+| `state` | ``enum (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts#State`)`` Output only. Current state. |
+| `startTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the transcript started. |
+| `endTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the transcript stopped. |
+| Union field `destination`. `destination` can be only one of the following: ||
+| `docsDestination` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/DocsDestination`)`` Output only. Where the Google Docs transcript is saved. |
+
+## State
+
+Current state of the transcript session.
+
+| Enums ||
+|---|---|
+| `STATE_UNSPECIFIED` | Default, never used. |
+| `STARTED` | An active transcript session has started. |
+| `ENDED` | This transcript session has ended, but the transcript file hasn't been generated yet. |
+| `FILE_GENERATED` | Transcript file is generated and ready to download. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts/get` | Gets a transcript by transcript ID. |
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts/list` | Lists the set of transcripts from the conference record. |

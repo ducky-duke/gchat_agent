@@ -1,0 +1,239 @@
+# Meet Media API overview
+
+> [!WARNING]
+> **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features.  
+>
+> **To use the Meet Media API to access real-time media from a conference, the Google Cloud project, OAuth principal, and all participants in the conference must be enrolled in the Developer Preview Program.**
+
+The Google Meet Media API lets you access real-time media from Google Meet
+conferences. This enables a variety of use cases, such as apps that document
+action items, offer real-time insights about the current meeting, or stream
+audio and video to a new surface.
+
+## Use cases
+
+Apps registered in the Google Cloud console can use the Meet Media API to
+connect to Meet conferences, enabling them to:
+
+- **Consume video streams** . *For example:*
+  - Feed video streams generated in Meet conferences into your own AI models.
+  - Filter streams for custom recordings.
+- **Consume audio streams** . *For example:*
+  - Feed audio directly into Gemini and create your own meeting AI chatbot.
+  - Feed audio streams generated in Meet conferences into your own transcription service
+  - Generate captions in various languages.
+  - Create model-generated sign language feeds from the captured audio.
+  - Create your own denoiser models to remove background and noisy artifacts from the conference.
+- **Consume participant metadata** . *For example:*
+  - Detect which participants are in the conference, allowing for better intelligence and analytics.
+
+> [!IMPORTANT]
+> **Important:** If your app doesn't require **real-time** access to media, you should consider using the [Google Meet REST API](https://developers.google.com/workspace/meet/api/guides/artifacts#recordings) instead. For more details, see [Appropriate
+> access](https://developers.google.com/workspace/meet/media-api/guides/get-started#access).
+
+## Meet Media API lifecycle
+
+The following images show the Meet Media API lifecycle:
+- ![Meet Media API bot tries to join at the third-party website.](https://developers.google.com/static/workspace/meet/media-api/images/media-api-lifecycle-1.jpg) **Figure 1.** The Meet Media API bot tries to join at the third-party website. The connection is rejected when underage accounts are present.
+- ![Encrypted meetings and meetings with a watermark.](https://developers.google.com/static/workspace/meet/media-api/images/media-api-lifecycle-2.jpg) **Figure 2.** Meetings can be marked as encrypted and have a watermark. Meet Media API cannot be connected when a meeting has encryption or a watermark.
+- ![Make sure the administrator setting is correct.](https://developers.google.com/static/workspace/meet/media-api/images/media-api-lifecycle-3.jpg) **Figure 3.** Make sure the administrator setting is correct.
+- ![Set up the meeting in Calendar.](https://developers.google.com/static/workspace/meet/media-api/images/media-api-lifecycle-4.jpg) **Figure 4.** Set up the meeting in Calendar. The host needs to give permission to the third-party app in the Calendar setting, otherwise the connection is rejected.
+- ![Setting change during the call.](https://developers.google.com/static/workspace/meet/media-api/images/media-api-lifecycle-5.jpg) **Figure 5.** A setting change during the call. If the host decides to turn off the Meet Media API setting during a call, the connection stops.
+- ![The initiator must be present during consumer meetings.](https://developers.google.com/static/workspace/meet/media-api/images/media-api-lifecycle-6.jpg) **Figure 6.** If the meeting owner has a consumer account (an account ending with @gmail.com), then the initiator must be present for the meeting to give consent otherwise the connection is rejected.
+- ![Connection established.](https://developers.google.com/static/workspace/meet/media-api/images/media-api-lifecycle-7.jpg) **Figure 7.** Once the connection is established, the host, co-host, or any participants in the same organization as the host see the initiation dialog.
+- ![Anyone can stop the Meet Media API during the call.](https://developers.google.com/static/workspace/meet/media-api/images/media-api-lifecycle-8.jpg) **Figure 8.** Anyone can stop the Meet Media API during the call.
+
+## Consenter requirements
+
+Meet Media API apps are only permitted into a meeting if there's someone in
+the call that's allowed to provide consent on behalf of the meeting.
+
+### For Google Workspace meetings
+
+In order to provide consent in Google Workspace meetings, you must be in the
+organization that owns the meeting. In most cases, the owner of the meeting is
+the same as the organizer. If the host or the initiator is in the meeting *and*
+are in the organization that owns the meeting, they're shown the start dialog
+preferentially.
+
+### For consumer meetings
+
+For meetings organized by Gmail accounts, the initiator must be in the meeting to provide consent.
+
+## Common terms
+
+*Cloud project number*
+:   An immutable generated `int64` identifier for a Google Cloud project. These values
+    are generated by the Google Cloud console for each registered app.
+
+*Conference*
+:   A server-generated instance of a call within a [meeting
+    space](https://developers.google.com/workspace/meet/media-api/guides/overview#meeting-space). Users typically consider this scenario a single
+    meeting.
+
+*Conference Resource Data Channel*
+
+:   Rather than requesting resources over HTTP, as with the
+    [Google Meet REST API](https://developers.google.com/workspace/meet/api/guides/overview), Meet Media API clients
+    request resources from the server over data channels.
+
+    A dedicated data channel may be opened for each resource type. Once opened,
+    the client can send requests over the channel. Resource updates will be
+    transmitted over the same channel.
+
+*Contributing Source (CSRC)*
+
+:   With [virtual media streams](https://developers.google.com/workspace/meet/media-api/guides/overview#vstreams), you can't assume that a media stream
+    always points to the same [participant](https://developers.google.com/workspace/meet/media-api/guides/overview#participant). The CSRC value in
+    each RTP packet's header identifies the true source of the packet.
+
+    Meet assigns each participant in a [conference](https://developers.google.com/workspace/meet/media-api/guides/overview#conference)
+    a unique CSRC value when they join. This value remains constant until they
+    leave.
+
+*Data channels*
+
+:   [WebRTC Data Channels](https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel)
+    enable the exchange of arbitrary data (text, files, etc) independently from
+    audio and video streams. Data Channels use the same connection as media
+    streams, providing an efficient way to add data exchange to WebRTC
+    applications.
+
+*Interactive Connectivity Establishment (ICE)*
+
+:   A protocol for establishing connectivity, finding all possible routes for two
+    computers to talk to each other through peer-to-peer (P2P) networking and
+    then makes sure you stay connected.
+
+*Media stream*
+
+:   A [WebRTC Media Stream](https://developer.mozilla.org/en-US/docs/Web/API/MediaStream)
+    represents a flow of media data, typically audio or video, captured from a
+    device like a camera or microphone. It consists of one or multiple
+    *media stream tracks*, each representing a single source of media such as a
+    video track or an audio track).
+
+*Media stream track*
+
+:   Consists of a single, unidirectional flow of RTP packets. A media stream track
+    can be audio or video, but not both. A bidirectional *Secure Real-time
+    Transport Protocol* (SRTP) connection typically consists of two media stream
+    tracks, egress from local to remote peer and ingress from remote peer to
+    local peer.
+
+*Meeting space*
+
+:   A virtual place or a persistent object (such as a meeting room) where a
+    [conference](https://developers.google.com/workspace/meet/media-api/guides/overview#conference) is held. Only one active conference can be held in
+    one space at any time. A meeting space also helps users meet and find shared
+    resources.
+
+*Participant*
+
+:   A person joined to a [conference](https://developers.google.com/workspace/meet/media-api/guides/overview#conference) or that uses
+    [Companion Mode](https://support.google.com/meet/answer/11295507), watching
+    as a viewer, or a room device connected to a call. When a participant joins
+    the conference, a unique ID is assigned.
+
+*Relevant streams*
+
+:   There exists a cap on the number of *Virtual Audio Streams* and *Virtual Video
+    Streams* a client can open.
+
+    It's quite possible for the number of [participants](https://developers.google.com/workspace/meet/media-api/guides/overview#participant) in a
+    [conference](https://developers.google.com/workspace/meet/media-api/guides/overview#conference) to exceed this number. In these situations,
+    Meet servers transmit the audio and video streams of
+    participants deemed "most relevant." Relevancy is determined from various
+    characteristics, such as screen sharing and how recently a participant has
+    spoken.
+
+*Selective Forwarding Unit (SFU)*
+
+:   A Selective Forwarding Unit (SFU) is a server-side component in WebRTC
+    conferencing that manages media stream distribution. Participants connect
+    only to the SFU, which selectively forwards relevant streams to other
+    participants. This reduces client processing and bandwidth needs, enabling
+    scalable conferences.
+
+*Session Description Protocol (SDP)*
+
+:   The signaling mechanism WebRTC uses to negotiate a P2P connection. [`RFC
+    8866`](https://datatracker.ietf.org/doc/html/rfc8866) governs it.
+
+*SDP answer*
+
+:   The response to a [SDP offer](https://developers.google.com/workspace/meet/media-api/guides/overview#sdp-offer). The answer rejects or accepts any
+    received streams from the remote peer. It also negotiates which streams it
+    plans to transmit back to the offering peer. It's important to note that the
+    SDP answer can't add signaled streams from the initial offer. Anecdotally,
+    if an offering peer signals it accepts up to three audio streams from its
+    remote peer, this remote peer can't signal four audio streams for
+    transmission.
+
+*SDP offer*
+
+:   The initial SDP in the offer-answer peer-to-peer negotiation flow. The offer
+    is created by the initiating peer and dictates the terms of the peer-to-peer
+    session. The offer is always created by the Meet Media API client
+    and submitted to Meet servers.
+
+    For example, an offer may indicate the number of audio or video streams the
+    offerer is sending (or capable of receiving) and whether data channels are
+    to be opened.
+
+*Synchronization Source (SSRC)*
+
+:   An SSRC is a 32-bit identifier that uniquely identifies a single source of a
+    media stream within an RTP (Real-time Transport Protocol) session. In
+    WebRTC, SSRCs are used to distinguish between different media streams
+    originating from different participants or even different tracks from the
+    same participant (such as different cameras).
+
+*RtpTransceiver*
+
+:   As detailed in [`RFC 8829`](https://datatracker.ietf.org/doc/html/rfc8829), a
+    transceiver is an abstraction around RTP streams in a peer-to-peer session.
+
+    A single transceiver is mapped to, and described by, a single media
+    description in the SDP. A transceiver consists of a `RtpSender` and a
+    `RtpReceiver`.
+
+    Because RTP is bidirectional, each peer has their own transceiver instance
+    for the same RTP connection. The `RtpSender` of a given transceiver for the
+    local peer is mapped to the `RtpReceiver` of a specific transceiver in the
+    remote peer. The inverse is also true. The `RtpSender` of the same
+    transceiver of the remote peer is mapped to the `RtpReceiver` of the local
+    peer.
+
+    Every media description has its own dedicated transceiver. Hence, a
+    peer-to-peer session with multiple RTP streams has multiple transceivers
+    with multiple `RtpSenders` and `RtpReceiver`s for each peer.
+
+*Virtual Media Streams*
+
+:   Virtual Media Streams are aggregated media streams generated by a [Selective
+    Forwarding Unit (SFU)](https://developers.google.com/workspace/meet/media-api/guides/overview#sfu) in WebRTC conferences. Instead of each
+    participant sending individual streams to everyone else, the SFU multiplexes
+    selected participant streams onto fewer outgoing virtual streams. This
+    simplifies the connection topology and reduces the load on participants,
+    enabling scalable conferences. Each virtual stream can contain media from
+    multiple participants, dynamically managed by the SFU.
+
+## Related topics
+
+- To learn how to begin developing a Meet Media API client, follow
+  the steps in [Get started](https://developers.google.com/workspace/meet/media-api/guides/get-started).
+
+- To learn how to set up and run a sample Meet Media API reference
+  client, read the [C++ reference client
+  quickstart](https://developers.google.com/workspace/meet/media-api/guides/cpp).
+
+- To get a conceptual overview, see [Meet Media API
+  concepts](https://developers.google.com/workspace/meet/media-api/guides/concepts).
+
+- To learn more about WebRTC, see [WebRTC For The
+  Curious](https://webrtcforthecurious.com/).
+
+- To learn about developing with Google Workspace APIs, including handling
+  authentication and authorization, refer to [Develop on
+  Google Workspace](https://developers.google.com/workspace/guides/getstarted-overview).

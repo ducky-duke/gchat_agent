@@ -1,0 +1,27 @@
+# REST Resource: conferenceRecords.transcripts.entries
+
+- [Resource: TranscriptEntry](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries#TranscriptEntry)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries#TranscriptEntry.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries#METHODS_SUMMARY)
+
+## Resource: TranscriptEntry
+
+Single entry for one user's speech during a transcript session.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "participant": string, "text": string, "languageCode": string, "startTime": string, "endTime": string } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Output only. Resource name of the entry. Format: "conferenceRecords/{conferenceRecord}/transcripts/{transcript}/entries/{entry}" |
+| `participant` | `string` Output only. Refers to the participant who speaks. |
+| `text` | `string` Output only. The transcribed text of the participant's voice, at maximum 10K words. Note that the limit is subject to change. |
+| `languageCode` | `string` Output only. Language of spoken text, such as "en-US". IETF BCP 47 syntax (<https://tools.ietf.org/html/bcp47>) |
+| `startTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the transcript entry started. |
+| `endTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the transcript entry ended. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/get` | Gets a `TranscriptEntry` resource by entry ID. |
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/list` | Lists the structured transcript entries per transcript. |

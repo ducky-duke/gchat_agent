@@ -1,0 +1,39 @@
+# REST Resource: conferenceRecords.smartNotes
+
+- [Resource: SmartNote](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes#SmartNote)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes#SmartNote.SCHEMA_REPRESENTATION)
+- [State](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes#State)
+- [Methods](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes#METHODS_SUMMARY)
+
+## Resource: SmartNote
+
+Metadata for a smart note generated from a conference. It refers to the notes generated from Take Notes with Gemini during the conference.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "state": enum (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes#State`), "startTime": string, "endTime": string, "docsDestination": { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/DocsDestination`) } } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Output only. Identifier. Resource name of the smart notes. Format: `conferenceRecords/{conferenceRecord}/smartNotes/{smartNote}`, where `{smartNote}` is a 1:1 mapping to each unique smart notes session of the conference. |
+| `state` | ``enum (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes#State`)`` Output only. Current state. |
+| `startTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the smart notes started. |
+| `endTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the smart notes stopped. |
+| Union field `destination`. Destination of the smart notes. `destination` can be only one of the following: ||
+| `docsDestination` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/DocsDestination`)`` Output only. The Google Doc destination where the smart notes are saved. |
+
+## State
+
+Current state of the smart notes session.
+
+| Enums ||
+|---|---|
+| `STATE_UNSPECIFIED` | Default, never used. |
+| `STARTED` | An active smart notes session has started. |
+| `ENDED` | This smart notes session has ended, but the smart notes file hasn't been generated yet. |
+| `FILE_GENERATED` | Smart notes file is generated and ready to download. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes/get` | Gets smart notes by smart note ID. |
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes/list` | Lists the set of smart notes from the conference record. |

@@ -1,0 +1,60 @@
+# Method: conferenceRecords.participants.participantSessions.list
+
+- [HTTP request](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list#body.ListParticipantSessionsResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list#try-it)
+
+Lists the participant sessions of a participant in a conference record. By default, ordered by join time and in descending order. This API supports `fields` as standard parameters like every other API. However, when the `fields` request parameter is omitted this API defaults to `'participantsessions/*, nextPageToken'`.
+
+### HTTP request
+
+`GET https://meet.googleapis.com/v2/{parent=conferenceRecords/*/participants/*}/participantSessions`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. Format: `conferenceRecords/{conferenceRecord}/participants/{participant}` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Optional. Maximum number of participant sessions to return. The service might return fewer than this value. If unspecified, at most 100 participants are returned. The maximum value is 250; values above 250 are coerced to 250. Maximum might change in the future. |
+| `pageToken` | `string` Optional. Page token returned from previous List Call. |
+| `filter` | `string` Optional. User specified filtering condition in [EBNF format](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form). The following are the filterable fields: - `start_time` - `end_time` For example, `end_time IS NULL` returns active participant sessions in the conference record. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response of ListParticipants method.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "participantSessions": [ { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions#ParticipantSession`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `participantSessions[]` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions#ParticipantSession`)`` List of participants in one page. |
+| `nextPageToken` | `string` Token to be circulated back for further List call if current List doesn't include all the participants. Unset if all participants are returned. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/meetings.space.created`
+- `https://www.googleapis.com/auth/meetings.space.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/guides/configure-oauth-consent).

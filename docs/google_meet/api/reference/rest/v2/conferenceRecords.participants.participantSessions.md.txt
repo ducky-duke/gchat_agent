@@ -1,0 +1,24 @@
+# REST Resource: conferenceRecords.participants.participantSessions
+
+- [Resource: ParticipantSession](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions#ParticipantSession)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions#ParticipantSession.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions#METHODS_SUMMARY)
+
+## Resource: ParticipantSession
+
+Refers to each unique join or leave session when a user joins a conference from a device. Note that any time a user joins the conference a new unique ID is assigned. That means if a user joins a space multiple times from the same device, they're assigned different IDs, and are also be treated as different participant sessions.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "startTime": string, "endTime": string } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Identifier. Session id. |
+| `startTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the user session starts. |
+| `endTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the user session ends. Unset if the user session hasn't ended. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/get` | Gets a participant session by participant session ID. |
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants.participantSessions/list` | Lists the participant sessions of a participant in a conference record. |

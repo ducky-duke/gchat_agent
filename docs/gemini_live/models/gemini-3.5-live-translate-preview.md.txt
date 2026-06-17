@@ -1,0 +1,20 @@
+<br />
+
+Gemini 3.5 Live Translate is our low-latency, audio-to-audio model optimized for real-time translation of spoken conversations. It enables seamless, bidirectional translation with high accuracy and natural voice output.
+[Try in Google AI Studio](https://aistudio.google.com/live?model=gemini-3.5-live-translate-preview)
+
+## Documentation
+
+Visit the [Live Translation](https://ai.google.dev/gemini-api/docs/live-api/live-translate) guide for full coverage of features and capabilities.
+
+## gemini-3.5-live-translate-preview
+
+| Property | Description |
+|---|---|
+| Model code | `gemini-3.5-live-translate-preview` |
+| Supported data types | **Inputs** Audio (speech) **Output** Audio (translated speech) and Text (transcript) |
+| Token limits^[\[\*\]](https://ai.google.dev/gemini-api/docs/tokens)^ | **Input token limit** 131,072 **Output token limit** 65,536 |
+| Capabilities | **Audio generation** Supported **Batch API** Not supported **Caching** Not supported **Code execution** Not supported **File search** Not Supported **Function calling** Not Supported **Grounding with Google Maps** Not supported **Image generation** Not supported **Live API** Supported **Search grounding** Not Supported **Structured outputs** Not supported **Thinking** Not supported **URL context** Not supported |
+| Versions | Read the [model version patterns](https://ai.google.dev/gemini-api/docs/models/gemini#model-versions) for more details. - Preview: `gemini-3.5-live-translate-preview` |
+| Latest update | June 2026 |
+| Knowledge cutoff | January 2025 |

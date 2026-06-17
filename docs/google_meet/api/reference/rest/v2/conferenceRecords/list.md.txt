@@ -1,0 +1,53 @@
+# Method: conferenceRecords.list
+
+- [HTTP request](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list#body.HTTP_TEMPLATE)
+- [Query parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list#body.ListConferenceRecordsResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list#try-it)
+
+Lists the conference records. By default, ordered by start time and in descending order.
+
+### HTTP request
+
+`GET https://meet.googleapis.com/v2/conferenceRecords`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Optional. Maximum number of conference records to return. The service might return fewer than this value. If unspecified, at most 25 conference records are returned. The maximum value is 100; values above 100 are coerced to 100. Maximum might change in the future. |
+| `pageToken` | `string` Optional. Page token returned from previous List Call. |
+| `filter` | `string` Optional. User specified filtering condition in [EBNF format](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form). The following are the filterable fields: - `space.meeting_code` - `space.name` - `start_time` - `end_time` For example, consider the following filters: - `space.name = "spaces/NAME"` - `space.meeting_code = "abc-mnop-xyz"` - `start_time>="2024-01-01T00:00:00.000Z" AND start_time<="2024-01-02T00:00:00.000Z"` - `end_time IS NULL` |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response of conferenceRecords.list method.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "conferenceRecords": [ { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords#ConferenceRecord`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `conferenceRecords[]` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords#ConferenceRecord`)`` List of conferences in one page. |
+| `nextPageToken` | `string` Token to be circulated back for further List call if current List does NOT include all the Conferences. Unset if all conferences have been returned. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/meetings.space.created`
+- `https://www.googleapis.com/auth/meetings.space.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/guides/configure-oauth-consent).

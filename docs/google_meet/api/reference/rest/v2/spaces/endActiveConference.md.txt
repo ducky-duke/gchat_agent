@@ -1,0 +1,40 @@
+# Method: spaces.endActiveConference
+
+- [HTTP request](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/endActiveConference#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/endActiveConference#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/endActiveConference#body.request_body)
+- [Response body](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/endActiveConference#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/endActiveConference#body.aspect)
+- [Try it!](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/endActiveConference#try-it)
+
+Ends an active conference (if there's one).
+
+For an example, see [End active conference](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#end-active-conference).
+
+### HTTP request
+
+`POST https://meet.googleapis.com/v2/{name=spaces/*}:endActiveConference`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. Resource name of the space. Format: `spaces/{space}`. `{space}` is the resource identifier for the space. It's a unique, server-generated ID and is case sensitive. For example, `jQCFfuBOdN5z`. For more information, see [How Meet identifies a meeting space](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#identify-meeting-space). |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, the response body is an empty JSON object.
+
+### Authorization scopes
+
+Requires the following OAuth scope:
+
+- `https://www.googleapis.com/auth/meetings.space.created`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/guides/configure-oauth-consent).

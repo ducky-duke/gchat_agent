@@ -1,0 +1,48 @@
+# Method: spaces.patch
+
+- [HTTP request](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/patch#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/patch#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/patch#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/patch#body.request_body)
+- [Response body](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/patch#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/patch#body.aspect)
+- [Try it!](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/patch#try-it)
+
+Updates details about a meeting space.
+
+For an example, see [Update a meeting space](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#update-meeting-space).
+
+### HTTP request
+
+`PATCH https://meet.googleapis.com/v2/{space.name=spaces/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `space.name` | `string` Immutable. Resource name of the space. Format: `spaces/{space}`. `{space}` is the resource identifier for the space. It's a unique, server-generated ID and is case sensitive. For example, `jQCFfuBOdN5z`. For more information, see [How Meet identifies a meeting space](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#identify-meeting-space). |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `updateMask` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#field-mask` format)`` Optional. Field mask used to specify the fields to be updated in the space. If updateMask isn't provided(not set, set with empty paths, or only has "" as paths), it defaults to update all fields provided with values in the request. Using "\*" as updateMask will update all fields, including deleting fields not set in the request. |
+
+### Request body
+
+The request body contains an instance of `https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces#Space`.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces#Space`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/meetings.space.created`
+- `https://www.googleapis.com/auth/meetings.space.settings`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/guides/configure-oauth-consent).

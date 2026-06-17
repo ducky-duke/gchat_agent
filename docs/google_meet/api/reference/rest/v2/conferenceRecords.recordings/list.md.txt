@@ -1,0 +1,59 @@
+# Method: conferenceRecords.recordings.list
+
+- [HTTP request](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list#body.PATH_PARAMETERS)
+- [Query parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list#body.QUERY_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list#body.request_body)
+- [Response body](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list#body.response_body)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list#body.ListRecordingsResponse.SCHEMA_REPRESENTATION)
+- [Authorization scopes](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list#body.aspect)
+- [Try it!](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings/list#try-it)
+
+Lists the recording resources from the conference record. By default, ordered by start time and in ascending order.
+
+### HTTP request
+
+`GET https://meet.googleapis.com/v2/{parent=conferenceRecords/*}/recordings`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `parent` | `string` Required. Format: `conferenceRecords/{conferenceRecord}` |
+
+### Query parameters
+
+| Parameters ||
+|---|---|
+| `pageSize` | `integer` Maximum number of recordings to return. The service might return fewer than this value. If unspecified, at most 10 recordings are returned. The maximum value is 100; values above 100 are coerced to 100. Maximum might change in the future. |
+| `pageToken` | `string` Page token returned from previous List Call. |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+Response for recordings.list method.
+
+If successful, the response body contains data with the following structure:
+
+| JSON representation |
+|---|
+| ``` { "recordings": [ { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#Recording`) } ], "nextPageToken": string } ``` |
+
+| Fields ||
+|---|---|
+| `recordings[]` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.recordings#Recording`)`` List of recordings in one page. |
+| `nextPageToken` | `string` Token to be circulated back for further List call if current List doesn't include all the recordings. Unset if all recordings are returned. |
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/meetings.space.created`
+- `https://www.googleapis.com/auth/meetings.space.readonly`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/guides/configure-oauth-consent).

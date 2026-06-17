@@ -1,0 +1,155 @@
+# Get started with Meet Media API
+
+> [!WARNING]
+> **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features.  
+>
+> **To use the Meet Media API to access real-time media from a conference, the Google Cloud project, OAuth principal, and all participants in the conference must be enrolled in the Developer Preview Program.**
+
+To use the Google Meet Media API and its associated OAuth 2.0 scopes, your app must
+adhere to the following requirements.
+
+## Technical requirements
+
+The following constraints are enforced when working with
+Meet Media API:
+
+- Clients **must** support all of the following codecs:
+
+  - `AV1`
+  - `VP9`
+  - `VP8`
+- Clients **must** use codec implementations compliant with the [Meet Media API's codec
+  requirements](https://developers.google.com/workspace/meet/media-api/guides/codecs), including:
+
+  - `libvpx` (Google) to decode `VP8` or `VP9`
+  - `dav1d` (VideoLAN) to decode `AV1`
+- Clients **must** support the following WebRTC header extensions:
+
+  - [Absolute Send Time](http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time)
+  - [Transport-Wide Congestion Control](http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01)
+  - [Absolute Capture Time](http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time)
+  - [Dependency Descriptor](https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension)
+  - [Audio Level Indication](https://datatracker.ietf.org/doc/html/rfc6464) (`urn:ietf:params:rtp-hdrext:ssrc-audio-level`)
+- Clients **must** periodically send a full suite of metrics. For more
+  information, see the [client metrics](https://developers.google.com/workspace/meet/media-api/guides/metrics)
+  page for details.
+
+For best results and support:
+
+- Clients **should** use the
+  [`libwebrtc`](https://webrtc.googlesource.com/src/) library, and the version
+  **should** be no more than **12 months** behind the latest `STABLE` Chromium
+  release. Chromium browsers use `libwebrtc` to implement the WebRTC
+  JavaScript APIs.
+
+- Clients **should** maintain a minimum bandwidth of **4 Mbps**.
+
+### Enable the Meet REST API
+
+Before using Google APIs, you need to turn them on in a Google Cloud project. You can turn on one or more APIs in a single Google Cloud project.
+
+- In the Google Cloud console, enable the Google Meet REST API.
+
+  [Enable the API](https://console.cloud.google.com/flows/enableapi?apiid=meet.googleapis.com)
+
+> [!NOTE]
+> **Note:** The default rate limit is 6000 requests per minute. If you exceed this quota, you'll receive a `RESOURCE_EXHAUSTED` HTTP status code response. If you need a quota increase, contact [Google Workspace Developer Support Help](https://support.google.com/a/answer/6103110).
+
+### Codec deprecation policy
+
+- Google reserves the right to stop using a codec at any time.
+
+- When a new codec is introduced, developers will receive **12 months notice**
+  before clients are required to support this codec.
+
+## Authentication and authorization
+
+Google Meet Media API clients connect to a conference on behalf of a specific user,
+using [OAuth 2.0](https://developers.google.com/identity/protocols/oauth2) for [authentication and
+authorization](https://developers.google.com/workspace/guides/auth-overview).
+
+### Appropriate access
+
+> [!IMPORTANT]
+> **Important:** See the [Workspace API user data and developer
+> policy](https://developers.google.com/workspace/workspace-api-user-data-developer-policy#appropriate-access-google-meet-apis) for details about appropriate access to the Google Meet Media API.
+
+### Meet Media API scopes
+
+Authorization scopes are the permissions that you request users to authorize for
+your app to access the meeting content. When someone installs your app, the user
+is asked to validate these scopes. Generally, you should choose the most
+narrowly focused scope possible and avoid requesting scopes that your app
+doesn't require. Users more readily grant access to limited, clearly described
+scopes.
+
+The Meet Media API supports the following OAuth 2.0 scope:
+
+| Scope code | Description | Usage |
+|---|---|---|
+| `https://www.googleapis.com/auth/meetings.conference.media.readonly` | Capture real-time video and audio in Google Meet video calls. | Restricted |
+| `https://www.googleapis.com/auth/meetings.conference.media.audio.readonly` | Capture real-time audio in Google Meet video calls. | Restricted |
+| `https://www.googleapis.com/auth/meetings.conference.media.video.readonly` | Capture real-time video in Google Meet video calls. | Restricted |
+
+Due to the sensitive nature of conferences, all Meet Media API scopes
+are restricted:
+
+- **Restricted** : These scopes provide wide access to Google user data and require you to go through a restricted scope verification process. For information on this requirement, see [Google API Services User Data
+  Policy](https://developers.google.com/terms/api-services-user-data-policy) and [Additional Requirements
+  for Specific API
+  Scopes](https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes). If you store restricted scope data on servers (or transmit), then you must go through a security assessment.
+
+In addition to the Meet Media API scopes, you must also request the general read meeting scope with your OAuth. This scope is required to access meeting metadata, such as participant and media entry information, and to negotiate a successful connection.
+
+| Scope code | Description | Usage |
+|---|---|---|
+| `https://www.googleapis.com/auth/meetings.space.read` | Allow apps to read metadata about any meeting space the user has access to. | Sensitive |
+
+If your app requires access to any other Google APIs, you can add those scopes
+as well. For more information about Google API scopes, see [Using OAuth 2.0 to
+Access Google APIs](https://developers.google.com/accounts/docs/OAuth2).
+
+To define what information is displayed to users and app reviewers, see
+[Configure the OAuth consent screen and choose
+scopes](https://developers.google.com/workspace/guides/configure-oauth-consent).
+
+For more information about specific OAuth 2.0 scopes, see [OAuth 2.0 Scopes for
+Google APIs](https://developers.google.com/identity/protocols/oauth2/scopes).
+
+## End user requirements
+
+In order to use the Meet Media API, Meet participants must also meet some minimal requirements in order for the conference to be eligible.
+
+### Mobile app versions
+
+For mobile users, they must update to these versions:
+
+| Platform | App | Version |
+|---|---|---|
+| Android | Meet app | 309 |
+| iOS | Meet app | 308 |
+| Android | Gmail app | 2025.05.30 |
+| iOS | Gmail app | 6.0.250518 |
+
+### Unsupported platforms
+
+We don't support third-party hardware clients that run Meet. For example, if your
+end users are using a Cisco hardware conference room device that runs Meet, your Meet Media API instance cannot join the call.
+
+### Age restrictions
+
+Meet Media API is restricted from collecting media from accounts that are registered to minors.
+
+These are usually accounts that are under age of consent in their respective country (typically under 18 years of age) or were under the age of consent when the account was created by a parent in the [Google Family Link](https://play.google.com/store/apps/details?id=com.google.android.apps.kids.familylink) application.
+
+Note that some regions (such as the EU) have [additional restrictions](https://support.google.com/accounts/answer/1350409) on what kind of accounts are considered under age.
+
+If you believe that one of your user's accounts is restricted, you can provide [age verification](https://myaccount.google.com/age-verification) to check if their account is age verified. [Learn more about verifying your age](https://support.google.com/accounts/answer/10071085).
+
+## Related topics
+
+- [Meet Media API concepts](https://developers.google.com/workspace/meet/media-api/guides/concepts)
+
+- [Learn about authentication and authorization](https://developers.google.com/workspace/guides/auth-overview)
+
+- [Authentication methods at Google](https://cloud.google.com/docs/authentication)

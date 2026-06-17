@@ -1,0 +1,42 @@
+# Method: spaces.get
+
+- [HTTP request](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/get#body.HTTP_TEMPLATE)
+- [Path parameters](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/get#body.PATH_PARAMETERS)
+- [Request body](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/get#body.request_body)
+- [Response body](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/get#body.response_body)
+- [Authorization scopes](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/get#body.aspect)
+- [Try it!](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/get#try-it)
+
+Gets details about a meeting space.
+
+For an example, see [Get a meeting space](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#get-meeting-space).
+
+### HTTP request
+
+`GET https://meet.googleapis.com/v2/{name=spaces/*}`
+
+The URL uses [gRPC Transcoding](https://google.aip.dev/127) syntax.
+
+### Path parameters
+
+| Parameters ||
+|---|---|
+| `name` | `string` Required. Resource name of the space. Format: `spaces/{space}` or `spaces/{meetingCode}`. `{space}` is the resource identifier for the space. It's a unique, server-generated ID and is case sensitive. For example, `jQCFfuBOdN5z`. `{meetingCode}` is an alias for the space. It's a typeable, unique character string and is non-case sensitive. For example, `abc-mnop-xyz`. The maximum length is 128 characters. A `meetingCode` shouldn't be stored long term as it can become dissociated from a meeting space and can be reused for different meeting spaces in the future. Generally, a `meetingCode` expires 365 days after last use. For more information, see [Learn about meeting codes in Google Meet](https://support.google.com/meet/answer/10710509). For more information, see [How Meet identifies a meeting space](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#identify-meeting-space). |
+
+### Request body
+
+The request body must be empty.
+
+### Response body
+
+If successful, the response body contains an instance of `https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces#Space`.
+
+### Authorization scopes
+
+Requires one of the following OAuth scopes:
+
+- `https://www.googleapis.com/auth/meetings.space.created`
+- `https://www.googleapis.com/auth/meetings.space.readonly`
+- `https://www.googleapis.com/auth/meetings.space.settings`
+
+For more information, see the [Authorization guide](https://developers.google.com/workspace/guides/configure-oauth-consent).

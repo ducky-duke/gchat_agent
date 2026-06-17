@@ -1,0 +1,26 @@
+# REST Resource: conferenceRecords
+
+- [Resource: ConferenceRecord](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords#ConferenceRecord)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords#ConferenceRecord.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords#METHODS_SUMMARY)
+
+## Resource: ConferenceRecord
+
+Single instance of a meeting held in a space.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "startTime": string, "endTime": string, "expireTime": string, "space": string } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Identifier. Resource name of the conference record. Format: `conferenceRecords/{conferenceRecord}` where `{conferenceRecord}` is a unique ID for each instance of a call within a space. |
+| `startTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the conference started. Always set. |
+| `endTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Timestamp when the conference ended. Set for past conferences. Unset if the conference is ongoing. |
+| `expireTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Server enforced expiration time for when this conference record resource is deleted. The resource is deleted 30 days after the conference ends. |
+| `space` | `string` Output only. The space where the conference was held. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/get` | Gets a conference record by conference ID. |
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list` | Lists the conference records. |

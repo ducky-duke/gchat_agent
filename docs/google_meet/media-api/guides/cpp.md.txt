@@ -1,0 +1,173 @@
+> [!WARNING]
+> **Developer Preview:** Available as part of the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview), which grants early access to certain features.  
+>
+> **To use the Meet Media API to access real-time media from a conference, the Google Cloud project, OAuth principal, and all participants in the conference must be enrolled in the Developer Preview Program.**
+
+This page explains how to set up and run a sample using the [C++ reference
+client
+implementation](https://github.com/googleworkspace/meet-media-api-samples). To
+learn about the TypeScript client instead, see the [TypeScript reference client
+quickstart](https://developers.google.com/workspace/meet/media-api/guides/ts).
+
+## Prerequisites
+
+To run this quickstart, you need the following prerequisites:
+
+- You've cloned the [GitHub
+  repository](https://github.com/googleworkspace/meet-media-api-samples).
+- [A Google Cloud project](https://developers.google.com/workspace/guides/create-project) with Google Meet REST API enabled.
+- A Google Workspace account.
+
+### Enable the Meet REST API
+
+Before using Google APIs, you need to turn them on in a Google Cloud project. You can turn on one or more APIs in a single Google Cloud project.
+
+### Google Cloud console
+
+1. In the Google Cloud console, enable the Meet REST API.
+
+   [Enable the APIs](https://console.cloud.google.com/flows/enableapi?apiid=meet.googleapis.com)
+2. Confirm that you're enabling the Meet REST API in the correct
+   Cloud project, then click **Next**.
+
+3. Confirm that you're enabling the Meet REST API, then click
+   **Enable**.
+
+### gcloud CLI
+
+1. If necessary, set the current Cloud project to the one you
+   created:
+
+       gcloud config set project PROJECT_ID
+
+   Replace <var translate="no">PROJECT_ID</var> with the **Project ID** of the
+   Cloud project you created.
+2. Enable the Meet REST API:
+
+       gcloud services enable meet.googleapis.com
+
+## Build the C++ client
+
+The C++ implementation is built with [Generate Ninja (GN)](https://gn.googlesource.com/gn/). For more information, see the [WebRTC documentation](https://webrtc.github.io/webrtc-org/native-code/development/).
+
+1. Generate a password from [Git at Google](https://www.googlesource.com/new-password) and configure git.
+
+2. From your command-line interface (CLI), change `<samples_location>` to the directory that holds the samples and run the following command, which:
+
+   - Changes your working directory to your home directory.
+   - Creates a directory in your home directory named `src`.
+   - Changes your working directory to `src`.
+   - Clones https://chromium.googlesource.com/chromium/tools/depot_tools.git into the src/ directory from git.
+   - Temporarily adds the `~/src/depot_tools` directory to the list of locations the shell searches for executable commands.
+   - Changes your working directory to the cpp directory in your samples location.
+   - Runs the `./build.sh` shell script.
+
+       cd ~
+       mkdir src
+       cd src
+       git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+       export PATH=~/src/depot_tools:$PATH
+       cd <samples_location>/cpp
+       sh ./build.sh
+
+## Generate OAuth tokens
+
+To connect to the Meet Media API, your app must use OAuth to generate
+access tokens. To learn more about accessing Google APIs with OAuth, see [*Using
+OAuth 2.0 to Access Google APIs*](https://developers.google.com/identity/protocols/oauth2).
+
+You can use the [OAuth 2.0
+Playground](https://developers.google.com/oauthplayground) to generate tokens.
+When using the playground, make sure to:
+
+- Use your client ID and secret credentials from your cloud project.
+- Request the correct [scopes](https://developers.google.com/workspace/meet/media-api/guides/get-started#scopes).
+- Sign in to a Google Account and accept access.
+
+Once complete, click the `Exchange authorization code for tokens` button and
+copy the generated access token.
+
+## Start a meeting
+
+[Start a meeting](https://meet.google.com/new) using the same user account that
+you used to generate the OAuth token. Copy the meeting code. You're now ready to
+run the samples.
+
+## Sample apps
+
+The [GitHub
+repository](https://github.com/googleworkspace/meet-media-api-samples) offers
+samples for receiving media and participant metadata from a meeting.
+
+These samples collect data for a specified amount of time (default is 3 seconds)
+and write the collected data to files.
+
+Audio files are in PCM16 format. Video files are in YUV420p format. These files
+can be played by using a library such as FFmpeg.
+
+Because video resolutions might change during a meeting, samples include the
+resolution in video file names.
+
+Participant metadata files will be human-readable text files.
+
+### Single User Media Sample
+
+The single user media sample is a basic app that focuses on collecting audio and
+video. The sample doesn't determine which participant created the audio and
+video data. Therefore, using this sample in a meeting with more than one
+participant might result in corrupted output.
+
+To run the single user media sample, run:
+
+### Linux
+
+    $ sh ./run_multi.sh -- \
+        --meeting_space_id MEETING_SPACE_ID \
+        --oauth_token OAUTH_TOKEN
+
+By default, a single audio file is saved to `/tmp/test_output_audio.pcm`.
+
+Because video streams might change resolutions during a meeting, multiple video
+files might be created. Video file names will include an incrementing counter
+and the resolution for that file. For example, if the video stream resolution
+changed from 320x180 to 240x135 and then back to 320x180, the following video
+files would be created:
+
+- `/tmp/test_output_video_0_320x180.pcm`
+- `/tmp/test_output_video_1_240x135.pcm`
+- `/tmp/test_output_video_2_320x180.pcm`
+
+### (Optional) Use FFmpeg to Play Output Files on Linux and Mac
+
+[FFmpeg](https://www.ffmpeg.org/) can be used to play created audio and video
+files. Example commands:
+
+### Linux \& Mac
+
+    # Audio
+    $ ffplay -f s16le -ar 48k -af aformat=channel_layouts=mono \
+        /tmp/test_output_audio.pcm
+
+    # Video
+    #
+    # `video_size` must match the resolution in the video filename (320x180 in
+    # this example).
+    $ ffplay -f rawvideo -pixel_format yuv420p -video_size 320x180 \
+        /tmp/test_output_video_0_320x180.yuv
+
+### Options
+
+You can specify these options when running the samples:
+
+| Option | Description |
+|---|---|
+| `--output_file_prefix PREFIX` | Specify the prefix for output files. Defaults to `/tmp_test_output_`. |
+| `--collection_duration DURATION` | Specify how long to collect media. Defaults to `30s`. |
+| `--join_timeout TIMEOUT` | Specify how long to wait for the app to join the conference. Defaults to `2m`. |
+| `--meet_api_url URL` | Specify the URL for the Meet Media API API. Defaults to `https://meet.googleapis.com/v2alpha/`. |
+
+## Related topics
+
+- [Troubleshoot and fix Meet Media API errors](https://developers.google.com/workspace/meet/media-api/guides/troubleshoot)
+
+- [Meet Media API data channels reference](https://developers.google.com/workspace/meet/media-api/reference/dc/media_api)

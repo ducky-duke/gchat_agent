@@ -1,0 +1,71 @@
+# REST Resource: conferenceRecords.participants
+
+- [Resource: Participant](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#Participant)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#Participant.SCHEMA_REPRESENTATION)
+- [SignedinUser](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#SignedinUser)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#SignedinUser.SCHEMA_REPRESENTATION)
+- [AnonymousUser](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#AnonymousUser)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#AnonymousUser.SCHEMA_REPRESENTATION)
+- [PhoneUser](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#PhoneUser)
+  - [JSON representation](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#PhoneUser.SCHEMA_REPRESENTATION)
+- [Methods](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#METHODS_SUMMARY)
+
+## Resource: Participant
+
+User who attended or is attending a conference.
+
+| JSON representation |
+|---|
+| ``` { "name": string, "earliestStartTime": string, "latestEndTime": string, "signedinUser": { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#SignedinUser`) }, "anonymousUser": { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#AnonymousUser`) }, "phoneUser": { object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#PhoneUser`) } } ``` |
+
+| Fields ||
+|---|---|
+| `name` | `string` Output only. Resource name of the participant. Format: `conferenceRecords/{conferenceRecord}/participants/{participant}` |
+| `earliestStartTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Time when the participant first joined the meeting. |
+| `latestEndTime` | ``string (`https://protobuf.dev/reference/protobuf/google.protobuf#timestamp` format)`` Output only. Time when the participant left the meeting for the last time. This can be null if it's an active meeting. |
+| Union field `user`. `user` can be only one of the following: ||
+| `signedinUser` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#SignedinUser`)`` Signed-in user. |
+| `anonymousUser` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#AnonymousUser`)`` Anonymous user. |
+| `phoneUser` | ``object (`https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants#PhoneUser`)`` User calling from their phone. |
+
+## SignedinUser
+
+A signed-in user can be: a) An individual joining from a personal computer, mobile device, or through companion mode. b) A robot account used by conference room devices.
+
+| JSON representation |
+|---|
+| ``` { "user": string, "displayName": string } ``` |
+
+| Fields ||
+|---|---|
+| `user` | `string` Output only. Unique ID for the user. Interoperable with Admin SDK API and People API. Format: `users/{user}` |
+| `displayName` | `string` Output only. For a personal device, it's the user's first name and last name. For a robot account, it's the administrator-specified device name. For example, "Altostrat Room". |
+
+## AnonymousUser
+
+User who joins anonymously (meaning not signed into a Google Account).
+
+| JSON representation |
+|---|
+| ``` { "displayName": string } ``` |
+
+| Fields ||
+|---|---|
+| `displayName` | `string` Output only. User provided name when they join a conference anonymously. |
+
+## PhoneUser
+
+User dialing in from a phone where the user's identity is unknown because they haven't signed in with a Google Account.
+
+| JSON representation |
+|---|
+| ``` { "displayName": string } ``` |
+
+| Fields ||
+|---|---|
+| `displayName` | `string` Output only. Partially redacted user's phone number when calling. |
+
+| ## Methods ||
+|---|---|
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants/get` | Gets a participant by participant ID. |
+| ### `https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.participants/list` | Lists the participants in a conference record. |

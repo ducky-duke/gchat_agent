@@ -1,0 +1,327 @@
+This guide explains how to get details about a single conference or all
+conferences on the `conferenceRecords` resource of the Google Meet REST API.
+
+A [conference](https://developers.google.com/workspace/meet/api/guides/overview#conference) is a
+server-generated instance of a call within a meeting space. It's also a single
+instance of a meeting.
+
+If you're a meeting space owner or participant, you can call the `get` and
+`list` methods to retrieve conference records.
+
+Authenticating and authorizing with [user
+credentials](https://developers.google.com/workspace/meet/api/guides/authenticate-authorize) lets
+Google Meet apps access user data and perform operations on the authenticated
+user's behalf. Authenticating with [domain-wide
+delegation](https://developers.google.com/workspace/meet/api/guides/authenticate-authorize#domain-wide-delegation)
+lets you authorize an application's service account to access your users' data
+without requiring each user to give consent.
+
+## Get details about a conference
+
+To get details about a specific conference, use the
+[`get`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/get) method on
+the
+[`conferenceRecords`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords)
+resource. Set the conference `name` path parameter using the format
+`conferenceRecords/{conferenceRecord}`.
+
+If you don't know the conference name, you can [list all conference
+names](https://developers.google.com/workspace/meet/api/guides/conferences#list-conferences) using the `list` method.
+
+The method returns a past conference as an instance of the `conferenceRecords`
+resource.
+
+The following code sample shows how to retrieve a specific conference:
+
+### Java
+
+java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/getconferencerecord/AsyncGetConferenceRecord.java [View on GitHub](https://github.com/googleapis/google-cloud-java/blob/main/java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/getconferencerecord/AsyncGetConferenceRecord.java)
+
+```java
+import com.google.api.core.ApiFuture;
+import com.google.apps.meet.v2.ConferenceRecord;
+import com.google.apps.meet.v2.ConferenceRecordName;
+import com.google.apps.meet.v2.ConferenceRecordsServiceClient;
+import com.google.apps.meet.v2.GetConferenceRecordRequest;
+
+public class AsyncGetConferenceRecord {
+
+  public static void main(String[] args) throws Exception {
+    asyncGetConferenceRecord();
+  }
+
+  public static void asyncGetConferenceRecord() throws Exception {
+    // This snippet has been automatically generated and should be regarded as a code template only.
+    // It will require modifications to work:
+    // - It may require correct/in-range values for request initialization.
+    // - It may require specifying regional endpoints when creating the service client as shown in
+    // https://cloud.google.com/java/docs/setup#configure_endpoints_for_the_client_library
+    try (ConferenceRecordsServiceClient conferenceRecordsServiceClient =
+        ConferenceRecordsServiceClient.create()) {
+      GetConferenceRecordRequest request =
+          GetConferenceRecordRequest.newBuilder()
+              .setName(ConferenceRecordName.of("[CONFERENCE_RECORD]").toString())
+              .build();
+      ApiFuture<ConferenceRecord> future =
+          conferenceRecordsServiceClient.getConferenceRecordCallable().futureCall(request);
+      // Do something.
+      ConferenceRecord response = future.get();
+    }
+  }
+}
+```
+
+### Node.js
+
+packages/google-apps-meet/samples/generated/v2/conference_records_service.get_conference_record.js [View on GitHub](https://github.com/googleapis/google-cloud-node/blob/main/packages/google-apps-meet/samples/generated/v2/conference_records_service.get_conference_record.js)
+
+```javascript
+/**
+ * This snippet has been automatically generated and should be regarded as a code template only.
+ * It will require modifications to work.
+ * It may require correct/in-range values for request initialization.
+ * TODO(developer): Uncomment these variables before running the sample.
+ */
+/**
+ *  Required. Resource name of the conference.
+ */
+// const name = 'abc123'
+
+// Imports the Meet library
+const {ConferenceRecordsServiceClient} = require('@google-apps/meet').v2;
+
+// Instantiates a client
+const meetClient = new ConferenceRecordsServiceClient();
+
+async function callGetConferenceRecord() {
+  // Construct request
+  const request = {
+    name,
+  };
+
+  // Run request
+  const response = await meetClient.getConferenceRecord(request);
+  console.log(response);
+}
+
+callGetConferenceRecord();
+```
+
+### Python
+
+packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_get_conference_record_async.py [View on GitHub](https://github.com/googleapis/google-cloud-python/blob/main/packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_get_conference_record_async.py)
+
+```python
+# This snippet has been automatically generated and should be regarded as a
+# code template only.
+# It will require modifications to work:
+# - It may require correct/in-range values for request initialization.
+# - It may require specifying regional endpoints when creating the service
+#   client as shown in:
+#   https://googleapis.dev/python/google-api-core/latest/client_options.html
+from google.apps import meet_v2
+
+
+async def sample_get_conference_record():
+    # Create a client
+    client = meet_v2.ConferenceRecordsServiceAsyncClient()
+
+    # Initialize request argument(s)
+    request = meet_v2.GetConferenceRecordRequest(
+        name="name_value",
+    )
+
+    # Make the request
+    response = await client.get_conference_record(request=request)
+
+    # Handle the response
+    print(response)
+```
+
+### cURL
+
+    curl -X GET "https://meet.googleapis.com/v2/conferenceRecords/CONFERENCE_RECORD_NAME" \
+    -H "Authorization: Bearer ACCESS_TOKEN"
+
+Replace <var translate="no">ACCESS_TOKEN</var> with the access token that grants access to the API.
+
+Replace the conference record name with the name of the specific conference ID
+in a conference record.
+
+## List all conferences
+
+To list details about all conferences, use the
+[`list`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list) method on
+the
+[`conferenceRecords`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords)
+resource without any path parameters.
+
+The method returns a list of past conferences as an instance of the
+`conferenceRecords` resource. They're filtered to the conference organizer and
+ordered by `startTime` in descending order. To adjust the page size and filter
+the query results, see [Customize pagination or filter the
+list](https://developers.google.com/workspace/meet/api/guides/conferences#customize-pagination).
+
+> [!NOTE]
+> **Note:** The `list` method only returns conferences where you're the meeting organizer. If the app you're using to view conferences only has the `meetings.space.created` OAuth scope, you can only view conferences for the spaces the app created. For more information, see [Meet REST API
+> scopes](https://developers.google.com/workspace/meet/api/guides/authenticate-authorize#meet-api-scopes).
+
+The following code sample shows how to list all conferences:
+
+### Java
+
+java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/listconferencerecords/AsyncListConferenceRecords.java [View on GitHub](https://github.com/googleapis/google-cloud-java/blob/main/java-meet/samples/snippets/generated/com/google/apps/meet/v2/conferencerecordsservice/listconferencerecords/AsyncListConferenceRecords.java)
+
+```java
+import com.google.api.core.ApiFuture;
+import com.google.apps.meet.v2.ConferenceRecord;
+import com.google.apps.meet.v2.ConferenceRecordsServiceClient;
+import com.google.apps.meet.v2.ListConferenceRecordsRequest;
+
+public class AsyncListConferenceRecords {
+
+  public static void main(String[] args) throws Exception {
+    asyncListConferenceRecords();
+  }
+
+  public static void asyncListConferenceRecords() throws Exception {
+    // This snippet has been automatically generated and should be regarded as a code template only.
+    // It will require modifications to work:
+    // - It may require correct/in-range values for request initialization.
+    // - It may require specifying regional endpoints when creating the service client as shown in
+    // https://cloud.google.com/java/docs/setup#configure_endpoints_for_the_client_library
+    try (ConferenceRecordsServiceClient conferenceRecordsServiceClient =
+        ConferenceRecordsServiceClient.create()) {
+      ListConferenceRecordsRequest request =
+          ListConferenceRecordsRequest.newBuilder()
+              .setPageSize(883849137)
+              .setPageToken("pageToken873572522")
+              .setFilter("filter-1274492040")
+              .build();
+      ApiFuture<ConferenceRecord> future =
+          conferenceRecordsServiceClient.listConferenceRecordsPagedCallable().futureCall(request);
+      // Do something.
+      for (ConferenceRecord element : future.get().iterateAll()) {
+        // doThingsWith(element);
+      }
+    }
+  }
+}
+```
+
+### Node.js
+
+packages/google-apps-meet/samples/generated/v2/conference_records_service.list_conference_records.js [View on GitHub](https://github.com/googleapis/google-cloud-node/blob/main/packages/google-apps-meet/samples/generated/v2/conference_records_service.list_conference_records.js)
+
+```javascript
+/**
+ * This snippet has been automatically generated and should be regarded as a code template only.
+ * It will require modifications to work.
+ * It may require correct/in-range values for request initialization.
+ * TODO(developer): Uncomment these variables before running the sample.
+ */
+/**
+ *  Optional. Maximum number of conference records to return. The service might
+ *  return fewer than this value. If unspecified, at most 25 conference records
+ *  are returned. The maximum value is 100; values above 100 are coerced to
+ *  100. Maximum might change in the future.
+ */
+// const pageSize = 1234
+/**
+ *  Optional. Page token returned from previous List Call.
+ */
+// const pageToken = 'abc123'
+/**
+ *  Optional. User specified filtering condition in EBNF
+ *  format (https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form).
+ *  The following are the filterable fields:
+ *  * `space.meeting_code`
+ *  * `space.name`
+ *  * `start_time`
+ *  * `end_time`
+ *  For example, consider the following filters:
+ *  * `space.name = "spaces/NAME"`
+ *  * `space.meeting_code = "abc-mnop-xyz"`
+ *  * `start_time>="2024-01-01T00:00:00.000Z" AND
+ *  start_time<="2024-01-02T00:00:00.000Z"`
+ *  * `end_time IS NULL`
+ */
+// const filter = 'abc123'
+
+// Imports the Meet library
+const {ConferenceRecordsServiceClient} = require('@google-apps/meet').v2;
+
+// Instantiates a client
+const meetClient = new ConferenceRecordsServiceClient();
+
+async function callListConferenceRecords() {
+  // Construct request
+  const request = {
+  };
+
+  // Run request
+  const iterable = meetClient.listConferenceRecordsAsync(request);
+  for await (const response of iterable) {
+      console.log(response);
+  }
+}
+
+callListConferenceRecords();
+```
+
+### Python
+
+packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_list_conference_records_async.py [View on GitHub](https://github.com/googleapis/google-cloud-python/blob/main/packages/google-apps-meet/samples/generated_samples/meet_v2_generated_conference_records_service_list_conference_records_async.py)
+
+```python
+# This snippet has been automatically generated and should be regarded as a
+# code template only.
+# It will require modifications to work:
+# - It may require correct/in-range values for request initialization.
+# - It may require specifying regional endpoints when creating the service
+#   client as shown in:
+#   https://googleapis.dev/python/google-api-core/latest/client_options.html
+from google.apps import meet_v2
+
+
+async def sample_list_conference_records():
+    # Create a client
+    client = meet_v2.ConferenceRecordsServiceAsyncClient()
+
+    # Initialize request argument(s)
+    request = meet_v2.ListConferenceRecordsRequest()
+
+    # Make the request
+    page_result = client.list_conference_records(request=request)
+
+    # Handle the response
+    async for response in page_result:
+        print(response)
+```
+
+### cURL
+
+    curl -X GET "https://meet.googleapis.com/v2/conferenceRecords" \
+    -H "Authorization: Bearer ACCESS_TOKEN"
+
+Replace <var translate="no">ACCESS_TOKEN</var> with the access token that grants access to the API.
+
+## Customize pagination or filter the list
+
+Pass the following optional query parameters to customize pagination of, or
+filter, conference records:
+
+- `pageSize`: The maximum number of conference records to return. The service
+  might return fewer than this value. If unspecified, at most 25 conference
+  records are returned. The maximum value is 100; values more than 100 are
+  automatically changed to 100.
+
+- `pageToken`: A page token, received from a previous list call. Provide this
+  token to retrieve the subsequent page.
+
+- `filter`: A query filter to retrieve specific items in the
+  `conferenceRecords` resource results. For supported query details, see the
+  [`list`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list)
+  method. For more information on how to determine a meeting space, see [How
+  Meet identifies a meeting
+  space](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#identify-meeting-space).
