@@ -132,7 +132,10 @@ A batch of low-risk hardening ported from a review of the `goclaw/` Go platform
   decorates the 5 LLM boundaries — `analyzer.{detect_issues,assess_clarity,
   generate_questions}` + `report.{build_resolution_report,build_narration}` — so a
   live `OBSERVABILITY=langfuse` run gets a span per call. No-op/zero-import on the
-  default path.
+  default path. **Self-hosted Langfuse v2** is wired + verified (client must be
+  `langfuse<3`; `.env→os.environ` bridge in `_seed_langfuse_env`; host =
+  `localhost:3000`) — version-matching + setup gotchas in [`MEMORY.md`](MEMORY.md)
+  "Self-hosted Langfuse observability".
 - **Token usage**: `OpenRouterClient`/`MockLLM` accumulate `usage_snapshot()`
   (calls + prompt/completion/total tokens; Mock estimates ~chars/4). The runner
   diffs it per cycle and adds `tokens` to the cycle summary + log.

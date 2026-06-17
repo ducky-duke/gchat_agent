@@ -17,6 +17,7 @@ imported on the `none`/mock path.
 from __future__ import annotations
 
 import functools
+import os
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Optional, TypeVar
 
@@ -31,27 +32,60 @@ _ENABLED: Optional[bool] = None
 
 def _enabled() -> bool:
     """True iff `OBSERVABILITY == "langfuse"`. Resolved once, then cached so the
-    decorator/context-manager hot paths don't re-parse config on every call."""
+    decorator/context-manager hot paths don't re-parse config on every call. On
+    the enabled branch we also bridge the resolved `.env`/Config credentials into
+    `os.environ` (see `_seed_langfuse_env`) so the langfuse SDK can authenticate."""
     global _ENABLED
     if _ENABLED is None:
         try:
-            _ENABLED = load_config().OBSERVABILITY.strip().lower() == "langfuse"
+            cfg = load_config()
+            enabled = cfg.OBSERVABILITY.strip().lower() == "langfuse"
+            if enabled:
+                _seed_langfuse_env(cfg)
+            _ENABLED = enabled
         except Exception:
             # Never let observability wiring break the agent: degrade to off.
             _ENABLED = False
     return _ENABLED
 
 
+def _seed_langfuse_env(cfg: Any) -> None:
+    """Bridge the project's `.env`/Config values into `os.environ` so the langfuse
+    SDK — which reads its credentials from the process environment, NOT from our
+    `Config` object — can authenticate. `load_config()` only reads `.env` one-way
+    into `Config`; it never exports back to `os.environ`, so without this a key
+    placed solely in `.env` would be invisible to langfuse and tracing would
+    silently no-op. Uses `setdefault` semantics (a real shell env var always
+    wins) and skips blank values so an unset key never clobbers the SDK's own
+    resolution."""
+    for env_name, value in (
+        ("LANGFUSE_PUBLIC_KEY", cfg.LANGFUSE_PUBLIC_KEY),
+        ("LANGFUSE_SECRET_KEY", cfg.LANGFUSE_SECRET_KEY),
+        ("LANGFUSE_HOST", cfg.LANGFUSE_HOST),
+    ):
+        if value and not os.environ.get(env_name):
+            os.environ[env_name] = value
+
+
 def _real_observe() -> Optional[Callable[..., Any]]:
-    """Lazy-import and return `langfuse.observe`, or `None` if unavailable.
+    """Lazy-import and return langfuse's `observe` decorator, or `None`.
 
     Imported only when observability is enabled; an ImportError (extra not
-    installed) degrades silently to the identity decorator."""
+    installed) degrades silently to the identity decorator. The import path moved
+    between SDK majors, so try both: SDK **v3+** exports `observe` at top level,
+    while SDK **v2** keeps it under `langfuse.decorators`. Matching the SDK to the
+    self-hosted server major is the caller's job (v3 SDK ⇒ server v3 OTEL endpoint,
+    v2 SDK ⇒ server v2 `/api/public/ingestion`)."""
     try:
-        from langfuse import observe as _observe  # type: ignore[import-not-found]
+        from langfuse import observe as _observe  # v3+ top-level
+        return _observe
+    except Exception:
+        pass
+    try:
+        from langfuse.decorators import observe as _observe  # v2
+        return _observe
     except Exception:
         return None
-    return _observe
 
 
 # --- observe decorator ------------------------------------------------------
@@ -159,15 +193,25 @@ def trace(name: str, **kw: Any) -> Iterator[Any]:
 # --- flush ------------------------------------------------------------------
 
 def flush() -> None:
-    """Push buffered Langfuse events (call on shutdown). No-op when disabled."""
+    """Push buffered Langfuse events (call on shutdown). No-op when disabled.
+
+    Spans/generations are buffered and sent on a background thread, so a short or
+    crashing process can lose the tail without an explicit flush. The flush call
+    differs by SDK major: **v3+** exposes `get_client().flush()`; **v2** flushes
+    its decorator/openai singleton via `langfuse_context.flush()`. Try v3 first,
+    fall back to v2; every step is best-effort so a failed flush never crashes
+    shutdown."""
     if not _enabled():
         return
     try:
-        from langfuse import get_client  # type: ignore[import-not-found]
-    except Exception:
-        return
-    try:
+        from langfuse import get_client  # v3+
         get_client().flush()
+        return
+    except Exception:
+        pass
+    try:
+        from langfuse.decorators import langfuse_context  # v2
+        langfuse_context.flush()
     except Exception:
         # Best-effort: a failed flush must not crash shutdown.
         pass

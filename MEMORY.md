@@ -337,6 +337,29 @@ Proven, not assumed:
   everywhere. Docs already say "spoken voice note / audio attachment" — accurate, don't relabel it
   "voice message". `ffprobe`/`ffmpeg` are available if a transcode is ever wanted, but it buys nothing.
 
+## Self-hosted Langfuse observability — wired + verified 2026-06-17
+End-to-end traces work against a **local self-hosted Langfuse**, NOT cloud. Hard-won facts:
+- **SDK major MUST match server major.** Langfuse **3.x/4.x Python SDK is OTEL-based** and POSTs traces
+  to `/api/public/otel/v1/traces` — that endpoint **404s on a v2 server**. The v2 server exposes
+  `/api/public/ingestion` (401 without auth). So a v2 server (`langfuse/langfuse:2`, e.g. 2.95.11)
+  needs the **v2 client: `pip install "langfuse==2.60.10"`** (latest 2.x; `"langfuse<3"` resolves
+  there). Diagnose a mismatch by `curl -X POST <host>/api/public/otel/v1/traces` → 404 = wrong pair.
+  Server version: `GET /api/public/health` → `{"status":"OK","version":"2.95.11"}`.
+- **v2 SDK import paths differ** — `observability.py` handles both: `observe` is top-level on v3 but
+  `langfuse.decorators.observe` on v2; flush is `get_client().flush()` on v3 but
+  `langfuse_context.flush()` on v2. `_real_observe`/`flush` try v3 then fall back to v2.
+- **`observability.trace("issue")` is a no-op on v2** (no `get_client`), so per-issue span grouping is
+  lost — but each LLM call still gets a generation span (latency+tokens) via `langfuse.openai`, plus
+  the 5 `@observe` boundary spans. Enough for latency diagnosis.
+- **`.env` → `os.environ` bridge** (`observability._seed_langfuse_env`): `load_config()` reads `.env`
+  one-way into `Config`; it never exports to `os.environ`, but the langfuse SDK reads credentials FROM
+  `os.environ`. So when `OBSERVABILITY=langfuse`, the shim seeds `LANGFUSE_*` into `os.environ`
+  (`setdefault` — real shell env wins). Without this, keys in `.env` are invisible to the SDK.
+- **Host = `http://localhost:3000`** (the docker-published port), NOT the `172.x` container IP the
+  Langfuse UI prints in its sample snippet — that internal IP isn't reliably reachable from the host
+  process. Get keys from the UI (sign up → Org → Project → Settings → API Keys) or seed headlessly via
+  `LANGFUSE_INIT_*` in compose. Verify a trace landed: authenticated `GET /api/public/traces?limit=5`.
+
 ## Harness lessons (build)
 - **Cursor parallel relay deadlock.** Launching both `cursor-agent` models simultaneously inside a
   workflow agent hit a `.cursor/cli-config.json.tmp` rename ENOENT (killing one model) **and** a
