@@ -127,6 +127,14 @@ class Config:
     # issues yet, e.g. after `./start_bot.sh` wipes `.state/`). Off ⇒ no block.
     EPISODIC_RECALL: bool = True
 
+    # Cross-thread duplicate detection via the LLM: when on, a freshly-detected
+    # candidate that the cheap lexical dedup did NOT match is checked against the
+    # open issues in other threads (sharing a lexical hint) with one focused LLM
+    # call — does it describe the SAME incident a second reporter already raised?
+    # Catches paraphrases raw-token overlap can't merge safely. Off ⇒ lexical-only
+    # cross-thread dedup. No effect on the `mock` path (it always answers "no").
+    SEMANTIC_DEDUP: bool = True
+
     # --- Agent loop ---
     MAX_CLARIFY_ROUNDS: int = 3
     # Loop-breaker for the "duplicate question" failure: how many consecutive
@@ -240,6 +248,19 @@ class Config:
     # REST API base (override only for GitHub Enterprise).
     GITHUB_API_URL: str = "https://api.github.com"
 
+    # --- Google Meet links (optional — Meet REST API, user OAuth) ---
+    # When on, the demo can mint a real Google Meet meeting via the Meet REST API
+    # (`spaces.create`) and post its join link into Chat so a human joins a live
+    # incident call. Off by default (the offline/test path needs no Meet API).
+    # Requires the OAuth token to carry the `meetings.space.created` scope — added
+    # to scripts/authorize.py, so a token minted before that scope was added must
+    # be re-authorized (an old token gets a 403 on create). An AI can't *speak*
+    # on a Meet (the Media API is receive-only + preview-gated, see
+    # docs/google_meet/); this only creates and shares the link.
+    MEET_LINKS: bool = False
+    # Meet REST API v2 resource base (override only for testing/proxies).
+    MEET_API_URL: str = "https://meet.googleapis.com/v2"
+
     # --- Webhook (Phase 2 only) ---
     WEBHOOK_PORT: int = 8080
     WEBHOOK_AUTH_AUDIENCE: str = ""
@@ -253,8 +274,10 @@ _BOOL_KEYS: Final[frozenset[str]] = frozenset(
         "REQUIRE_IN_THREAD_REPLY",
         "REDIRECT_OUT_OF_THREAD_REPLY",
         "EPISODIC_RECALL",
+        "SEMANTIC_DEDUP",
         "REDACT_REPORTS",
         "GITHUB_ISSUES",
+        "MEET_LINKS",
     }
 )
 _INT_KEYS: Final[frozenset[str]] = frozenset({

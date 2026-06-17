@@ -111,6 +111,215 @@ class IssueStoreDedupTest(unittest.TestCase):
         self.assertEqual(target.updated_at, "2026-02-01T00:00:00Z")
 
 
+class IssueStoreCrossThreadMergeTest(unittest.TestCase):
+    """`upsert` folds a SECOND reporter's near-duplicate (raised in their own
+    thread, so a different fingerprint the same-thread path can't catch) into the
+    one open issue — two reports of one incident become ONE issue (§6)."""
+
+    def test_near_duplicate_in_another_thread_merges_into_one_issue(self) -> None:
+        store = IssueStore(state_file="/unused")
+        first = _make_issue(
+            thread_id="spaces/FAKE/threads/t1",
+            root_message_id="spaces/FAKE/messages/m1",
+            category="infrastructure",
+            title="API gateway timing out in production",
+            summary="The public API gateway returns 504s under load; game launches fail.",
+            source_message_ids=["m1"],
+        )
+        # A different reporter, a different thread → different fingerprint, but the
+        # same incident: title overlap (production/prod aside) clears the bar.
+        second = _make_issue(
+            thread_id="spaces/FAKE/threads/t2",
+            root_message_id="spaces/FAKE/messages/m9",
+            category="outage",
+            title="API gateway timing out in prod",
+            summary="Players cannot launch games; the gateway returns 504 timeouts now.",
+            source_message_ids=["m9"],
+        )
+        self.assertNotEqual(first.fingerprint, second.fingerprint)
+
+        a = store.upsert(first)
+        b = store.upsert(second)
+
+        # Folded into the first: one tracked issue, anchored to the ORIGINAL thread
+        # (the bot keeps clarifying where it started), with the dup's evidence added.
+        self.assertIs(a, first)
+        self.assertIs(b, first)
+        self.assertEqual(len(store.open_issues()), 1)
+        self.assertEqual(first.thread_id, "spaces/FAKE/threads/t1")
+        self.assertEqual(first.fingerprint, a.fingerprint)
+        self.assertEqual(first.source_message_ids, ["m1", "m9"])
+        # The dup's own fingerprint was NOT tracked as a separate issue.
+        self.assertIsNone(store.get(second.fingerprint))
+
+    def test_loosely_related_issue_in_another_thread_stays_separate(self) -> None:
+        store = IssueStore(state_file="/unused")
+        store.upsert(
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t1",
+                category="infrastructure",
+                title="API gateway timing out in production",
+                summary="The public API gateway returns 504s under load.",
+            )
+        )
+        # Shares a couple of words ("in production") but is a different incident;
+        # overlap stays below the stricter cross-thread bar → tracked separately.
+        store.upsert(
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t2",
+                root_message_id="spaces/FAKE/messages/m9",
+                category="database",
+                title="Database connection pool exhausted in production",
+                summary="Slow queries are holding wallet-service connections open.",
+            )
+        )
+        self.assertEqual(len(store.open_issues()), 2)
+
+    def test_cross_thread_duplicate_not_merged_into_closed_issue(self) -> None:
+        store = IssueStore(state_file="/unused")
+        first = store.upsert(
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t1",
+                category="infrastructure",
+                title="API gateway timing out in production",
+                summary="The public API gateway returns 504s under load.",
+                source_message_ids=["m1"],
+            )
+        )
+        assert first is not None
+        first.status = Status.RESOLVED  # closed but NOT tombstoned (different thread)
+
+        # A near-duplicate in another thread must NOT silently extend the resolved
+        # issue — it opens a fresh issue instead.
+        second = store.upsert(
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t2",
+                root_message_id="spaces/FAKE/messages/m9",
+                category="outage",
+                title="API gateway timing out in prod",
+                summary="The public API gateway returns 504 timeouts under load.",
+                source_message_ids=["m9"],
+            )
+        )
+        self.assertIsNot(second, first)
+        self.assertEqual(len(store.all_issues()), 2)
+        self.assertEqual(store.open_issues(), [second])
+
+
+class IssueStoreSemanticMergeTest(unittest.TestCase):
+    """`upsert(..., semantic_match=...)`: when the cheap lexical paths miss, an
+    open cross-thread issue sharing a lexical HINT is offered to a caller-supplied
+    decider (the runner's LLM) which can fold a paraphrase the lexical bar can't."""
+
+    # Real observed paraphrase: titles overlap ~0.5 — below the 0.65 lexical bar,
+    # above the 0.2 hint floor, so the decider is consulted.
+    _A = dict(
+        thread_id="spaces/FAKE/threads/t1",
+        root_message_id="spaces/FAKE/messages/m1",
+        category="infrastructure",
+        title="API gateway timing out in production with 504 errors",
+        summary="The gateway returns 504s for many requests; players are impacted.",
+        source_message_ids=["m1"],
+    )
+    _B = dict(
+        thread_id="spaces/FAKE/threads/t2",
+        root_message_id="spaces/FAKE/messages/m9",
+        category="incident",
+        title="API gateway 504 timeouts in production",
+        summary="Game launches time out and wallet calls fail; gateway 504s.",
+        source_message_ids=["m9"],
+    )
+
+    def test_decider_folds_a_cross_thread_paraphrase(self) -> None:
+        store = IssueStore(state_file="/unused")
+        a = store.upsert(_make_issue(**self._A))
+        seen: list = []
+
+        def decide(candidate, open_issues):
+            seen.append((candidate, list(open_issues)))
+            return open_issues[0]  # the LLM says: same incident as the open one
+
+        b = store.upsert(_make_issue(**self._B), semantic_match=decide)
+        self.assertIs(b, a)  # folded into the first
+        self.assertEqual(len(store.open_issues()), 1)
+        self.assertEqual(a.source_message_ids, ["m1", "m9"])
+        self.assertEqual(len(seen), 1)  # decider consulted exactly once
+        self.assertIn(a, seen[0][1])  # and offered the open issue
+
+    def test_decider_not_consulted_for_unrelated_issues(self) -> None:
+        store = IssueStore(state_file="/unused")
+        store.upsert(
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t1",
+                title="Payouts stuck",
+                summary="Withdrawals are not completing for VIP players.",
+            )
+        )
+        seen: list = []
+
+        def decide(candidate, open_issues):
+            seen.append(candidate)
+            return open_issues[0]
+
+        # No lexical relationship → below the hint floor → the LLM is never asked.
+        store.upsert(
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t2",
+                root_message_id="spaces/FAKE/messages/m9",
+                category="compliance",
+                title="KYC document upload broken",
+                summary="New signups cannot submit identity verification photos.",
+            ),
+            semantic_match=decide,
+        )
+        self.assertEqual(len(store.open_issues()), 2)
+        self.assertEqual(seen, [])
+
+    def test_decider_skipped_when_lexical_already_merges(self) -> None:
+        store = IssueStore(state_file="/unused")
+        store.upsert(
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t1",
+                title="API gateway timing out in production",
+                summary="The public API gateway returns 504s under load.",
+            )
+        )
+        seen: list = []
+
+        def decide(candidate, open_issues):
+            seen.append(candidate)
+            return open_issues[0]
+
+        # ~0.71 title overlap → the confident lexical path merges; no LLM needed.
+        store.upsert(
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t2",
+                root_message_id="spaces/FAKE/messages/m9",
+                category="outage",
+                title="API gateway timing out in prod",
+                summary="The public API gateway returns 504 timeouts under load.",
+            ),
+            semantic_match=decide,
+        )
+        self.assertEqual(len(store.open_issues()), 1)
+        self.assertEqual(seen, [])
+
+    def test_decider_return_outside_offered_set_is_ignored(self) -> None:
+        # A forged/garbage return that is NOT one of the offered open issues must
+        # never merge (identity-checked) — the candidate is tracked as new instead.
+        store = IssueStore(state_file="/unused")
+        store.upsert(_make_issue(**self._A))
+        rogue = _make_issue(
+            thread_id="spaces/FAKE/threads/t9",
+            title="Totally unrelated issue",
+            summary="Something else entirely.",
+        )
+
+        b = store.upsert(_make_issue(**self._B), semantic_match=lambda c, o: rogue)
+        self.assertIsNot(b, rogue)
+        self.assertEqual(len(store.open_issues()), 2)
+
+
 class IssueStoreStatusTest(unittest.TestCase):
     """Status transitions + round counting drive the open/closed working set."""
 
@@ -315,9 +524,15 @@ class IssueStorePersistenceTest(unittest.TestCase):
         issue.qa = [QAPair(question="Who owns this?", answer_message_ids=["m3"], text="Ops")]
         issue.last_bot_message_id = "spaces/FAKE/messages/m99"
 
-        # A second, resolved-and-tombstoned issue in another thread.
+        # A second, resolved-and-tombstoned issue in another thread. Distinct
+        # title/summary so it is NOT a cross-thread near-duplicate of the first.
         closed = store.upsert(
-            _make_issue(thread_id="spaces/FAKE/threads/t2", category="compliance")
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t2",
+                category="compliance",
+                title="KYC document upload broken",
+                summary="New signups cannot submit identity verification photos.",
+            )
         )
         assert closed is not None
         closed.status = Status.RESOLVED
@@ -344,7 +559,12 @@ class IssueStorePersistenceTest(unittest.TestCase):
         # Tombstone survives -> closed issue is not re-raised.
         self.assertTrue(reloaded.is_tombstoned(closed.fingerprint))
         suppressed = reloaded.upsert(
-            _make_issue(thread_id="spaces/FAKE/threads/t2", category="compliance")
+            _make_issue(
+                thread_id="spaces/FAKE/threads/t2",
+                category="compliance",
+                title="KYC document upload broken",
+                summary="New signups cannot submit identity verification photos.",
+            )
         )
         self.assertIs(suppressed, TOMBSTONED)
 

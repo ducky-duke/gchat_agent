@@ -17,9 +17,15 @@ import os
 import re
 import shutil
 import tempfile
-from typing import Final
+from typing import Callable, Final, Optional
 
 from ..models import AgentState, Issue, Status
+
+# A caller-supplied cross-thread duplicate decider: given a candidate and the open
+# issues (in OTHER threads) that share at least a lexical hint with it, return the
+# one it duplicates, or None. The live runner backs this with an LLM call; it is
+# None on the offline path and in tests, keeping the store deterministic + pure.
+SemanticMatch = Callable[[Issue, "list[Issue]"], Optional[Issue]]
 
 # A closed candidate that hits a tombstoned fingerprint is neither stored nor
 # raised; `upsert` returns this sentinel so callers can distinguish "merged /
@@ -36,8 +42,28 @@ _CLOSED_STATUSES: Final[frozenset[Status]] = frozenset({Status.RESOLVED, Status.
 
 # Title/summary similarity tie-breaker: a candidate whose normalized title or
 # summary overlaps an open issue this much is treated as the same issue even if
-# the fingerprint differs (e.g. the LLM flipped the category).
+# the fingerprint differs (e.g. the LLM flipped the category). Used SAME-THREAD,
+# where thread locality is itself corroborating evidence of "the same issue".
 _SIMILARITY_THRESHOLD: Final[float] = 0.6
+
+# Cross-thread near-duplicate threshold: a SECOND reporter independently raising
+# the same incident in their OWN thread yields a different thread_id (so a
+# different fingerprint AND no same-thread `_find_similar` hit). To still fold it
+# into the one open issue, match on title/summary overlap across threads — but at
+# a slightly HIGHER bar than `_SIMILARITY_THRESHOLD`, because cross-thread we lose
+# thread locality as a corroborating signal, so we demand more lexical overlap
+# before merging. This is the CONFIDENT fast path; the ambiguous band below it is
+# left to the optional LLM decider (see `upsert`'s `semantic_match`).
+_CROSS_THREAD_SIMILARITY_THRESHOLD: Final[float] = 0.65
+
+# Lexical *hint* floor for the LLM cross-thread decider: raw-token jaccard scores
+# obvious paraphrases low (e.g. "API gateway timing out … 504 errors" vs "API
+# gateway 504 timeouts" ≈ 0.5), and can even rank a genuinely-distinct pair
+# ("payouts failing" vs "deposits failing") ABOVE a real dup — so no lexical bar
+# separates them. The LLM decides instead, but only for open issues sharing at
+# least this much overlap, so we never spend an LLM call on clearly-unrelated
+# issues. Sits below `_CROSS_THREAD_SIMILARITY_THRESHOLD` (≥ that auto-merges).
+_SEMANTIC_DEDUP_HINT: Final[float] = 0.2
 
 _WORD_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+")
 
@@ -132,16 +158,26 @@ class IssueStore:
             pass
 
     # --- issue dedup / merge ------------------------------------------------
-    def upsert(self, candidate: Issue) -> Issue | None:
+    def upsert(
+        self, candidate: Issue, *, semantic_match: "SemanticMatch | None" = None
+    ) -> Issue | None:
         """Add `candidate` or merge it into a matching open issue (§6).
 
         Dedup runs against open issues plus the tombstone set:
         - If `candidate.fingerprint` is tombstoned (a resolved/stale issue from
           the same root) it is **not** re-raised — returns ``TOMBSTONED`` (None).
-        - If an open issue shares the fingerprint (or, as a tie-breaker, has a
-          highly similar title/summary), the candidate's new `source_message_ids`
-          (and any new `missing_info`) are merged in and the existing issue is
-          returned.
+        - If an open issue shares the fingerprint (or, as a same-thread tie-breaker,
+          has a highly similar title/summary), the candidate's new
+          `source_message_ids` (and any new `missing_info`) are merged in and the
+          existing issue is returned.
+        - If an open issue in a DIFFERENT thread is a near-duplicate (a second
+          reporter independently raising the same incident — title/summary overlap
+          at/above the stricter cross-thread bar), the candidate is folded into it
+          too, so two reports of one incident become ONE issue.
+        - Failing that, when `semantic_match` is supplied (the live runner's LLM
+          decider), open issues in other threads sharing at least a lexical hint are
+          offered to it; if it judges one the same incident, the candidate folds in.
+          This catches paraphrases the lexical bar can't (and must not) merge.
         - Otherwise the candidate is tracked as a new open issue and returned.
         """
         fp = candidate.fingerprint
@@ -151,6 +187,10 @@ class IssueStore:
         existing = self._by_fp.get(fp)
         if existing is None:
             existing = self._find_similar(candidate, closed=False)
+        if existing is None:
+            existing = self._find_cross_thread_duplicate(candidate)
+        if existing is None and semantic_match is not None:
+            existing = self._semantic_open_match(candidate, semantic_match)
         if existing is not None and existing.status not in _CLOSED_STATUSES:
             self._merge(existing, candidate)
             return existing
@@ -215,6 +255,62 @@ class IssueStore:
             if score >= best_score:
                 best, best_score = issue, score
         return best
+
+    def _find_cross_thread_duplicate(self, candidate: Issue) -> Issue | None:
+        """Best OPEN issue in a DIFFERENT thread whose title or summary overlaps
+        the candidate's at/above the stricter cross-thread threshold — a *second
+        reporter* independently raising the same incident in their own thread (§6).
+
+        Distinct from `_find_similar`, which only ever matches WITHIN a thread:
+        here `thread_id` necessarily differs, so the fingerprint differs too and
+        the same-thread path can't catch it. We require more lexical overlap than
+        the same-thread bar (no thread locality to corroborate) and only ever fold
+        into an OPEN issue, so a resolved incident is never silently extended by a
+        late duplicate. A genuinely distinct issue stays below the threshold and is
+        tracked separately, as before."""
+        best: Issue | None = None
+        best_score = _CROSS_THREAD_SIMILARITY_THRESHOLD
+        for issue in self.state.issues:
+            if issue.status in _CLOSED_STATUSES:
+                continue
+            if issue.thread_id == candidate.thread_id:
+                continue  # same-thread is `_find_similar`'s job
+            score = max(
+                _jaccard(issue.title, candidate.title),
+                _jaccard(issue.summary, candidate.summary),
+            )
+            if score >= best_score:
+                best, best_score = issue, score
+        return best
+
+    def _semantic_open_match(
+        self, candidate: Issue, semantic_match: "SemanticMatch"
+    ) -> Issue | None:
+        """Last-resort cross-thread dedup: offer the open issues in OTHER threads
+        that share at least `_SEMANTIC_DEDUP_HINT` lexical overlap with `candidate`
+        to a caller-supplied decider (the runner's LLM), and return the one it
+        judges the same incident.
+
+        The hint floor is purely a cost gate — it skips a decider call for issues
+        with no lexical relationship at all, while still surfacing the paraphrase
+        band the lexical bar can't safely merge. The decider's answer is trusted
+        only if it is one of the issues actually offered (identity check), so a
+        bad/forged return can never merge into an unrelated or closed issue."""
+        candidates = [
+            issue
+            for issue in self.state.issues
+            if issue.status not in _CLOSED_STATUSES
+            and issue.thread_id != candidate.thread_id
+            and max(
+                _jaccard(issue.title, candidate.title),
+                _jaccard(issue.summary, candidate.summary),
+            )
+            >= _SEMANTIC_DEDUP_HINT
+        ]
+        if not candidates:
+            return None
+        match = semantic_match(candidate, candidates)
+        return match if match in candidates else None
 
     # --- queries ------------------------------------------------------------
     def open_issues(self) -> list[Issue]:

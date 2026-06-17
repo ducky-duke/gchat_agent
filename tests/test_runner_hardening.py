@@ -510,7 +510,12 @@ class RunForeverResilienceTest(unittest.TestCase):
 
             runner.run_cycle = flaky_cycle  # type: ignore[method-assign]
 
-            with mock.patch("time.sleep") as sleep, \
+            # Patch the loop's OWN sleep seam (`runner._sleep`), not the global
+            # `time.sleep`: a concurrent background-thread backoff from a
+            # neighboring test sleeps via the real `time.sleep`, and patching the
+            # global would let those calls leak into this mock and inflate its
+            # count (the source of a former ~1/5 full-suite flake).
+            with mock.patch("gchat_agent.runner._sleep") as sleep, \
                     mock.patch("traceback.print_exc") as print_exc, \
                     mock.patch("sys.stderr"):
                 with self.assertRaises(KeyboardInterrupt):

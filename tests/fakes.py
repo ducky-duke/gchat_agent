@@ -20,6 +20,7 @@ staff `users/<id>`) so tests and the staff driver can populate the space.
 """
 from __future__ import annotations
 
+from gchat_agent.meet.base import MeetSpace
 from gchat_agent.models import Message, SenderType
 
 # A fixed epoch so derived timestamps are stable across runs but still sort
@@ -334,3 +335,36 @@ class FakeGitHubClient:
             {"title": title, "body": body, "labels": list(labels or [])}
         )
         return self._url
+
+
+class FakeMeetClient:
+    """In-memory `meet.base.MeetClient` for offline tests/demos: mints a
+    deterministic `MeetSpace` per call instead of hitting the Meet REST API.
+
+    Deterministic — each `create_space` increments a counter so the meeting code /
+    URI are stable and distinct across calls (no clock, no randomness). `fail=True`
+    makes `create_space` raise, so a test can prove a caller treats Meet creation
+    as best-effort. Every minted space is recorded in `created` for inspection."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.created: list[MeetSpace] = []
+        self._fail = fail
+        self._counter = 0
+
+    def create_space(self) -> MeetSpace:
+        if self._fail:
+            raise RuntimeError("meet down")
+        self._counter += 1
+        code = f"fake-mtg-{self._counter:03d}"
+        space = MeetSpace(
+            name=f"spaces/FAKE{self._counter}",
+            meeting_uri=f"https://meet.google.com/{code}",
+            meeting_code=code,
+            raw={
+                "name": f"spaces/FAKE{self._counter}",
+                "meetingUri": f"https://meet.google.com/{code}",
+                "meetingCode": code,
+            },
+        )
+        self.created.append(space)
+        return space

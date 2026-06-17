@@ -20,6 +20,7 @@ from typing import Any
 
 from gchat_agent.agent.prompts import (
     MARK_CLARITY,
+    MARK_DEDUP,
     MARK_DETECT,
     MARK_NARRATION,
     MARK_QUESTIONS,
@@ -187,6 +188,10 @@ class MockLLM:
             result = self._summarize_resolution(user)
         elif MARK_NARRATION in blob:
             result = self._narrate_resolution(user)
+        elif MARK_DEDUP in blob:
+            # Offline dedup is deterministic and lexical-only: never claim a
+            # semantic cross-thread match (the live LLM is what resolves those).
+            result = {"duplicate_of": None}
         else:
             # Unknown task: degrade to an empty-issues object (still valid).
             result = {"issues": []}

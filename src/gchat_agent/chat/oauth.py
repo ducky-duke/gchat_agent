@@ -123,7 +123,10 @@ def _refresh(client_json: str, token_json: str) -> tuple[str, float]:
     })
     access = payload.get("access_token")
     if not access:
-        raise RuntimeError(f"no access_token in refresh response: {payload}")
+        # Never echo the raw payload — it can carry token-like fields. Keys only.
+        raise RuntimeError(
+            f"no access_token in refresh response (keys: {sorted(payload)})"
+        )
     try:
         expires_in = int(payload.get("expires_in", 3600) or 3600)
     except (TypeError, ValueError):

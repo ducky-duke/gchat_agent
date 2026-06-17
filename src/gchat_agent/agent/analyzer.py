@@ -35,6 +35,7 @@ from gchat_agent import models
 from gchat_agent.agent.prompts import (
     clarity_prompt,
     detect_prompt,
+    duplicate_match_prompt,
     questions_prompt,
 )
 from gchat_agent.observability import observe
@@ -249,6 +250,38 @@ class Analyzer:
         return self._clean_questions(
             data.get("questions") if isinstance(data, dict) else None
         )
+
+    # --- cross-thread duplicate decision -------------------------------------
+    @observe(name="analyzer.match_duplicate_issue")
+    def match_duplicate_issue(
+        self, candidate: Issue, open_issues: "list[Issue]"
+    ) -> Issue | None:
+        """Ask the LLM whether `candidate` is the SAME real-world incident as one of
+        the currently-open `open_issues` (raised in another thread) — the paraphrase
+        case lexical overlap can't safely resolve (§6 cross-thread dedup). Returns
+        the matched open issue or ``None`` (no match).
+
+        Best-effort: an empty list, a transport error, or an unparseable / out-of-
+        range answer all yield ``None``, so detection falls back to tracking the
+        candidate as a new issue. The IssueStore is what actually merges — this only
+        decides WHICH open issue (if any) the candidate duplicates.
+        """
+        issues = list(open_issues)
+        if not issues:
+            return None
+        system, user = duplicate_match_prompt(candidate, issues)
+        try:
+            data = self.llm.complete_json(system, user)
+        except Exception:  # noqa: BLE001 - dedup is best-effort; never block detection
+            return None
+        idx = data.get("duplicate_of") if isinstance(data, dict) else None
+        try:
+            n = int(idx)  # int / "2" → 2; None / "none" → error → no match
+        except (TypeError, ValueError):
+            return None
+        if not 1 <= n <= len(issues):
+            return None
+        return issues[n - 1]
 
     @staticmethod
     def _clean_questions(raw: object) -> list[str]:

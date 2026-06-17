@@ -9,8 +9,9 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
   result — fail-fast enum/range checks, keyless `mock` path stays valid); env-driven settings
   with a stdlib `.env` parser (`_parse_env_file`/`_clean_value` handle empty-value-comment
   lines). Tunables: `MAX_CLARIFY_ROUNDS`, `MAX_NO_PROGRESS_ROUNDS`, `STALE_AFTER_IDLE_CYCLES`,
-  `RESOLVE_CONFIDENCE_THRESHOLD`, `EPISODIC_RECALL` (default on), `REDACT_REPORTS` (default
-  off), the safety-mode + voice + provider flags.
+  `RESOLVE_CONFIDENCE_THRESHOLD`, `EPISODIC_RECALL` (default on), `SEMANTIC_DEDUP` (default on —
+  LLM cross-thread duplicate decider), `REDACT_REPORTS` (default off), the safety-mode + voice +
+  provider flags.
 - **`models.py`** — domain dataclasses, lossless JSON round-trip. Enums `SenderType`/
   `Severity`/`Status`; `QAPair`, `Message`, `Issue`, `ClarityAssessment`,
   `ResolutionReport`, `Conversation`, `AgentState`; `issue_fingerprint()`. `Issue` carries
@@ -34,4 +35,8 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
 - **`github/`** — optional GitHub issue export (Protocol + stdlib-urllib REST client +
   `build_github`). Files each resolved issue off the resolve critical path — see root
   CLAUDE.md "GitHub issue export".
+- **`meet/`** — optional Google Meet link minting (Protocol + stdlib-urllib REST client +
+  `build_meet`, gated by `MEET_LINKS`). Mints a meeting + shares the join link in Chat so a
+  HUMAN joins the incident call — an AI can't speak on the Meet (Media API is receive-only) —
+  see root CLAUDE.md / [`docs/google_meet/`](../../docs/google_meet/).
 - **`rag/`** — retrieval stack (BM25 + boosts + optional dense + RRF fusion).

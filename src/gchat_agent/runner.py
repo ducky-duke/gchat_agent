@@ -51,6 +51,21 @@ _CURSOR_SKEW_SECONDS = 2
 _CYCLE_BACKOFF_CAP_SECONDS = 300.0
 
 
+def _sleep(seconds: float) -> None:
+    """Indirection over ``time.sleep`` for the daemon loop's *own* pacing.
+
+    `run_forever` sleeps through this dedicated module attribute rather than the
+    global `time.sleep` so a test can stub the loop's pacing by patching
+    `gchat_agent.runner._sleep`. Patching the global `time.sleep` instead is
+    racy under the offline suite: a concurrent background-thread sleep (e.g. an
+    `llm/_retry` backoff from a neighboring test) would leak into the same mock
+    and inflate the call count. This seam is private to the loop, so only its
+    own sleeps are ever observed."""
+    import time
+
+    time.sleep(seconds)
+
+
 def _now() -> str:
     """A UTC RFC-3339 timestamp string (consistent `now` across the cycle)."""
     return datetime.now(timezone.utc).isoformat()
@@ -408,11 +423,30 @@ class Runner:
         # start). Off ⇒ pass nothing, identical to the pre-recall behavior.
         prior = self.store.recent_closed() if self.config.EPISODIC_RECALL else None
 
+        # LLM cross-thread duplicate decider: the store calls this only for open
+        # issues in OTHER threads that share a lexical hint with the candidate but
+        # fell below the confident lexical merge bar — the paraphrase band. `None`
+        # when disabled ⇒ lexical-only dedup, no extra LLM call.
+        def _semantic_match(candidate: Issue, open_issues: "list[Issue]") -> Issue | None:
+            match = self.analyzer.match_duplicate_issue(candidate, open_issues)
+            if match is not None:
+                import sys
+
+                print(
+                    f"[issue-spotter] LLM dedup: a second report "
+                    f"({candidate.title!r}) is the SAME incident as {match.title!r} "
+                    f"— folding into one issue (cross-thread).",
+                    file=sys.stderr,
+                )
+            return match
+
+        semantic_match = _semantic_match if self.config.SEMANTIC_DEDUP else None
+
         detected = 0
         for candidate in self.analyzer.detect_issues(detection_conv, prior_issues=prior):
             if self.store.is_tombstoned(candidate.fingerprint):
                 continue
-            self.store.upsert(candidate)
+            self.store.upsert(candidate, semantic_match=semantic_match)
             detected += 1
         return detected
 
@@ -867,6 +901,35 @@ class Runner:
             or self.config.REDIRECT_OUT_OF_THREAD_REPLY
         )
 
+    def _issue_evidence_messages(
+        self, issue: Issue, thread_conv: Conversation
+    ) -> list[Message]:
+        """The full evidence trail for the filed GitHub issue: the issue's effective
+        thread conversation PLUS any folded `source_message_ids` not already shown.
+
+        When IssueStore merges a near-duplicate raised by a SECOND reporter in their
+        own thread (§6 cross-thread dedup), that reporter's messages are added to the
+        issue's `source_message_ids` but live OUTSIDE the issue's thread — so
+        `_effective_conversation` (thread + home threads + the issue reporter's
+        out-of-thread replies) never surfaces them. They ARE this issue's evidence,
+        so the FILED transcript should show BOTH reporters: the dedup made visible.
+        Missing ids (scrolled out of the recent window) and the bot's own posts are
+        skipped; the result stays chronological."""
+        own_id = self.chat.me()
+        messages = list(thread_conv.messages)
+        have = {m.id for m in messages}
+        by_id = {m.id: m for m in self._conversation.messages}
+        for mid in issue.source_message_ids:
+            if not mid or mid in have:
+                continue
+            m = by_id.get(mid)
+            if m is None or (own_id and m.sender == own_id):
+                continue
+            messages.append(m)
+            have.add(mid)
+        messages.sort(key=lambda m: (m.create_time or "", m.id))
+        return messages
+
     def _out_of_thread_reporter_messages(
         self, issue, own_id: str | None
     ) -> list[Message]:
@@ -1064,9 +1127,11 @@ class Runner:
             # live only on this thread) so only an immutable (title, body, labels)
             # tuple crosses into the worker — no shared Issue/Conversation.
             if self._github is not None:
-                transcript = report_mod.render_chat_transcript(
-                    thread_conv.messages, self.chat.me()
-                )
+                # Render the issue's FULL evidence (incl. a merged co-reporter's
+                # cross-thread messages), not just its own thread, so a deduped
+                # issue shows both reports.
+                evidence = self._issue_evidence_messages(issue, thread_conv)
+                transcript = report_mod.render_chat_transcript(evidence, self.chat.me())
                 title, body, labels = report_mod.render_github_issue(report, transcript)
                 self._submit_publish(issue.id, title, body, labels)
         issue.status = Status.RESOLVED
@@ -1327,11 +1392,11 @@ class Runner:
                         f"{delay:.0f}s (consecutive failure #{consecutive_failures})",
                         file=sys.stderr,
                     )
-                    time.sleep(delay)
+                    _sleep(delay)
                     continue
                 consecutive_failures = 0
                 self._log_cycle(summary, time.monotonic() - started)
-                time.sleep(base)
+                _sleep(base)
         finally:
             self._drain_background()  # let any in-flight voice/GitHub task finish on shutdown
             _release_lock(lock_path)

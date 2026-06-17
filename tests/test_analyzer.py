@@ -23,8 +23,10 @@ from gchat_agent.agent.analyzer import Analyzer
 from gchat_agent.llm.mock import MockLLM
 from gchat_agent.models import (
     Conversation,
+    Issue,
     Message,
     SenderType,
+    Severity,
     Status,
 )
 from gchat_agent.rag.base import Passage
@@ -359,6 +361,91 @@ class ClarityFlowTest(unittest.TestCase):
         assessment = self.analyzer.assess_clarity(self.issue, self.conv)
         self.assertFalse(assessment.is_clear)
         self.assertTrue(assessment.missing_info)
+
+
+class _DedupLLM:
+    """An `LLMClient` stub for `match_duplicate_issue`: returns a preset
+    `duplicate_of` value and counts how many times it was called."""
+
+    def __init__(self, duplicate_of: object) -> None:
+        self.duplicate_of = duplicate_of
+        self.calls = 0
+
+    def complete_json(self, system, user, schema_hint=None):  # noqa: ARG002
+        self.calls += 1
+        return {"duplicate_of": self.duplicate_of}
+
+    def chat(self, system, messages):  # noqa: ARG002
+        return ""
+
+
+def _bare_issue(title: str, summary: str = "", category: str = "incident") -> Issue:
+    return Issue(
+        id=title,
+        fingerprint=title,
+        title=title,
+        summary=summary,
+        category=category,
+        severity=Severity.MEDIUM,
+        status=Status.OPEN,
+        thread_id=f"{_SPACE}/threads/{abs(hash(title)) % 97}",
+        root_message_id=f"{_SPACE}/messages/{abs(hash(title)) % 97}",
+    )
+
+
+class MatchDuplicateIssueTest(unittest.TestCase):
+    """The LLM cross-thread duplicate decider (§6): map the model's 1-based pick
+    back to the open issue, or None for null / out-of-range / errors."""
+
+    def setUp(self) -> None:
+        self.candidate = _bare_issue("API gateway 504 timeouts in production")
+        self.open_issues = [
+            _bare_issue("Payouts stuck for VIP players"),
+            _bare_issue("API gateway timing out in production with 504 errors"),
+        ]
+
+    def test_returns_the_chosen_open_issue(self) -> None:
+        analyzer = Analyzer(_DedupLLM(2), retriever=None)
+        match = analyzer.match_duplicate_issue(self.candidate, self.open_issues)
+        self.assertIs(match, self.open_issues[1])
+
+    def test_null_means_no_match(self) -> None:
+        analyzer = Analyzer(_DedupLLM(None), retriever=None)
+        self.assertIsNone(
+            analyzer.match_duplicate_issue(self.candidate, self.open_issues)
+        )
+
+    def test_out_of_range_index_is_ignored(self) -> None:
+        analyzer = Analyzer(_DedupLLM(99), retriever=None)
+        self.assertIsNone(
+            analyzer.match_duplicate_issue(self.candidate, self.open_issues)
+        )
+
+    def test_string_index_is_coerced(self) -> None:
+        analyzer = Analyzer(_DedupLLM("1"), retriever=None)
+        self.assertIs(
+            analyzer.match_duplicate_issue(self.candidate, self.open_issues),
+            self.open_issues[0],
+        )
+
+    def test_empty_open_list_skips_the_llm(self) -> None:
+        llm = _DedupLLM(1)
+        analyzer = Analyzer(llm, retriever=None)
+        self.assertIsNone(analyzer.match_duplicate_issue(self.candidate, []))
+        self.assertEqual(llm.calls, 0)  # no point asking with nothing to match
+
+    def test_transport_error_yields_none(self) -> None:
+        class _BoomLLM:
+            def complete_json(self, system, user, schema_hint=None):  # noqa: ARG002
+                raise RuntimeError("boom")
+
+            def chat(self, system, messages):  # noqa: ARG002
+                return ""
+
+        analyzer = Analyzer(_BoomLLM(), retriever=None)
+        self.assertIsNone(
+            analyzer.match_duplicate_issue(self.candidate, self.open_issues)
+        )
 
 
 if __name__ == "__main__":

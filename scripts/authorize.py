@@ -57,12 +57,17 @@ TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?access_token="
 # Per-request socket timeout so a hung endpoint can't wedge the mint flow forever.
 HTTP_TIMEOUT_SECONDS = 30.0
 
-# v1 demo scopes (§5.4): read + write Chat messages, create the demo space, and
-# userinfo.email so we can confirm (and refuse) the consenting account.
+# v1 demo scopes (§5.4): read + write Chat messages, create the demo space,
+# create a Google Meet meeting (Meet REST API `spaces.create`, used by
+# scripts/demo_meet_call.py when MEET_LINKS is on), and userinfo.email so we can
+# confirm (and refuse) the consenting account. NOTE: adding a scope here means an
+# already-minted refresh token must be re-authorized to gain it (an old token
+# 403s on a Meet create until you re-run this flow).
 SCOPES = [
     "https://www.googleapis.com/auth/chat.messages",
     "https://www.googleapis.com/auth/chat.messages.readonly",
     "https://www.googleapis.com/auth/chat.spaces.create",
+    "https://www.googleapis.com/auth/meetings.space.created",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
 
@@ -202,7 +207,8 @@ def main(argv: list[str] | None = None) -> int:
     access = tok.get("access_token")
     refresh = tok.get("refresh_token")
     if not access:
-        sys.exit(f"no access_token in response: {tok}")
+        # Don't dump the raw token dict — print only its keys (no secret values).
+        sys.exit(f"no access_token in response (keys: {sorted(tok)})")
 
     # Confirm the account (refuse glo.com) via tokeninfo.
     info: dict = {}

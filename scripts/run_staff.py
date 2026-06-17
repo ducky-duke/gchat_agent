@@ -122,10 +122,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--persona",
         required=True,
-        choices=("ops", "promo", "apigw", "noise"),
+        choices=("ops", "promo", "apigw", "noise", "dupe", "injection"),
         help="which persona from data/scenarios.json to run. 'noise' is a "
         "control persona: benign small talk with no issue, used to prove the "
-        "bot does NOT file an issue for non-issue chatter.",
+        "bot does NOT file an issue for non-issue chatter. 'dupe' is a SECOND "
+        "reporter of the apigw incident (a near-duplicate in its own thread), "
+        "used to prove the bot merges both reports into ONE issue. 'injection' "
+        "pastes hostile content embedding a prompt-injection attempt, used to "
+        "prove the bot treats the transcript as UNTRUSTED data and never "
+        "complies (no rogue action, no system-prompt/secret leak).",
     )
     parser.add_argument(
         "--token",

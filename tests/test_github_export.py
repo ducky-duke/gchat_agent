@@ -272,6 +272,44 @@ class RunnerGithubTest(unittest.TestCase):
             self.assertIn("🤖 bot", filed["body"])
             self.assertIn("## Collected messages", filed["body"])
 
+    def test_filed_transcript_shows_a_merged_co_reporter(self) -> None:
+        # A near-duplicate from a SECOND reporter in another thread was folded into
+        # this issue (cross-thread dedup): its message id is in source_message_ids
+        # but lives OUTSIDE the issue's thread. The filed transcript must still show
+        # it, so the deduped issue visibly carries BOTH reports — not just one.
+        with tempfile.TemporaryDirectory() as tmp:
+            gh = FakeGitHubClient()
+            runner, _chat, _ = self._runner(tmp, github=gh, publish_ex=InlineExecutor())
+
+            dupe = Message(
+                id="spaces/MAIN/messages/d1",
+                space="spaces/MAIN",
+                thread_id="spaces/MAIN/threads/T2",  # a DIFFERENT thread
+                sender="users/riley",
+                sender_type=SenderType.HUMAN,
+                text="Anyone else seeing API gateway 504s? Game launches are blocked.",
+                create_time="2026-01-01T00:00:04Z",
+            )
+            # The runner's conversation buffer holds every thread it has fetched.
+            for m in (*self._thread().messages, dupe):
+                runner._conversation.add(m)
+
+            issue = replace(
+                _issue(),
+                source_message_ids=[
+                    "spaces/MAIN/messages/m1",
+                    "spaces/MAIN/messages/d1",  # folded co-reporter, other thread
+                ],
+            )
+            runner._resolve(issue, self._thread())
+
+            self.assertEqual(len(gh.issues), 1)
+            body = gh.issues[0]["body"]
+            # Both the original reporter's thread AND the merged co-reporter show.
+            self.assertIn("Login service is returning 500", body)
+            self.assertIn("Game launches are blocked", body)
+            self.assertIn("users/riley", body)
+
     def test_export_is_off_critical_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ex = _DeferredExecutor()
