@@ -17,6 +17,9 @@ Syntax-only check (no `ty` here): `python -m py_compile <file>`.
   abandon still-unasked core facts).
 - **`test_self_filter.py`** — bot never detects/clarifies its OWN account's messages.
 - **`test_runner_hardening.py`** — runner/state hardening (largest; review-driven).
+- **`test_goclaw_hardening.py`** — the goclaw-inspired batch: `validate_config`, token
+  usage, `llm/_retry` (Retry-After/jitter), `redact_secrets`, episodic recall, the
+  prompt-injection guard, state `.bak`, and `_issue_query` reply-blending.
 - **`test_analyzer.py`**, **`test_issue_store.py`**, **`test_models.py`**,
   **`test_config.py`** — core unit coverage.
 - **`test_llm_base.py`** (JSON extraction), **`test_llm_mock.py`**,

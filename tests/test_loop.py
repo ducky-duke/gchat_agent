@@ -82,7 +82,7 @@ class _DemoAnalyzer(Analyzer):
     genuine clarify → answer → resolve loop run. Every LLM call is untouched.
     """
 
-    def detect_issues(self, conversation):  # type: ignore[override]
+    def detect_issues(self, conversation, prior_issues=None):  # type: ignore[override]
         issues = super().detect_issues(conversation)
         for issue in issues:
             issue.missing_info = []

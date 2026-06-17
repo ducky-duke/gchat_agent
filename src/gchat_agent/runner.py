@@ -44,6 +44,11 @@ _SEEN_WINDOW = 500
 # filter (§5.4/§7); the cursor's `seen` set dedups the replayed messages.
 _CURSOR_SKEW_SECONDS = 2
 
+# Ceiling on the cross-cycle exponential backoff `run_forever` applies after
+# consecutive cycle failures, so a sustained outage settles to one retry every
+# few minutes instead of hammering a dead endpoint every poll interval.
+_CYCLE_BACKOFF_CAP_SECONDS = 300.0
+
 
 def _now() -> str:
     """A UTC RFC-3339 timestamp string (consistent `now` across the cycle)."""
@@ -175,6 +180,7 @@ class Runner:
     def run_cycle(self) -> dict:
         """Run one fetch → detect → clarify/resolve iteration; return a summary."""
         self.store.load()
+        tokens_before = self._llm_total_tokens()
         own_id = self._resolve_own_id()
 
         new_messages = self._fetch_new_messages()
@@ -207,7 +213,22 @@ class Runner:
             "stale": stale,
             "escalated": escalated,
             "redirected": redirected,
+            # LLM tokens this cycle billed across all calls (0 when the model
+            # doesn't report usage; an estimate on the mock path). Surfaced in the
+            # cycle log so quota spend is visible at a glance.
+            "tokens": max(0, self._llm_total_tokens() - tokens_before),
         }
+
+    def _llm_total_tokens(self) -> int:
+        """Cumulative `total_tokens` reported by the LLM client, or 0 if it doesn't
+        track usage. Read before/after a cycle to compute per-cycle spend."""
+        snap = getattr(self._llm, "usage_snapshot", None)
+        if not callable(snap):
+            return 0
+        try:
+            return int(snap().get("total_tokens", 0) or 0)
+        except (TypeError, ValueError, AttributeError):
+            return 0
 
     # --- step 1: identity ---------------------------------------------------
     def _resolve_own_id(self) -> str | None:
@@ -309,8 +330,13 @@ class Runner:
         window = self._conversation.tail(self.config.DETECT_WINDOW_MESSAGES)
         detection_conv = window.without_sender(own_id) if own_id else window
 
+        # Episodic recall: surface the few most recently closed issues so detection
+        # has memory of what was already handled (self-gating — empty on a fresh
+        # start). Off ⇒ pass nothing, identical to the pre-recall behavior.
+        prior = self.store.recent_closed() if self.config.EPISODIC_RECALL else None
+
         detected = 0
-        for candidate in self.analyzer.detect_issues(detection_conv):
+        for candidate in self.analyzer.detect_issues(detection_conv, prior_issues=prior):
             if self.store.is_tombstoned(candidate.fingerprint):
                 continue
             self.store.upsert(candidate)
@@ -927,7 +953,9 @@ class Runner:
             if disk_written:
                 report_path = os.path.join(self.reports_dir, f"issue-{issue.id}.md")
                 if not os.path.exists(report_path):
-                    report_mod.write_report(report, self.reports_dir)
+                    report_mod.write_report(
+                        report, self.reports_dir, redact=self.config.REDACT_REPORTS
+                    )
 
             self._post_to_thread(
                 issue,
@@ -1054,18 +1082,26 @@ class Runner:
     # --- the long-running loop ----------------------------------------------
     def run_forever(self) -> None:
         """Loop `run_cycle` forever under a single-runner lock, sleeping
-        `POLL_INTERVAL_SECONDS` between cycles. Releases the lock on exit and
-        flushes observability.
+        `POLL_INTERVAL_SECONDS` between successful cycles. Releases the lock on
+        exit and flushes observability.
 
         A single cycle's failure (a network/API/LLM error that survived its own
         retries) is logged and swallowed so one transient hiccup never kills the
-        long-running daemon — the loop sleeps and tries again next cycle.
-        `KeyboardInterrupt`/`SystemExit` are *not* caught (they subclass
-        `BaseException`, not `Exception`), so Ctrl-C still shuts down cleanly via
-        the `finally`. `--once` (via `run_once`) keeps its fail-fast behavior."""
+        long-running daemon. Crucially, CONSECUTIVE failures back off
+        exponentially (the poll interval doubled per failure, capped, plus jitter)
+        instead of hammering a dead endpoint every `POLL_INTERVAL_SECONDS`; the
+        first success resets the backoff. `KeyboardInterrupt`/`SystemExit` are
+        *not* caught (they subclass `BaseException`, not `Exception`), so Ctrl-C
+        still shuts down cleanly via the `finally`. `--once` (via `run_once`)
+        keeps its fail-fast behavior."""
+        import random
         import sys
         import time
         import traceback
+
+        base = max(1, self.config.POLL_INTERVAL_SECONDS)
+        cap = max(base, _CYCLE_BACKOFF_CAP_SECONDS)
+        consecutive_failures = 0
 
         lock_path = self._lock_path()
         _acquire_lock_or_raise(lock_path)
@@ -1075,15 +1111,22 @@ class Runner:
                 try:
                     summary = self.run_cycle()
                 except Exception:  # noqa: BLE001 — daemon must outlive any one cycle
+                    consecutive_failures += 1
                     traceback.print_exc()
+                    # Exponential backoff with jitter so a sustained outage isn't
+                    # hammered once per poll interval (the old flat sleep).
+                    delay = min(base * (2 ** (consecutive_failures - 1)), cap)
+                    delay += random.uniform(0, base)
                     print(
                         "cycle failed (see traceback above); continuing after "
-                        f"{max(1, self.config.POLL_INTERVAL_SECONDS)}s",
+                        f"{delay:.0f}s (consecutive failure #{consecutive_failures})",
                         file=sys.stderr,
                     )
-                else:
-                    self._log_cycle(summary, time.monotonic() - started)
-                time.sleep(max(1, self.config.POLL_INTERVAL_SECONDS))
+                    time.sleep(delay)
+                    continue
+                consecutive_failures = 0
+                self._log_cycle(summary, time.monotonic() - started)
+                time.sleep(base)
         finally:
             _release_lock(lock_path)
             observability.flush()
@@ -1198,9 +1241,14 @@ def build_runner(config: Config) -> Runner:
     `IssueStore`. Used by `scripts/run_poller.py`.
     """
     from .chat.google_rest import GoogleChatClient
+    from .config import validate_config
     from .llm.openrouter import build_llm
     from .llm.tts import build_tts
     from .rag.store import build_retriever
+
+    # Fail fast on a bad enum/range before any network wiring (also covers a
+    # Config built directly, bypassing load_config's validation).
+    validate_config(config)
 
     store = IssueStore(config.STATE_FILE)
     store.load()

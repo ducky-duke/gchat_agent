@@ -18,6 +18,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
+from gchat_agent.llm import _retry
 from gchat_agent.llm.base import LLMClient, extract_json
 
 if TYPE_CHECKING:  # type-only; no runtime import
@@ -30,7 +31,8 @@ _X_TITLE = "gchat-agent"
 
 # Extra application-level backoff on transient failures (the SDK retries too).
 _MAX_RETRIES = 3
-_BASE_BACKOFF = 1.5  # seconds; doubled each attempt
+_BASE_BACKOFF = 1.5  # seconds; base of the exponential backoff (with jitter)
+_BACKOFF_CAP = 30.0  # ceiling so a server Retry-After can't park us forever
 
 # Per-request timeout. Without this the openai SDK waits up to its 600s (10 min)
 # default, so one hung/slow call can freeze the whole poll cycle. A reasoning
@@ -54,6 +56,17 @@ class OpenRouterClient:
         ]
         self._use_langfuse = config.OBSERVABILITY == "langfuse"
         self._client: Any | None = None  # lazily constructed
+        # Cumulative token usage across this client's lifetime (best-effort: only
+        # populated when the API returns `response.usage`). Read via
+        # `usage_snapshot()` — the runner diffs it per cycle to log spend. Counts
+        # tokens the model actually billed; `calls` counts completions that
+        # reported usage.
+        self._usage: dict[str, int] = {
+            "calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
 
     # --- client construction (lazy import) -----------------------------------
     def _get_client(self) -> Any:
@@ -82,17 +95,29 @@ class OpenRouterClient:
         return {"HTTP-Referer": _HTTP_REFERER, "X-Title": _X_TITLE}
 
     # --- transient-failure detection -----------------------------------------
-    @staticmethod
-    def _is_transient(exc: Exception) -> bool:
-        """True for 429 / 5xx-style errors worth an extra backoff retry."""
-        status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
-        if isinstance(status, int) and (status == 429 or 500 <= status < 600):
-            return True
-        name = exc.__class__.__name__.lower()
-        if "ratelimit" in name or "apiconnection" in name or "internalserver" in name:
-            return True
-        text = str(exc).lower()
-        return "429" in text or "rate limit" in text or "resource_exhausted" in text
+    _is_transient = staticmethod(_retry.is_transient)  # back-compat alias
+
+    # --- token-usage accounting ----------------------------------------------
+    def _record_usage(self, response: Any) -> None:
+        """Accumulate `response.usage` token counts (best-effort, never raises).
+
+        The completions API returns a `usage` object with `prompt_tokens` /
+        `completion_tokens` / `total_tokens`; a response that omits it (or a model
+        that doesn't report usage) is simply not counted."""
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        self._usage["calls"] += 1
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            try:
+                self._usage[key] += int(getattr(usage, key, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+
+    def usage_snapshot(self) -> dict[str, int]:
+        """A copy of cumulative token usage since construction. The runner diffs
+        `total_tokens` across a cycle to report per-cycle spend."""
+        return dict(self._usage)
 
     def _create(self, messages: list[dict[str, str]], **kwargs: Any) -> Any:
         """Call chat.completions.create with extra backoff on 429/5xx.
@@ -117,16 +142,21 @@ class OpenRouterClient:
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
-                return client.chat.completions.create(
+                response = client.chat.completions.create(
                     model=self._model,
                     messages=messages,
                     extra_headers=self._default_headers,
                     **kwargs,
                 )
+                self._record_usage(response)
+                return response
             except Exception as exc:  # noqa: BLE001 - re-raised below if fatal
                 last_exc = exc
-                if attempt < _MAX_RETRIES - 1 and self._is_transient(exc):
-                    time.sleep(_BASE_BACKOFF * (2 ** attempt))
+                if attempt < _MAX_RETRIES - 1 and _retry.is_transient(exc):
+                    time.sleep(_retry.backoff_delay(
+                        attempt, base=_BASE_BACKOFF, cap=_BACKOFF_CAP,
+                        retry_after=_retry.retry_after_seconds(exc),
+                    ))
                     continue
                 raise
         # Unreachable in practice (loop either returns or raises).

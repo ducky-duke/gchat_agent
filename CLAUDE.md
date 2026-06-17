@@ -124,6 +124,45 @@ Accumulated findings, setup gotchas, and the smoke-test environment live in
   LLM-free in-thread nudge; never resolves/leaks on it). Both gate *source B* only; design + leak-safety
   invariants in [`MEMORY.md`](MEMORY.md) "Out-of-thread safety modes".
 
+## goclaw-inspired hardening
+A batch of low-risk hardening ported from a review of the `goclaw/` Go platform
+(all pure-stdlib, gated by the offline suite — now **285 green**; tests in
+[`tests/test_goclaw_hardening.py`](tests/test_goclaw_hardening.py)):
+- **Observability is actually wired**: `@observe` (was applied to nothing) now
+  decorates the 5 LLM boundaries — `analyzer.{detect_issues,assess_clarity,
+  generate_questions}` + `report.{build_resolution_report,build_narration}` — so a
+  live `OBSERVABILITY=langfuse` run gets a span per call. No-op/zero-import on the
+  default path.
+- **Token usage**: `OpenRouterClient`/`MockLLM` accumulate `usage_snapshot()`
+  (calls + prompt/completion/total tokens; Mock estimates ~chars/4). The runner
+  diffs it per cycle and adds `tokens` to the cycle summary + log.
+- **`config.validate_config()`** fails fast at load on a bad enum
+  (`LLM_PROVIDER`/`OBSERVABILITY`/`REPORT_DELIVERY`) or out-of-range number
+  (threshold, intervals, ports). Called by `load_config` AND `build_runner`. Does
+  NOT check the API key — that stays in `build_llm`/`build_tts` so the keyless
+  `mock` path is always valid.
+- **Retry hardening** ([`llm/_retry.py`](src/gchat_agent/llm/_retry.py), shared by
+  openrouter+tts; google_rest mirrors it): honor a server `Retry-After` header
+  (both `exc.response.headers` and bare `exc.headers` shapes; integer-seconds only,
+  HTTP-date → backoff), add full **jitter**, and a **cross-cycle** exponential
+  backoff in `run_forever` (consecutive-failure count → `min(interval*2ⁿ, 300s)`),
+  replacing the flat sleep that hammered a dead endpoint.
+- **Episodic recall** (`EPISODIC_RECALL`, default on, self-gating): detection is
+  shown the few most recently closed issues (`IssueStore.recent_closed`) as a
+  `prompts._prior_issues_block` — `#`-stripped so it stays inert for MockLLM
+  detection (which only flags `#<id>` lines). Detection-only; clarity is left
+  untouched so the MockLLM owner/date/number heuristic stays deterministic.
+- **Prompt-injection guard**: `_ROLE` + `_render_user` mark the transcript and
+  retrieved context as UNTRUSTED data, never instructions (defense for a bot
+  ingesting arbitrary staff messages).
+- **Report-only secret redaction** (`REDACT_REPORTS`, default **OFF**):
+  `report.redact_secrets` masks high-confidence secrets (bearer/sk-/AIza/JWT) in
+  the on-disk report only — never the LLM input path; conservative so ticket/
+  message ids survive. Belt-and-suspenders (the bot never logs auth headers).
+- **State `.bak`**: `IssueStore.save` copies the last-known-good state to
+  `<state_file>.bak` before `os.replace` (one-deep rollback). `_issue_query` also
+  blends the reporter's latest reply into the RAG query.
+
 ## Tooling / conventions
 - Python: `igaming` conda env (3.14). **`ty` is NOT installed here** → syntax-check with
   `python -m py_compile <file>`; tests via stdlib `unittest`.

@@ -121,6 +121,11 @@ class Config:
     RAG_DENSE: bool = False
     RAG_TOP_K: int = 5
     KB_DIR: str = "data/knowledge_base"
+    # Episodic recall: when on, detection is shown a compact block of the few most
+    # recently closed issues (title/category/outcome) so the model has memory of
+    # what was already handled. Self-gating — empty on a fresh start (no closed
+    # issues yet, e.g. after `./start_bot.sh` wipes `.state/`). Off ⇒ no block.
+    EPISODIC_RECALL: bool = True
 
     # --- Agent loop ---
     MAX_CLARIFY_ROUNDS: int = 3
@@ -177,6 +182,13 @@ class Config:
     #             delivery is unavailable or fails, so a report is never lost).
     #   "both"  — write the Markdown AND post the voice attachment.
     REPORT_DELIVERY: str = "disk"  # disk | voice | both
+    # Off-by-default, report-ONLY secret redaction. When on, the on-disk Markdown
+    # report (and only it) has high-confidence secrets masked — bearer tokens,
+    # OpenAI/Google-style API keys, JWTs. Deliberately conservative so it never
+    # touches the LLM input path and won't mangle ticket ids / short tokens.
+    # Recommended OFF: the bot never logs Authorization headers, so this is belt-
+    # and-suspenders for the case a staff member pastes a live secret into chat.
+    REDACT_REPORTS: bool = False
     # Text-to-speech (OpenRouter `audio.speech`, reuses the OpenRouter transport).
     # TTS_VOICE is model-specific — a wrong voice 404s ("Provider returned 404").
     # For x-ai/grok-voice-tts-1.0: default | ara | rex | sal | eve | leo (NOT the
@@ -219,6 +231,8 @@ _BOOL_KEYS: Final[frozenset[str]] = frozenset(
         "OPENROUTER_REASONING",
         "REQUIRE_IN_THREAD_REPLY",
         "REDIRECT_OUT_OF_THREAD_REPLY",
+        "EPISODIC_RECALL",
+        "REDACT_REPORTS",
     }
 )
 _INT_KEYS: Final[frozenset[str]] = frozenset({
@@ -234,10 +248,63 @@ _INT_KEYS: Final[frozenset[str]] = frozenset({
 _FLOAT_KEYS: Final[frozenset[str]] = frozenset({"RESOLVE_CONFIDENCE_THRESHOLD"})
 
 
+# Allowed values for the enum-like string settings (lower-cased on compare).
+_ENUM_CHOICES: Final[dict[str, frozenset[str]]] = {
+    "LLM_PROVIDER": frozenset({"mock", "openrouter"}),
+    "OBSERVABILITY": frozenset({"none", "langfuse"}),
+    "REPORT_DELIVERY": frozenset({"disk", "voice", "both"}),
+}
+
+
+def validate_config(config: Config) -> Config:
+    """Fail fast on an out-of-range / mistyped setting (§10), returning `config`.
+
+    Catches the misconfigurations the type coercion in `load_config` can't — an
+    invalid enum (`REPORT_DELIVERY=voce`) or a nonsensical number (a negative
+    threshold, a zero poll interval) — *at load*, with one message listing every
+    problem, instead of a confusing failure deep in a poll cycle. Provider/key
+    validation stays in `build_llm`/`build_tts` (they alone know the mock path is
+    keyless), so this never rejects the offline `LLM_PROVIDER=mock` config. Raises
+    `ValueError` if anything is wrong."""
+    problems: list[str] = []
+
+    for key, choices in _ENUM_CHOICES.items():
+        val = str(getattr(config, key) or "").strip().lower()
+        if val not in choices:
+            allowed = ", ".join(sorted(choices))
+            problems.append(f"{key}={getattr(config, key)!r} (allowed: {allowed})")
+
+    if not (0.0 <= config.RESOLVE_CONFIDENCE_THRESHOLD <= 1.0):
+        problems.append(
+            f"RESOLVE_CONFIDENCE_THRESHOLD={config.RESOLVE_CONFIDENCE_THRESHOLD} "
+            "(must be between 0.0 and 1.0)"
+        )
+    # (key, value, minimum) — each must be >= its floor.
+    for key, value, minimum in (
+        ("POLL_INTERVAL_SECONDS", config.POLL_INTERVAL_SECONDS, 1),
+        ("MAX_CLARIFY_ROUNDS", config.MAX_CLARIFY_ROUNDS, 0),
+        ("MAX_NO_PROGRESS_ROUNDS", config.MAX_NO_PROGRESS_ROUNDS, 1),
+        ("STALE_AFTER_IDLE_CYCLES", config.STALE_AFTER_IDLE_CYCLES, 1),
+        ("DETECT_WINDOW_MESSAGES", config.DETECT_WINDOW_MESSAGES, 1),
+        ("RAG_TOP_K", config.RAG_TOP_K, 0),
+    ):
+        if value < minimum:
+            problems.append(f"{key}={value} (must be >= {minimum})")
+    if not (1 <= config.WEBHOOK_PORT <= 65535):
+        problems.append(f"WEBHOOK_PORT={config.WEBHOOK_PORT} (must be 1..65535)")
+
+    if problems:
+        raise ValueError(
+            "invalid configuration:\n  - " + "\n  - ".join(problems)
+        )
+    return config
+
+
 def load_config(env_file: str = _DEFAULT_ENV_FILE) -> Config:
     """Resolve a `Config` from (`.env` file < `os.environ`), defaulting any key
     absent from both to the field default. `int`/`float`/`bool` keys are coerced;
-    everything else stays a string."""
+    everything else stays a string. The resolved config is `validate_config`-d
+    before return, so an invalid enum/range fails at load, not mid-cycle."""
     layered: dict[str, str] = {}
     layered.update(_parse_env_file(env_file))
     layered.update(os.environ)  # process env overrides .env
@@ -256,4 +323,4 @@ def load_config(env_file: str = _DEFAULT_ENV_FILE) -> Config:
             kwargs[name] = _to_float(raw, field.default)  # type: ignore[arg-type]
         else:
             kwargs[name] = raw
-    return Config(**kwargs)  # type: ignore[arg-type]
+    return validate_config(Config(**kwargs))  # type: ignore[arg-type]

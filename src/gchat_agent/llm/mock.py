@@ -135,8 +135,25 @@ class MockLLM:
     """
 
     def __init__(self) -> None:  # noqa: D401 - simple, no state
-        # Stateless by design so repeated runs are identical.
-        pass
+        # Deterministic outputs aside, mirror the live client's usage accounting
+        # so the runner's per-cycle token log (and its tests) work offline too.
+        # Token counts are a cheap ~chars/4 estimate, not a real tokenizer.
+        self._usage: dict[str, int] = {
+            "calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+
+    def usage_snapshot(self) -> dict[str, int]:
+        """A copy of cumulative (estimated) token usage — mirrors
+        `OpenRouterClient.usage_snapshot` so the runner can diff it per cycle."""
+        return dict(self._usage)
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """A coarse token estimate (~4 chars/token) for the offline usage log."""
+        return max(0, len(text or "") // 4)
 
     # --- LLMClient protocol --------------------------------------------------
     def chat(self, system: str, messages: list[dict[str, str]]) -> str:
@@ -161,17 +178,31 @@ class MockLLM:
         blob = f"{system}\n{user}"
         # Order matters only in that markers are distinct; check each.
         if MARK_DETECT in blob:
-            return self._detect(user)
-        if MARK_CLARITY in blob:
-            return self._assess_clarity(user)
-        if MARK_QUESTIONS in blob:
-            return self._generate_questions(user)
-        if MARK_RESOLUTION in blob:
-            return self._summarize_resolution(user)
-        if MARK_NARRATION in blob:
-            return self._narrate_resolution(user)
-        # Unknown task: degrade to an empty-issues object (still a valid object).
-        return {"issues": []}
+            result = self._detect(user)
+        elif MARK_CLARITY in blob:
+            result = self._assess_clarity(user)
+        elif MARK_QUESTIONS in blob:
+            result = self._generate_questions(user)
+        elif MARK_RESOLUTION in blob:
+            result = self._summarize_resolution(user)
+        elif MARK_NARRATION in blob:
+            result = self._narrate_resolution(user)
+        else:
+            # Unknown task: degrade to an empty-issues object (still valid).
+            result = {"issues": []}
+        self._record_usage(blob, result)
+        return result
+
+    def _record_usage(self, prompt: str, result: dict[str, Any]) -> None:
+        """Estimate + accumulate token usage for one `complete_json` call."""
+        import json
+
+        self._usage["calls"] += 1
+        p = self._estimate_tokens(prompt)
+        c = self._estimate_tokens(json.dumps(result, ensure_ascii=False))
+        self._usage["prompt_tokens"] += p
+        self._usage["completion_tokens"] += c
+        self._usage["total_tokens"] += p + c
 
     # --- detect_issues -------------------------------------------------------
     def _detect(self, user: str) -> dict[str, Any]:

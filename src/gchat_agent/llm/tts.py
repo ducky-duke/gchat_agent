@@ -21,6 +21,8 @@ import io
 import time
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from gchat_agent.llm import _retry
+
 if TYPE_CHECKING:  # type-only; no runtime import
     from gchat_agent.config import Config
 
@@ -30,7 +32,8 @@ _X_TITLE = "gchat-agent"
 
 # Extra application-level backoff on transient failures (the SDK retries too).
 _MAX_RETRIES = 3
-_BASE_BACKOFF = 1.5  # seconds; doubled each attempt
+_BASE_BACKOFF = 1.5  # seconds; base of the exponential backoff (with jitter)
+_BACKOFF_CAP = 30.0  # ceiling so a server Retry-After can't park us forever
 
 # Per-request timeout — a hung TTS call must not freeze a poll cycle. Synthesis
 # of a short narration is quick, but keep it generous for a cold model.
@@ -84,17 +87,7 @@ class OpenRouterTTS:
     def _default_headers(self) -> dict[str, str]:
         return {"HTTP-Referer": _HTTP_REFERER, "X-Title": _X_TITLE}
 
-    @staticmethod
-    def _is_transient(exc: Exception) -> bool:
-        """True for 429 / 5xx-style errors worth an extra backoff retry."""
-        status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
-        if isinstance(status, int) and (status == 429 or 500 <= status < 600):
-            return True
-        name = exc.__class__.__name__.lower()
-        if "ratelimit" in name or "apiconnection" in name or "internalserver" in name:
-            return True
-        text = str(exc).lower()
-        return "429" in text or "rate limit" in text or "resource_exhausted" in text
+    _is_transient = staticmethod(_retry.is_transient)  # back-compat alias
 
     def synthesize(self, text: str) -> bytes:
         """Synthesize ``text`` to MP3 bytes, streamed fully into memory.
@@ -122,8 +115,11 @@ class OpenRouterTTS:
                 return buf.getvalue()
             except Exception as exc:  # noqa: BLE001 - re-raised below if fatal
                 last_exc = exc
-                if attempt < _MAX_RETRIES - 1 and self._is_transient(exc):
-                    time.sleep(_BASE_BACKOFF * (2 ** attempt))
+                if attempt < _MAX_RETRIES - 1 and _retry.is_transient(exc):
+                    time.sleep(_retry.backoff_delay(
+                        attempt, base=_BASE_BACKOFF, cap=_BACKOFF_CAP,
+                        retry_after=_retry.retry_after_seconds(exc),
+                    ))
                     continue
                 raise
         assert last_exc is not None  # unreachable: loop returns or raises

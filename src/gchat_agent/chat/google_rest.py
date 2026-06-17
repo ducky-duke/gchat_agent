@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import time
 import urllib.error
 import urllib.parse
@@ -149,7 +150,7 @@ class GoogleChatClient:
                     oauth.invalidate(self.client_json, self.token_file)
                     continue
                 if self._should_retry(exc.code, payload) and attempt < _MAX_RETRIES:
-                    self._sleep_backoff(attempt)
+                    self._sleep_backoff(attempt, self._retry_after(exc))
                     continue
                 raise RuntimeError(
                     f"Chat API {label} failed (HTTP {exc.code}): "
@@ -179,9 +180,34 @@ class GoogleChatClient:
         return status_str == "RESOURCE_EXHAUSTED"
 
     @staticmethod
-    def _sleep_backoff(attempt: int) -> None:
-        delay = min(_BACKOFF_BASE_SECONDS * (2 ** attempt), _BACKOFF_CAP_SECONDS)
-        time.sleep(delay)
+    def _retry_after(exc: urllib.error.HTTPError) -> float | None:
+        """Seconds from a `Retry-After` response header (delta-seconds form only),
+        or ``None``. `urllib`'s `HTTPError.headers` is an `email.message.Message`,
+        so `.get` is case-insensitive. The HTTP-date form is not honored — these
+        APIs send integer seconds for rate limits — and falls back to backoff."""
+        headers = getattr(exc, "headers", None)
+        get = getattr(headers, "get", None)
+        if not callable(get):
+            return None
+        raw = get("Retry-After")
+        if raw is None:
+            return None
+        try:
+            secs = float(str(raw).strip())
+        except (TypeError, ValueError):
+            return None
+        return secs if secs >= 0 else None
+
+    @staticmethod
+    def _sleep_backoff(attempt: int, retry_after: float | None = None) -> None:
+        """Sleep before a retry. Honor a server `Retry-After` (clamped to the cap),
+        else exponential backoff with full jitter — a uniform pick in
+        ``[0, min(cap, base*2**attempt)]`` — so concurrent retries don't thunder."""
+        if retry_after is not None:
+            time.sleep(min(retry_after, _BACKOFF_CAP_SECONDS))
+            return
+        ceiling = min(_BACKOFF_BASE_SECONDS * (2 ** attempt), _BACKOFF_CAP_SECONDS)
+        time.sleep(random.uniform(0, ceiling))
 
     # --- mapping -----------------------------------------------------------
     def _to_message(self, raw: dict[str, Any]) -> Message:

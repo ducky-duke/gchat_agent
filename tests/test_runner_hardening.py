@@ -131,7 +131,7 @@ class _NoQuestionsAnalyzer(Analyzer):
     also be empty (else first contact would ask from them), so this strips them
     AND nulls `generate_questions`, leaving the runner with nothing to post."""
 
-    def detect_issues(self, conversation):  # type: ignore[override]
+    def detect_issues(self, conversation, prior_issues=None):  # type: ignore[override]
         issues = super().detect_issues(conversation)
         for issue in issues:
             issue.pending_questions = []  # force the no-questions fallback path
@@ -248,7 +248,7 @@ class _NoInlineQuestionsSpyAnalyzer(Analyzer):
         super().__init__(*args, **kwargs)
         self.question_calls = 0
 
-    def detect_issues(self, conversation):  # type: ignore[override]
+    def detect_issues(self, conversation, prior_issues=None):  # type: ignore[override]
         issues = super().detect_issues(conversation)
         for issue in issues:
             issue.pending_questions = []  # model emitted no inline questions
@@ -343,7 +343,7 @@ class _DetectSpyAnalyzer(Analyzer):
         super().__init__(*args, **kwargs)
         self.detect_calls = 0
 
-    def detect_issues(self, conversation):  # type: ignore[override]
+    def detect_issues(self, conversation, prior_issues=None):  # type: ignore[override]
         self.detect_calls += 1
         return super().detect_issues(conversation)
 

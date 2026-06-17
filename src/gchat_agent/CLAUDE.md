@@ -5,10 +5,12 @@ voice, merged-LLM-calls) live in the **root [`CLAUDE.md`](../../CLAUDE.md)** —
 maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../PLAN.md).
 
 ## Top-level modules
-- **`config.py`** — `Config` dataclass + `load_config()`; env-driven settings with a
-  stdlib `.env` parser (`_parse_env_file`/`_clean_value` handle empty-value-comment lines).
-  Tunables: `MAX_CLARIFY_ROUNDS`, `MAX_NO_PROGRESS_ROUNDS`, `STALE_AFTER_IDLE_CYCLES`,
-  `RESOLVE_CONFIDENCE_THRESHOLD`, the safety-mode + voice + provider flags.
+- **`config.py`** — `Config` dataclass + `load_config()` (which now `validate_config`s the
+  result — fail-fast enum/range checks, keyless `mock` path stays valid); env-driven settings
+  with a stdlib `.env` parser (`_parse_env_file`/`_clean_value` handle empty-value-comment
+  lines). Tunables: `MAX_CLARIFY_ROUNDS`, `MAX_NO_PROGRESS_ROUNDS`, `STALE_AFTER_IDLE_CYCLES`,
+  `RESOLVE_CONFIDENCE_THRESHOLD`, `EPISODIC_RECALL` (default on), `REDACT_REPORTS` (default
+  off), the safety-mode + voice + provider flags.
 - **`models.py`** — domain dataclasses, lossless JSON round-trip. Enums `SenderType`/
   `Severity`/`Status`; `QAPair`, `Message`, `Issue`, `ClarityAssessment`,
   `ResolutionReport`, `Conversation`, `AgentState`; `issue_fingerprint()`. `Issue` carries
@@ -20,7 +22,8 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
   `_process_open_issues`, **`_step_issue`** (loop-breaker), `_ask`, `_resolve`,
   `_escalate_due`, `_redirect_out_of_thread`, `_deliver_voice`, `run_forever`.
 - **`observability.py`** — Langfuse shim (`observe`/`trace`/`flush`); no-op by default,
-  lazy when `LANGFUSE_*` is set.
+  lazy when `LANGFUSE_*` is set. `@observe` is wired onto the 5 LLM boundaries (3 analyzer
+  methods + 2 report builders).
 
 ## Subpackages (each has its own CLAUDE.md)
 - **`agent/`** — the brain: detection · clarity · resolution · personas · persistence.

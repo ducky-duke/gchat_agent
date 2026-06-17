@@ -37,6 +37,7 @@ from gchat_agent.agent.prompts import (
     detect_prompt,
     questions_prompt,
 )
+from gchat_agent.observability import observe
 from gchat_agent.models import (
     ClarityAssessment,
     Issue,
@@ -87,7 +88,12 @@ class Analyzer:
         self.top_k = top_k
 
     # --- detection -----------------------------------------------------------
-    def detect_issues(self, conversation: "Conversation") -> list[Issue]:
+    @observe(name="analyzer.detect_issues")
+    def detect_issues(
+        self,
+        conversation: "Conversation",
+        prior_issues: "list[Issue] | None" = None,
+    ) -> list[Issue]:
         """Run one detection call and mint a full `Issue` per candidate.
 
         The transcript is rendered with ids so the model can cite
@@ -96,10 +102,15 @@ class Analyzer:
         id, the fingerprint (= id) is derived from thread+root+category, and
         timestamps are set from the conversation's latest message create_time.
         Candidates with no valid source id are dropped (we cannot anchor them).
+
+        `prior_issues` are recently-closed issues surfaced to the model as episodic
+        recall (so it has memory of what was already handled); `None`/empty adds
+        nothing to the prompt — the runner passes them only when `EPISODIC_RECALL`
+        is on and the store actually holds closed issues.
         """
         transcript = conversation.render(with_ids=True)
         retrieved_context = self._retrieve_context(transcript)
-        system, user = detect_prompt(transcript, retrieved_context)
+        system, user = detect_prompt(transcript, retrieved_context, prior_issues)
         data = self.llm.complete_json(system, user)
         if not isinstance(data, dict):  # degrade gracefully on an unparseable reply
             data = {}
@@ -196,6 +207,7 @@ class Analyzer:
         )
 
     # --- clarity assessment --------------------------------------------------
+    @observe(name="analyzer.assess_clarity")
     def assess_clarity(
         self, issue: Issue, conversation: "Conversation"
     ) -> ClarityAssessment:
@@ -216,6 +228,7 @@ class Analyzer:
         return assessment
 
     # --- clarifying question generation --------------------------------------
+    @observe(name="analyzer.generate_questions")
     def generate_questions(
         self,
         issue: Issue,
@@ -299,10 +312,14 @@ class Analyzer:
 
     @staticmethod
     def _issue_query(issue: Issue, transcript: str) -> str:
-        """A retrieval query for an issue: its title/summary/category plus the
-        recorded missing info, so the ranker pulls passages about this problem."""
+        """A retrieval query for an issue: its title/summary/category, the recorded
+        missing info, AND the reporter's latest reply — so the ranker pulls passages
+        about what the reporter just said, not only the original report (the reply
+        is often where the specifics that need grounding first appear)."""
         parts = [issue.title, issue.summary, issue.category]
         parts.extend(issue.missing_info)
+        if issue.qa and issue.qa[-1].text:
+            parts.append(issue.qa[-1].text)
         query = " ".join(p for p in parts if p)
         return query.strip() or transcript
 

@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import datetime as _dt
 import os
+import re
 import tempfile
 from typing import TYPE_CHECKING
 
 from gchat_agent.agent.prompts import narration_prompt, resolution_prompt
 from gchat_agent.models import QAPair, ResolutionReport, _enum_value
+from gchat_agent.observability import observe
 
 if TYPE_CHECKING:  # only for the type hint — never import the LLM at runtime
     from gchat_agent.llm.base import LLMClient
@@ -36,6 +38,39 @@ _VOICE_TRANSCRIPT_MAX_CHARS: int = 3500
 def _now_rfc3339() -> str:
     """A UTC RFC-3339 timestamp (``...Z``) for ``resolved_at`` defaults."""
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# High-confidence secret patterns for the optional report-only redactor
+# (`REDACT_REPORTS`). Deliberately narrow — each requires a distinctive prefix or
+# structure — so short ticket ids ("JIRA-123"), message resource names
+# ("spaces/X/messages/m1"), and ordinary numbers are never touched.
+_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # JWTs (three base64url segments) — match before the generic key rules.
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}"),
+     "<redacted-jwt>"),
+    # `Authorization: Bearer <token>` / a bare "Bearer <token>".
+    (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}"), "Bearer <redacted>"),
+    # OpenAI / OpenRouter style keys (sk-..., sk-or-...).
+    (re.compile(r"\bsk-(?:or-)?[A-Za-z0-9_-]{12,}"), "sk-<redacted>"),
+    # Google API keys.
+    (re.compile(r"\bAIza[0-9A-Za-z_-]{20,}"), "AIza<redacted>"),
+    # Slack-style tokens.
+    (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{8,}"), "<redacted-token>"),
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Mask high-confidence secrets in `text` (the optional report-only redactor).
+
+    Conservative by design: only distinctive token shapes (JWTs, bearer tokens,
+    sk-/AIza/xox- keys) are masked, so ticket ids and message ids survive intact.
+    Used ONLY on the on-disk report when `REDACT_REPORTS` is on — never on the LLM
+    input path, where scrubbing could drop a detail detection needs."""
+    if not text:
+        return text
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def _qa_transcript(issue: "Issue") -> str:
@@ -55,6 +90,7 @@ def _qa_transcript(issue: "Issue") -> str:
     return "\n".join(lines)
 
 
+@observe(name="report.build_resolution_report")
 def build_resolution_report(
     issue: "Issue",
     llm: "LLMClient | None" = None,
@@ -152,6 +188,7 @@ def _plain_narration(report: ResolutionReport) -> str:
     return " ".join(parts)
 
 
+@observe(name="report.build_narration")
 def build_narration(report: ResolutionReport, llm: "LLMClient | None" = None) -> str:
     """Build the spoken-narration script for a resolved report (the text handed to
     TTS). With ``llm`` supplied, one ``complete_json`` call over
@@ -275,17 +312,25 @@ def report_disk_ref(report: ResolutionReport) -> str:
     return f"reports/{_report_filename(report)}"
 
 
-def write_report(report: ResolutionReport, reports_dir: str) -> str:
+def write_report(
+    report: ResolutionReport, reports_dir: str, *, redact: bool = False
+) -> str:
     """Render and write the report atomically to ``<reports_dir>/issue-<id>.md``.
 
     Creates ``reports_dir`` if needed, writes to a temp file in the same
     directory, then ``os.replace`` to the final name (atomic on POSIX). Returns
     the path it wrote (e.g. ``reports/issue-<id>.md``).
+
+    ``redact`` (the `REDACT_REPORTS` config) runs the rendered Markdown through
+    :func:`redact_secrets` before writing, masking high-confidence secrets in the
+    on-disk file only. Off by default.
     """
     os.makedirs(reports_dir, exist_ok=True)
     filename = _report_filename(report)
     path = os.path.join(reports_dir, filename)
     content = render_markdown(report)
+    if redact:
+        content = redact_secrets(content)
 
     fd, tmp = tempfile.mkstemp(
         prefix=".tmp-", suffix=".md", dir=reports_dir

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import tempfile
 from typing import Final
 
@@ -97,7 +98,12 @@ class IssueStore:
 
     def save(self) -> None:
         """Persist state atomically: write a temp file in the same directory,
-        ``fsync``, then ``os.replace`` over the target (``mkdir -p`` first)."""
+        ``fsync``, then ``os.replace`` over the target (``mkdir -p`` first).
+
+        Before the replace, the current (last-known-good) state file is copied to
+        ``<state_file>.bak`` — a one-deep rollback if a later save ever writes
+        logically-bad-but-valid-JSON state (the atomic write already prevents a
+        torn file). Best-effort: a backup failure never blocks the save."""
         directory = os.path.dirname(self.state_file) or "."
         os.makedirs(directory, exist_ok=True)
         payload = json.dumps(self.state.to_dict(), indent=2, ensure_ascii=False)
@@ -107,6 +113,7 @@ class IssueStore:
                 fh.write(payload)
                 fh.flush()
                 os.fsync(fh.fileno())
+            self._backup_existing()
             os.replace(tmp_path, self.state_file)
         except BaseException:
             # Best-effort cleanup of the temp file on any failure.
@@ -115,6 +122,14 @@ class IssueStore:
             except OSError:
                 pass
             raise
+
+    def _backup_existing(self) -> None:
+        """Copy the current state file to ``<state_file>.bak`` (last-known-good),
+        best-effort — a missing file or copy error must not block the save."""
+        try:
+            shutil.copy2(self.state_file, self.state_file + ".bak")
+        except (FileNotFoundError, OSError):
+            pass
 
     # --- issue dedup / merge ------------------------------------------------
     def upsert(self, candidate: Issue) -> Issue | None:
@@ -209,6 +224,14 @@ class IssueStore:
     def all_issues(self) -> list[Issue]:
         """Every tracked issue, open or closed, in insertion order."""
         return list(self.state.issues)
+
+    def recent_closed(self, limit: int = 3) -> list[Issue]:
+        """The most recently-updated closed (resolved/stale) issues, newest first
+        — detection's episodic recall (§ episodic memory). Bounded to `limit`;
+        empty on a fresh start (no closed issues yet)."""
+        closed = [i for i in self.state.issues if i.status in _CLOSED_STATUSES]
+        closed.sort(key=lambda i: (i.updated_at or "", i.id), reverse=True)
+        return closed[: max(0, limit)]
 
     def get(self, fingerprint: str) -> Issue | None:
         """The tracked issue with this fingerprint, or None."""
