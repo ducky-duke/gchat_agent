@@ -14,3 +14,6 @@ reports/
 secrets/
 *.token
 token_*.json
+# External reference clones (their own git repos — not part of this project)
+goclaw/
+docs/gemini_live/gemini-live-api-examples/
