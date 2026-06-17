@@ -1,0 +1,175 @@
+# Usage limits
+
+> Mirrored from the official Google Chat API documentation, retrieved 2026-06-17.
+> Source: https://developers.google.com/workspace/chat/limits
+> Read-only reference (same status as the rest of `docs/google_chat/`); do not edit as project docs.
+
+## Page Summary
+
+Google Chat API uses quotas and limitations to ensure fair usage and performance.
+
+Two quota types apply: per-space quotas (shared among apps in a space) and per-project quotas (for a single Chat app).
+
+Exceeding quotas results in a `429: Too many requests` error; use exponential backoff to retry.
+
+Per-space quotas limit the rate of reads and writes per minute within a space.
+
+Per-project quotas limit the rate of various Chat API actions per minute for a project.
+
+Because the Google Chat API is a shared service, we apply quotas and limitations to
+make sure that it's used fairly by all users and to protect the overall
+performance of Google Workspace.
+
+If you exceed a quota, you'll receive a `429: Too many requests` HTTP
+status code response. Additional rate limit checks on the Chat
+backend might also generate the same error response. If this error happens, you
+should use an
+[exponential backoff algorithm](https://en.wikipedia.org/wiki/Exponential_backoff#Binary_exponential_backoff_/_truncated_exponential_backoff) 
+and try again later. As long as you stay within the per-minute quotas listed in
+the following tables, there's no limit to the number of requests you can make
+per day.
+
+Multiple quota types may apply to Chat API methods: per-project,
+per-space, and per-user quotas.
+
+## Per-project quotas
+
+Per-project quotas limit the rate of queries for a Google Cloud project, and
+thus apply to a single Chat app calling the specified
+Chat API methods for each quota.
+
+The following table details per-project query limits. You can also find
+these limits on the [Quotas](https://console.cloud.google.com/iam-admin/quotas) page.
+
+| Per-project Quota | Chat API methods | Limit (per 60 seconds) |
+|---|---|---|
+| Message writes per minute | spaces.messages.create, spaces.messages.patch, spaces.messages.delete | 3000 |
+| Message reads per minute | spaces.messages.get, spaces.messages.list | 3000 |
+| Membership writes per minute | spaces.members.create, spaces.members.delete | 300 |
+| Membership reads per minute | spaces.members.get, spaces.members.list | 3000 |
+| Space writes per minute | spaces.setup, spaces.create, spaces.patch, spaces.delete | 60 |
+| Space reads per minute | spaces.get, spaces.list, spaces.findDirectMessage | 3000 |
+| Attachment writes per minute | media.upload | 600 |
+| Attachment reads per minute | spaces.messages.attachments.get, media.download | 3000 |
+| Reaction writes per minute | spaces.messages.reactions.create, spaces.messages.reactions.delete | 600 |
+| Reaction reads per minute | spaces.messages.reactions.list | 3000 |
+| CustomEmoji writes per minute | customEmojis.create customEmojis.delete | 600 |
+| CustomEmoji reads per minute | customEmojis.get customEmojis.list | 3000 |
+| Section writes per minute | users.sections.create users.sections.delete users.sections.patch users.sections.position users.sections.items.move | 600 |
+| Section reads per minute | users.sections.list users.sections.items.list | 3000 |
+
+## Per-space quotas
+
+Per-space quotas limit the rate of queries in a given space and are shared among
+all Chat apps acting in that space calling the listed
+Chat API methods for each quota.
+
+The following table details per-space query limits:
+
+| Per-space Quota | Chat API methods | Limit (per second) |
+|---|---|---|
+| Reads per second | media.download spaces.get spaces.members.get spaces.members.list spaces.messages.get spaces.messages.list spaces.messages.attachments.get spaces.messages.reactions.list | 15 |
+| Writes per second | media.upload spaces.delete spaces.patch spaces.messages.create (Additional limits apply to incoming webhooks) spaces.messages.delete spaces.messages.patch spaces.messages.reactions.delete | 1 |
+| Create Reaction writes per second | spaces.messages.reactions.create | 5 |
+| Message writes per second while importing data to Google Chat | spaces.messages.create | 10 |
+
+## Per-user quotas
+
+Per-user quotas limit the rate of queries for a Google Chat user. Queries
+pertain to all Chat apps that call a Chat API method on
+behalf of a user (using [user authentication](https://developers.google.com/workspace/chat/authenticate-authorize#types-required)).
+
+The following table details per-user query limits:
+
+| Per-user Quota | Chat API methods | Limit (per second) |
+|---|---|---|
+| CustomEmoji writes per second | customEmojis.create customEmojis.delete | 1 |
+| CustomEmoji reads per second | customEmojis.get customEmojis.list | 15 |
+| Section writes per second | users.sections.create users.sections.delete users.sections.patch users.sections.position users.sections.items.move | 1 |
+| Section reads per second | users.sections.list users.sections.items.list | 15 |
+
+## Additional usage limits
+
+High API traffic targeting the same space can trigger
+additional internal limits that aren't visible in the
+[Quotas](https://console.cloud.google.com/iam-admin/quotas) page.
+
+## Resolve time-based quota errors
+
+For all time-based errors (maximum of N requests per X minutes), we recommend
+ your code catches the exception and uses a *truncated exponential backoff* to make sure your
+ devices don't generate excessive load.
+
+Exponential backoff is a standard error handling strategy for network applications. An 
+ exponential backoff algorithm retries requests using exponentially increasing wait times 
+ between requests, up to a maximum backoff time. If requests are still unsuccessful, it's 
+ important that the delays between requests increase over time until the request is successful.
+
+### Example algorithm
+
+An exponential backoff algorithm retries requests exponentially, increasing the wait time 
+ between retries up to a maximum backoff time. For example:
+
+1. Make a request to Google Chat API.
+
+2. If the request fails, wait 1 + `random_number_milliseconds` and retry
+ the request.
+
+3. If the request fails, wait 2 + `random_number_milliseconds` and retry
+ the request.
+
+4. If the request fails, wait 4 + `random_number_milliseconds` and retry
+ the request.
+
+5. And so on, up to a `maximum_backoff` time.
+
+6. Continue waiting and retrying up to some maximum number of retries, but don't increase the wait
+ period between retries.
+
+where:
+
+- The wait time is `min(((2^n)+random_number_milliseconds), maximum_backoff)`,
+ with `n` incremented by 1 for each iteration (request).
+
+- `random_number_milliseconds` is a random number of milliseconds less than or
+ equal to 1,000. This helps to avoid cases in which many clients are synchronized by
+ some situation and all retry at once, sending requests in synchronized
+ waves. The value of `random_number_milliseconds` is recalculated after each
+ retry request.
+
+- `maximum_backoff` is typically 32 or 64 seconds. The appropriate value
+ depends on the use case.
+
+The client can continue retrying after it has reached the `maximum_backoff` time.
+ Retries after this point don't need to continue increasing backoff time. For
+ example, if a client uses a `maximum_backoff` time of 64 seconds, then after reaching 
+ this value, the client can retry every 64 seconds. At some point,
+ clients should be prevented from retrying indefinitely.
+
+The wait time between retries and the number of retries depend on your use case
+ and network conditions.
+
+## Request a per-project quota increase
+
+Depending on your project's resource usage, you might want to request a quota
+adjustment. API calls by a service account are considered to be using a
+single account. Applying for an adjusted quota doesn't guarantee approval. Quota adjustment
+requests that would significantly increase the quota value can take longer to be approved.
+
+Not all projects have the same quotas. As you increasingly use Google Cloud over
+time, your quota values might need to increase. If you expect a notable upcoming
+increase in usage, you can proactively
+[request quota adjustments](https://docs.cloud.google.com/docs/quotas/view-manage#requesting_higher_quota)
+from the [Quotas & System Limits](https://console.cloud.google.com/iam-admin/quotas) page in the Google Cloud console.
+
+To learn more, see the following resources:
+
+ [About quota adjustments](https://docs.cloud.google.com/docs/quotas/overview#about_increase_requests)
+
+ [View your quota usage and limits](https://docs.cloud.google.com/docs/quotas/view-manage#viewing_your_quota_console)
+
+ [Request a higher quota limit](https://docs.cloud.google.com/docs/quotas/view-manage#requesting_higher_quota)
+
+Except as otherwise noted, the content of this page is licensed under the [Creative Commons Attribution 4.0 License](https://creativecommons.org/licenses/by/4.0/), and code samples are licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0). For details, see the [Google Developers Site Policies](https://developers.google.com/site-policies). Java is a registered trademark of Oracle and/or its affiliates.
+
+Last updated 2026-05-01 UTC.
