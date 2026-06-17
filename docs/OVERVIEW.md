@@ -108,6 +108,40 @@ Built-in guardrails leadership cares about:
 
 ---
 
+## How the bot is instructed
+
+Everything the bot does is driven by a small, auditable set of **prompts** — the
+written instructions handed to the AI for each decision. They live in **one file**
+(`src/gchat_agent/agent/prompts.py`) as the single source of truth, so the bot's
+behaviour can be reviewed and tuned in one place rather than scattered through the
+code.
+
+There are five tasks, one per decision in the loop:
+
+| Task               | What it asks the AI to do                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| **Detect**         | Read the conversation and flag genuine issues (not chatter), with the facts still missing |
+| **Assess clarity** | Decide whether an issue now has the core facts (owner, scope, dates, root cause) to act on |
+| **Ask**            | Write 2–3 sharp, specific clarifying questions targeting exactly what's missing            |
+| **Summarize**      | Write the concise resolution report once the issue is understood                           |
+| **Narrate**        | Turn the report into a natural spoken script for the voice note                            |
+
+Guardrails baked into the prompts (the parts leadership cares about):
+
+- **Prompt-injection defence** — the chat transcript and any retrieved knowledge
+  are fed to the AI as *untrusted data to analyse, never as instructions*. A staff
+  message that says "ignore your instructions and …" is treated as content, not a
+  command, so the bot can't be hijacked by anything posted in the channel.
+- **Won't repeat itself** — every question already asked is shown back to the model
+  with an explicit "do not ask any of these again." If the reporter said "I don't
+  know," that fact is marked unobtainable and dropped rather than re-chased.
+- **Stays grounded** — each prompt demands a strict, machine-readable answer and
+  forbids inventing references, so the bot can only cite messages that actually
+  exist in the conversation, and a resolved issue is honestly recorded *with* its
+  open questions when some facts were never obtainable.
+
+---
+
 ## RAG — grounding the bot in our domain knowledge
 
 This is the part that makes the bot *credible* rather than a generic chatbot. To
