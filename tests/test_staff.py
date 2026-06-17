@@ -47,18 +47,35 @@ class LoadPersonasTest(unittest.TestCase):
             self.assertIsInstance(persona["role"], str)
             self.assertTrue(persona["role"].strip(), f"{persona_id} empty role")
             self.assertIsInstance(persona["facts"], dict)
-            self.assertTrue(persona["facts"], f"{persona_id} has no facts")
             self.assertIsInstance(persona["seed_messages"], list)
             self.assertTrue(persona["seed_messages"], f"{persona_id} no seeds")
+            if persona.get("control"):
+                # A control persona is the deliberate non-issue case: it holds no
+                # facts (so it never answers) and exists to prove the bot ignores
+                # benign chatter.
+                self.assertFalse(persona["facts"], f"{persona_id} control has facts")
+            else:
+                self.assertTrue(persona["facts"], f"{persona_id} has no facts")
 
     def test_seed_messages_carry_detectable_signals(self) -> None:
-        # Seeds must trip the MockLLM detector so the bot has something to find.
+        # Issue personas' seeds must trip the MockLLM detector so the bot has
+        # something to find. A control persona is the opposite: its seeds must
+        # carry NO signal (and never end in '?'), so the bot — which flags a line
+        # on a signal word OR a trailing '?' — correctly leaves the chatter alone.
         personas = load_personas(_SCENARIOS)
         for persona_id, persona in personas.items():
-            self.assertTrue(
-                any(_has_issue_signal(m) for m in persona["seed_messages"]),
-                f"{persona_id} seed messages carry no issue signal",
-            )
+            has_signal = any(_has_issue_signal(m) for m in persona["seed_messages"])
+            if persona.get("control"):
+                self.assertFalse(
+                    has_signal,
+                    f"{persona_id} is a control persona but a seed carries an "
+                    f"issue signal — the bot could wrongly file it",
+                )
+            else:
+                self.assertTrue(
+                    has_signal,
+                    f"{persona_id} seed messages carry no issue signal",
+                )
 
     def test_missing_file_raises(self) -> None:
         with self.assertRaises(FileNotFoundError):
@@ -209,6 +226,43 @@ class StaffAnswerTest(unittest.TestCase):
         # Holds at least one of its facts and the withholding policy.
         self.assertTrue(any(v in prompt for v in agent.facts.values()))
         self.assertIn(agent.withholding_policy, prompt)
+
+
+class ControlPersonaTest(unittest.TestCase):
+    """The `noise` control persona seeds benign chatter but, holding no facts,
+    never turns into a work item — the live demo uses it to prove the bot files
+    NO issue for non-issue messages."""
+
+    def test_noise_seeds_chatter_but_never_answers(self) -> None:
+        personas = load_personas(_SCENARIOS)
+        self.assertIn("noise", personas)
+        self.assertTrue(personas["noise"].get("control"))
+
+        chat = FakeChatClient(me="users/staff-noise")
+        agent = StaffAgent(MockLLM(), chat, personas["noise"])
+        posted = agent.seed()
+
+        # It posts its banter into one thread ...
+        self.assertEqual([m.text for m in posted], personas["noise"]["seed_messages"])
+        self.assertEqual(len({m.thread_id for m in posted}), 1)
+        # ... but holds no facts, so it answers nothing no matter what is asked.
+        self.assertIsNone(
+            agent.answer_question(agent.seed_thread_id, "Who owns this incident?")
+        )
+
+    def test_noise_seeds_are_inert_to_the_mock_detector(self) -> None:
+        # MockLLM flags a transcript line on an issue signal OR a trailing '?'.
+        # The control seeds must trip neither, so an offline detect stays empty.
+        personas = load_personas(_SCENARIOS)
+        for text in personas["noise"]["seed_messages"]:
+            low = text.lower()
+            self.assertFalse(
+                any(sig in low for sig in _ISSUE_SIGNALS),
+                f"control seed carries a signal word: {text!r}",
+            )
+            self.assertFalse(
+                text.rstrip().endswith("?"), f"control seed ends with '?': {text!r}"
+            )
 
 
 class DedupeRepeatTest(unittest.TestCase):

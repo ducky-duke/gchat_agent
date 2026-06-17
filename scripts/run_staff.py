@@ -76,6 +76,13 @@ def _run(staff: StaffAgent, chat: GoogleChatClient, config, once: bool) -> None:
     seeded = staff.seed()
     threads = sorted({m.thread_id for m in seeded if m.thread_id})
     print(f"seeded {len(seeded)} message(s) across {len(threads)} thread(s)")
+    # Emit the seeded thread + message ids (machine-readable) so an orchestrator
+    # (e.g. demo_live.sh's precision check) can verify the bot's handling of them.
+    for m in seeded:
+        if m is not None and m.id:
+            print(f"SEEDED_MSG {m.id}")
+    if staff.seed_thread_id:
+        print(f"SEEDED_THREAD {staff.seed_thread_id}")
 
     # thread_id -> last bot-question message id we have already answered.
     answered: dict[str, str] = {}
@@ -115,8 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--persona",
         required=True,
-        choices=("ops", "promo", "apigw"),
-        help="which persona from data/scenarios.json to run.",
+        choices=("ops", "promo", "apigw", "noise"),
+        help="which persona from data/scenarios.json to run. 'noise' is a "
+        "control persona: benign small talk with no issue, used to prove the "
+        "bot does NOT file an issue for non-issue chatter.",
     )
     parser.add_argument(
         "--token",

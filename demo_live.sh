@@ -10,17 +10,23 @@
 #   3. on resolve the bot files a GitHub issue (resolution report + the collected
 #      thread transcript) into the PRIVATE repo (GITHUB_REPO, ducky-duke);
 #   4. the voice report (audio MP3 + spoken transcript) is delivered to the DM
-#      space (GOOGLE_VOICE_SPACE).
+#      space (GOOGLE_VOICE_SPACE);
+#   5. CONTROL CASE — a second account ("noise" persona) drops benign small talk
+#      (lunch, last night's match) into the space at the same time. The bot must
+#      NOT open or file an issue for it. The demo proves this by reading the bot's
+#      own state at the end: it opened EXACTLY ONE issue (the incident), ignoring
+#      the chatter. This is the "does it have judgment, or file everything?" proof.
 #
-# The script drives both live participants for you — it starts the poller (the
-# bot) and the staff persona as background processes, then WATCHES until a brand
+# The script drives all live participants for you — it starts the poller (the
+# bot) and the staff personas as background processes, then WATCHES until a brand
 # new GitHub issue appears on the server (server-side proof) and the poller log
-# confirms the voice DM. It tears both processes down cleanly on exit.
+# confirms the voice DM. It tears every process down cleanly on exit.
 #
 # Usage:
-#   ./demo_live.sh                       # default: apigw persona, 600s budget
+#   ./demo_live.sh                       # default: apigw persona + noise control
 #   ./demo_live.sh --persona apigw       # API gateway timeout (the requested demo)
 #   ./demo_live.sh --persona ops         # Skrill payout webhook timeout
+#   ./demo_live.sh --no-noise            # skip the control case (incident only)
 #   ./demo_live.sh --timeout 900         # wait up to 15 min for the resolve
 #   ./demo_live.sh --token secrets/token_promo.json   # post as a specific account
 #
@@ -45,8 +51,9 @@ PERSONA="apigw"
 TIMEOUT=600
 STAFF_TOKEN=""        # auto-derived from the persona unless overridden
 KEEP_RUNNING=0        # 1 = leave the poller running after the resolve
+NOISE_ENABLED=1       # 1 = also seed the benign "noise" control persona
 
-usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -54,6 +61,7 @@ while [ $# -gt 0 ]; do
     --timeout) TIMEOUT="${2:?--timeout needs seconds}"; shift 2 ;;
     --token)   STAFF_TOKEN="${2:?--token needs a path}"; shift 2 ;;
     --keep-running) KEEP_RUNNING=1; shift ;;
+    --no-noise) NOISE_ENABLED=0; shift ;;
     -h|--help) usage 0 ;;
     *) echo "demo_live: unknown arg '$1'" >&2; usage 1 ;;
   esac
@@ -68,6 +76,13 @@ if [ -z "$STAFF_TOKEN" ]; then
     *)     STAFF_TOKEN="secrets/token_ops.json" ;;
   esac
 fi
+
+# The noise control posts as the OTHER account so the banter reads as a different
+# person chatting alongside the incident reporter.
+case "$STAFF_TOKEN" in
+  secrets/token_promo.json) NOISE_TOKEN="secrets/token_ops.json" ;;
+  *)                        NOISE_TOKEN="secrets/token_promo.json" ;;
+esac
 
 # --- small helpers ----------------------------------------------------------
 log()  { printf '\033[1;36m[demo]\033[0m %s\n' "$*"; }
@@ -106,6 +121,27 @@ sys.exit(0 if sys.argv[1] in data else 1)
 PY
 ok "persona '$PERSONA' present; posting as $STAFF_TOKEN"
 
+# Noise control persona: needs the 'noise' entry in scenarios.json and a second
+# account token. If either is missing, degrade gracefully (skip, don't fail).
+NOISE_COUNT=0
+if [ "$NOISE_ENABLED" -eq 1 ]; then
+  if ! "$PY" - <<'PY'
+import json, sys
+data = json.load(open("data/scenarios.json"))
+sys.exit(0 if "noise" in data else 1)
+PY
+  then
+    warn "no 'noise' persona in scenarios.json — skipping the control case."
+    NOISE_ENABLED=0
+  elif [ ! -f "$NOISE_TOKEN" ] || [ "$NOISE_TOKEN" = "$STAFF_TOKEN" ]; then
+    warn "no distinct second account token ($NOISE_TOKEN) — skipping the control case."
+    NOISE_ENABLED=0
+  else
+    NOISE_COUNT="$("$PY" -c 'import json;print(len(json.load(open("data/scenarios.json"))["noise"]["seed_messages"]))')"
+    ok "control case ON: 'noise' persona posts $NOISE_COUNT benign message(s) as $NOISE_TOKEN"
+  fi
+fi
+
 [ "$GITHUB_ISSUES" = "true" ] || die "GITHUB_ISSUES is not 'true' in .env — the GitHub export is off."
 case "$REPORT_DELIVERY" in voice|both) ;; *) die "REPORT_DELIVERY='$REPORT_DELIVERY' — set it to voice|both for the audio DM." ;; esac
 [ -n "$GOOGLE_SPACE" ]  || die "GOOGLE_SPACE is empty in .env."
@@ -125,8 +161,10 @@ ok "github access: $GITHUB_ACCOUNT can read $GITHUB_REPO"
 RUN_DIR="$(mktemp -d /tmp/gchat-demo.XXXXXX)"
 POLLER_LOG="$RUN_DIR/poller.log"
 STAFF_LOG="$RUN_DIR/staff.log"
+NOISE_LOG="$RUN_DIR/noise.log"
 POLLER_PID=""
 STAFF_PID=""
+NOISE_PID=""
 
 stop_pid() { # graceful SIGINT (clean lock release + background drain), then KILL
   local pid="$1"
@@ -139,10 +177,12 @@ stop_pid() { # graceful SIGINT (clean lock release + background drain), then KIL
 cleanup() {
   if [ "$KEEP_RUNNING" -eq 1 ] && [ -n "$POLLER_PID" ]; then
     log "Leaving the poller running (PID $POLLER_PID) — stop it with: kill -INT $POLLER_PID"
+    stop_pid "$NOISE_PID"
     stop_pid "$STAFF_PID"
     return
   fi
   log "Shutting down (staff + poller)…"
+  stop_pid "$NOISE_PID"
   stop_pid "$STAFF_PID"
   stop_pid "$POLLER_PID"
   log "Logs kept at: $RUN_DIR"
@@ -192,6 +232,17 @@ sleep 2
 kill -0 "$STAFF_PID" 2>/dev/null || die "staff exited early — see $STAFF_LOG:
 $(tail -n 30 "$STAFF_LOG")"
 ok "staff is live (PID $STAFF_PID); incident seeded into the space"
+
+# --- launch the noise control (benign chatter the bot must ignore) ---------
+# `--once` seeds the small talk and exits; the persona holds no facts so it never
+# answers. A distinct seed-suffix keeps it re-runnable alongside the incident.
+if [ "$NOISE_ENABLED" -eq 1 ]; then
+  log "Seeding the noise control — benign small talk that must NOT become an issue…"
+  "$PY" -u scripts/run_staff.py --persona noise --token "$NOISE_TOKEN" --once \
+    --seed-suffix "${SEED_SUFFIX}-noise" >"$NOISE_LOG" 2>&1 &
+  NOISE_PID=$!
+  ok "noise control seeded ($NOISE_COUNT message(s) as a second account)"
+fi
 
 # --- watch for the resolve → GitHub issue ----------------------------------
 log "Watching for the bot to resolve the issue and file it to GitHub (timeout ${TIMEOUT}s)…"
@@ -245,6 +296,66 @@ if grep -q "filed GitHub issue for" "$POLLER_LOG"; then
   ok "bot log:    $(grep -h 'filed GitHub issue for' "$POLLER_LOG" | tail -n 1)"
 fi
 
+# --- precision check: did the bot SEE the noise and still ignore it? --------
+# A weak check ("0 issues from the noise") can pass for the WRONG reason — if the
+# noise came from the bot's own account it is self-filtered and never judged. So
+# we prove three things: the bot opened exactly the incident, it provably FETCHED
+# the noise (it is in the bot's seen-id window), and it posted NOTHING into the
+# noise thread (no engagement). scripts/verify_precision.py does the last two.
+if [ "$NOISE_ENABLED" -eq 1 ]; then
+  echo
+  log "Precision check — did the bot SEE the $NOISE_COUNT non-issue message(s) and still ignore them?"
+  # Give the cycle that resolved the incident a moment to also finish seeing the
+  # noise thread, so a verdict isn't declared a beat before the bot would react.
+  sleep 6
+  # (1) Authoritative: the bot's OWN state. A resolved issue stays in `issues`,
+  # so on a fresh session the count of distinct issues it opened == len(issues).
+  OPENED="$("$PY" - <<'PY'
+import json
+try:
+    d = json.load(open(".state/issues.json"))
+    iss = d.get("issues", []) or []
+    print(len(iss))
+    for i in iss:
+        print("  - %s [%s]" % ((i.get("title") or "(untitled)")[:70], i.get("status")))
+except Exception as exc:  # noqa: BLE001
+    print("ERR", exc)
+PY
+)"
+  COUNT="$(printf '%s\n' "$OPENED" | head -1)"
+  GH_NEW="$(issue_field "[.[] | select(.number > $BASELINE)] | length")"; GH_NEW="${GH_NEW:-?}"
+
+  # (2) The noise thread + message ids the noise persona reported into NOISE_LOG.
+  NOISE_THREAD="$(grep -m1 '^SEEDED_THREAD ' "$NOISE_LOG" 2>/dev/null | awk '{print $2}')"
+  mapfile -t NOISE_MSGS < <(grep '^SEEDED_MSG ' "$NOISE_LOG" 2>/dev/null | awk '{print $2}')
+  VERDICT="INCONCLUSIVE"; VERIFY_OUT=""
+  if [ -n "$NOISE_THREAD" ] && [ "${#NOISE_MSGS[@]}" -gt 0 ]; then
+    VARGS=(--noise-thread "$NOISE_THREAD" --state .state/issues.json --bot-token secrets/token_bot.json)
+    for mid in "${NOISE_MSGS[@]}"; do VARGS+=(--noise-msg "$mid"); done
+    VERIFY_OUT="$("$PY" scripts/verify_precision.py "${VARGS[@]}" 2>/dev/null || true)"
+    VERDICT="$(printf '%s\n' "$VERIFY_OUT" | sed -n 's/^VERDICT //p' | tail -1)"; VERDICT="${VERDICT:-INCONCLUSIVE}"
+  else
+    warn "noise persona did not report its seeded ids — cannot prove the bot saw the noise."
+  fi
+  DELIVERED="$(printf '%s\n' "$VERIFY_OUT" | sed -n 's/^DELIVERED //p' | tail -1)"
+  BOT_REPLIES="$(printf '%s\n' "$VERIFY_OUT" | sed -n 's/^BOT_REPLIES //p' | tail -1)"
+  NOISE_SEEN="$(printf '%s\n' "$VERIFY_OUT" | sed -n 's/^NOISE_SEEN //p' | tail -1)"
+
+  if [ "$COUNT" = "1" ] && [ "$VERDICT" = "PASS" ]; then
+    ok "bot opened EXACTLY 1 issue (the incident); server-side: $GH_NEW new issue(s) above #$BASELINE"
+    ok "noise from a NON-bot account: delivered ${DELIVERED:-?}, bot fetched ${NOISE_SEEN:-?}, bot replies in its thread ${BOT_REPLIES:-?}"
+    ok "→ the bot SAW the small talk and ignored it by judgment ✅"
+  elif [ "$VERDICT" = "REGRESSION" ] || { [ -n "$COUNT" ] && [ "$COUNT" != "1" ]; }; then
+    warn "PRECISION REGRESSION — the bot engaged the noise:"
+    printf '%s\n' "$OPENED" | tail -n +2 | while IFS= read -r ln; do warn "$ln"; done
+    [ -n "${BOT_REPLIES:-}" ] && warn "bot posted ${BOT_REPLIES} message(s) into the noise thread"
+    warn "opened ${COUNT:-?} issue(s); server-side: $GH_NEW new issue(s) above #$BASELINE"
+  else
+    ok "bot opened EXACTLY 1 issue (the incident); server-side: $GH_NEW new issue(s) above #$BASELINE"
+    warn "could not POSITIVELY confirm the bot fetched the noise (delivered ${DELIVERED:-?}, seen ${NOISE_SEEN:-?}, bot replies ${BOT_REPLIES:-0}); the opened-issue proof still holds"
+  fi
+fi
+
 echo
 log "Voice report (audio + transcript) → DM"
 # Voice runs on a background pool after the in-thread close; give it a few extra
@@ -267,4 +378,5 @@ echo
 log "Demo complete. Open the issue: $URL"
 log "  • Chat space (clarification thread): $GOOGLE_SPACE"
 log "  • Voice DM (audio + transcript):     ${VOICE_SPACE:-<issue thread>}"
+[ "$NOISE_ENABLED" -eq 1 ] && log "  • Control case: bot ignored the small talk, filed only the incident"
 exit 0
