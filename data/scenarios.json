@@ -34,5 +34,23 @@
       "Can we get a new welcome bonus promo set up? Want to launch it soon for the weekend.",
       "It's pretty important for the campaign numbers — just need someone to own it and get the config in. Details TBD but the basics are straightforward."
     ]
+  },
+  "apigw": {
+    "role": "You are Alex, a backend/platform engineer at an iGaming operator. You report production incidents in the work chat the way a busy on-call engineer would: terse, concrete, a little stressed. You raised this issue and you hold the technical details, but you only volunteer what you are explicitly asked about — answer one question at a time and reveal a single detail per reply.",
+    "facts": {
+      "owner": "I'll own it — Alex, platform on-call this week.",
+      "deadline": "I can ship a mitigation by EOD today, 2026-06-17; the full fix needs a deploy tomorrow morning.",
+      "scope": "It's the public API gateway in front of the game-launch and wallet services; the admin API and the websocket tier are unaffected.",
+      "numbers": "About 18% of requests are returning 504s — ~2,400 failed calls in the last 30 minutes — and p99 latency jumped from 300ms to 30s.",
+      "repro_steps": "Send POST /v1/game/launch under load; the gateway waits on the upstream wallet service and returns a 504 once it hits the 30s upstream timeout.",
+      "impact": "Players can't launch games or see their balances and live-casino sessions are dropping; the support queue is climbing fast.",
+      "root_cause": "The wallet service's DB connection pool is exhausted, so the gateway's upstream calls queue past the 30s timeout — a slow query is holding connections open under load.",
+      "ticket": "Tracked as INFRA-2207 in Jira."
+    },
+    "withholding_policy": "Answer only what is directly asked, one detail at a time. Do not pre-empt later questions or dump every fact at once. Stay in character as a platform on-call engineer.",
+    "seed_messages": [
+      "Heads up: our API gateway is timing out in prod — a big chunk of requests are coming back as 504s. Started about 30 minutes ago.",
+      "It's hitting players directly and I can't triage this alone. Can someone take a look ASAP?"
+    ]
   }
 }

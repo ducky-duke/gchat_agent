@@ -8,7 +8,9 @@ correctness gate for every change. Run them:
 Syntax-only check (no `ty` here): `python -m py_compile <file>`.
 
 - **`fakes.py`** — `FakeChatClient(me=...)`: in-memory `ChatClient` double. `.inject(sender,
-  text, thread_id=...)`, `.messages`, `.me()`. Stand-in for `chat/google_rest.py`.
+  text, thread_id=...)`, `.messages`, `.me()`. Stand-in for `chat/google_rest.py`. Also
+  `InlineExecutor` (synchronous background-task double) and `FakeGitHubClient` (records
+  filed issues; `fail=True` to exercise the never-crash export path).
 
 ## Test map
 - **`test_loop.py`** — crown-jewel end-to-end clarification round-trip.
@@ -26,6 +28,9 @@ Syntax-only check (no `ty` here): `python -m py_compile <file>`.
   **`test_llm_openrouter.py`** — LLM layer.
 - **`test_rag.py`** — retrieval stack.
 - **`test_report.py`**, **`test_voice_report.py`**, **`test_tts.py`** — report + voice.
+- **`test_github_export.py`** — GitHub issue export: payload/transcript renderers, the REST
+  client's unknown-label fallback, `build_github` + config validation, and the runner's
+  background export (off the critical path; never crashes a resolve).
 - **`test_staff.py`** — staff personas. **`test_google_rest.py`** — live-adapter timeouts.
 - **`test_fakes.py`** — the test double itself.
 

@@ -58,13 +58,23 @@ class StaffAgent:
     resolution.
     """
 
-    def __init__(self, llm: Any, chat: Any, persona: dict) -> None:
+    def __init__(
+        self, llm: Any, chat: Any, persona: dict, request_suffix: str = ""
+    ) -> None:
         """``llm`` implements ``LLMClient``, ``chat`` implements ``ChatClient``,
         and ``persona`` is one entry from :func:`load_personas` (a dict with
-        ``role``, ``facts``, ``withholding_policy``, ``seed_messages``)."""
+        ``role``, ``facts``, ``withholding_policy``, ``seed_messages``).
+
+        ``request_suffix`` is appended to every post's ``request_id``. It is empty
+        by default — seed/answer ids then stay stable so a *crash mid-run* replays
+        as the same (deduped) Chat messages. A demo that wants to RE-RUN against
+        the same space passes a fresh per-run suffix so each run posts new seeds
+        instead of deduping to the previous run's (old) messages, which the
+        no-backfill bot would never re-detect."""
         self.llm = llm
         self.chat = chat
         self.persona = persona or {}
+        self.request_suffix = str(request_suffix or "").strip()
         self.role: str = str(self.persona.get("role", "")).strip()
         self.facts: dict[str, Any] = dict(self.persona.get("facts", {}) or {})
         self.withholding_policy: str = str(self.persona.get("withholding_policy", "")).strip()
@@ -87,7 +97,7 @@ class StaffAgent:
         for index, text in enumerate(self.seed_messages):
             if not str(text).strip():
                 continue
-            request_id = f"staff-{self._persona_slug()}-seed-{index}"
+            request_id = f"staff-{self._persona_slug()}-seed-{index}{self._suffix()}"
             message = self.chat.post_message(
                 text=str(text),
                 thread_id=self.seed_thread_id,
@@ -115,7 +125,7 @@ class StaffAgent:
         self._revealed.setdefault(thread_id, set()).add(key)
 
         reply_text = self._compose_reply(key, question_text or "")
-        request_id = f"staff-{self._persona_slug()}-ans-{key}"
+        request_id = f"staff-{self._persona_slug()}-ans-{key}{self._suffix()}"
         return self.chat.post_message(
             text=reply_text,
             thread_id=thread_id,
@@ -227,6 +237,11 @@ class StaffAgent:
             if len(t) >= 4 and any(ch.isdigit() for ch in t) and t in text.lower():
                 return True
         return False
+
+    def _suffix(self) -> str:
+        """The per-run request-id suffix (``-<suffix>``), or "" when unset, so the
+        ids stay byte-identical to the no-suffix form on the default path."""
+        return f"-{self.request_suffix}" if self.request_suffix else ""
 
     def _persona_slug(self) -> str:
         """A stable, filesystem/id-safe slug for request ids, from the role."""

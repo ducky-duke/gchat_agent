@@ -219,6 +219,27 @@ class Config:
     POLL_INTERVAL_SECONDS: int = 15
     POLL_BACKFILL_SINCE: str = ""
 
+    # --- GitHub issue export (optional) ---
+    # When on, each resolved issue is also filed as a GitHub issue (report +
+    # collected thread transcript) in GITHUB_REPO — a durable, searchable backlog
+    # of technical issues. Off by default (the offline/test path needs no GitHub).
+    GITHUB_ISSUES: bool = False
+    # Target repo as "owner/name" (e.g. "dttran-glo/gchat-agent-issues"). Required
+    # when GITHUB_ISSUES is on; ignored otherwise.
+    GITHUB_REPO: str = ""
+    # Personal-access / OAuth token with `repo` scope. Leave blank to let the
+    # factory fall back to the host `gh auth token` (the demo machine is already
+    # logged in), so no secret needs to live in .env.
+    GITHUB_TOKEN: str = ""
+    # Which host `gh` account to pull the token from when GITHUB_TOKEN is blank —
+    # passed as `gh auth token --user <account>`. Pins the export to one account
+    # (e.g. "ducky-duke") even when a different gh account is "active", so the bot
+    # files under the intended owner without switching the machine's active login.
+    # Blank ⇒ the active account's token (`gh auth token`).
+    GITHUB_ACCOUNT: str = ""
+    # REST API base (override only for GitHub Enterprise).
+    GITHUB_API_URL: str = "https://api.github.com"
+
     # --- Webhook (Phase 2 only) ---
     WEBHOOK_PORT: int = 8080
     WEBHOOK_AUTH_AUDIENCE: str = ""
@@ -233,6 +254,7 @@ _BOOL_KEYS: Final[frozenset[str]] = frozenset(
         "REDIRECT_OUT_OF_THREAD_REPLY",
         "EPISODIC_RECALL",
         "REDACT_REPORTS",
+        "GITHUB_ISSUES",
     }
 )
 _INT_KEYS: Final[frozenset[str]] = frozenset({
@@ -292,6 +314,17 @@ def validate_config(config: Config) -> Config:
             problems.append(f"{key}={value} (must be >= {minimum})")
     if not (1 <= config.WEBHOOK_PORT <= 65535):
         problems.append(f"WEBHOOK_PORT={config.WEBHOOK_PORT} (must be 1..65535)")
+    # GitHub export needs a target repo; require an "owner/name" shape so a typo
+    # fails at load, not on the first file-issue attempt mid-cycle. The token may
+    # be blank (the factory falls back to `gh auth token`), so it isn't checked.
+    if config.GITHUB_ISSUES:
+        repo = (config.GITHUB_REPO or "").strip()
+        parts = repo.split("/")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            problems.append(
+                f"GITHUB_REPO={config.GITHUB_REPO!r} "
+                "(required when GITHUB_ISSUES is on; must be 'owner/name')"
+            )
 
     if problems:
         raise ValueError(

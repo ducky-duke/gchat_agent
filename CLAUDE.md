@@ -11,7 +11,8 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
 ## Code layout & commands
 - **Package** (src layout): `src/gchat_agent/` — `config.py`, `models.py`, `runner.py`,
   `observability.py`; subpackages `llm/` (base, mock, openrouter+`build_llm`, tts+`build_tts`),
-  `chat/` (base, google_rest, oauth, Phase-2 webhook stub), `rag/` (bm25, boost, chunk, fuse,
+  `chat/` (base, google_rest, oauth, Phase-2 webhook stub), `github/` (base, rest+`build_github`),
+  `rag/` (bm25, boost, chunk, fuse,
   store, optional dense), `agent/` (prompts, `state`·IssueStore, analyzer, report, staff). Entry
   scripts in `scripts/`; tests in `tests/` (+ `fakes.FakeChatClient`).
 - **Nested indexes** (per-subtree maps, read the local one before touching files there):
@@ -19,7 +20,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   `rag/` subpackage indexes), [`tests/CLAUDE.md`](tests/CLAUDE.md),
   [`scripts/CLAUDE.md`](scripts/CLAUDE.md), [`docs/CLAUDE.md`](docs/CLAUDE.md). This root
   file keeps the cross-cutting behavioral specs; the nested files hold per-directory layout.
-- **Run the tests** (offline, no key — the functional gate, currently **287 green**):
+- **Run the tests** (offline, no key — the functional gate, currently **302 green**):
   `PYTHONPATH=src python -m unittest discover -s tests -t . -p "test_*.py"`.
 - **Merged LLM calls (Lever 1, latency)**: detection emits opening
   `clarifying_questions` per issue and clarity emits the next `questions` batch
@@ -55,6 +56,27 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   wording even in the rare fail-to-disk case. Tests inject a synchronous
   `tests.fakes.InlineExecutor`; `tests/test_voice_report.BackgroundVoiceTest` pins
   the "issue closed before audio" contract.
+- **GitHub issue export** (`GITHUB_ISSUES=true`): each resolved issue is also
+  filed as a GitHub issue (report Markdown + the collected thread transcript) in
+  `GITHUB_REPO`, building a durable searchable backlog. Like voice it runs OFF the
+  resolve critical path — but on its OWN single-worker pool (separate service, no
+  shared Chat rate limit) so a file never queues behind the ~17s voice pipeline:
+  `runner._submit_publish` renders the `(title, body, labels)` in the foreground
+  (only an immutable tuple crosses into the worker) and `_publish_issue_bg` POSTs
+  it; both pools are drained by `_drain_background` in `run_once`/`run_forever`.
+  Best-effort: a transport/credential failure is logged and swallowed (GitHub is an
+  extra sink, not the system of record — the confirmation and disk report already
+  hold the resolution). The `github/` subpackage mirrors `chat/`: a `GitHubClient`
+  Protocol + stdlib-`urllib` `GitHubRestClient` (`create_issue`, 422-unknown-label
+  tolerant: retries once without labels). `build_github` resolves the token from
+  `GITHUB_TOKEN`, else `gh auth token --user GITHUB_ACCOUNT` (so the demo files
+  under a pinned account — e.g. `ducky-duke` — without a secret in `.env` or
+  switching the machine's active gh login); returns `None` (export skipped) when
+  off or tokenless. Labels are a fixed pre-created set (`auto-filed`,
+  `severity:<low|med|high>`) so a create never 422s. Payload rendering lives in
+  `report.render_chat_transcript` / `render_github_issue`. Tests:
+  `tests/test_github_export.py` (`FakeGitHubClient`; off-critical-path + never-crash
+  contracts).
 - **No duplicate questions (loop-breaker)**: the bot never re-asks a question the
   reporter can't answer. Two layers: (1) `clarity_prompt`/`questions_prompt` show
   the model every already-asked question (`prompts._asked_block`) and instruct it
@@ -107,7 +129,8 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
 - **Offline path**: `LLM_PROVIDER=mock` → MockLLM, no network/key. Live path needs `OPENROUTER_API_KEY`
   **and** `pip install openai` (lazy core dep — NOT auto-installed in `igaming`; do it once: `conda run -n igaming pip install openai`).
 - **Scripts** self-add `src/` to path: `python scripts/run_poller.py [--once]` (bot);
-  `python scripts/run_staff.py --persona ops|promo --token <tok.json>` (staff);
+  `python scripts/run_staff.py --persona ops|promo|apigw --token <tok.json>` (staff;
+  `apigw` = the "API gateway timeout" incident scenario, added for the live demo);
   `python scripts/authorize.py --client <client.json> --out <tok.json> --account <email>` (mint a
   per-account refresh token); `python scripts/demo_local.py [--persona ops|promo|both] [--max-rounds N]`
   (full loop end-to-end over the in-memory FakeChatClient with the live/.env LLM — **no Google needed**;
@@ -120,6 +143,21 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   + reports). It never touches `data/` (RAG corpus / input, not session state); there are no on-disk
   logs or RAG index to clear (logs → stdout, index rebuilt in memory each start). `--fresh` is accepted
   as an explicit no-op. Combinable: `./start_bot.sh --continue --once`.
+- **`./demo_live.sh`** is the one-command **LIVE end-to-end demo** (the GitHub +
+  voice showcase): it preflights `.env`/tokens/`gh`, resets `.state/`, snapshots
+  the GitHub issue baseline, starts the poller (the bot) **first** so its cursor
+  pins to *now*, then starts a staff persona (default `apigw` — the "API gateway
+  timing out, 504s in prod" incident, posting as the ops account's token) that
+  seeds the incident and answers the bot's questions. It WATCHES until a brand
+  new issue appears in `GITHUB_REPO` (server-side proof) and the bot log confirms
+  the voice DM, prints the issue URL + voice destination, then tears both
+  processes down with SIGINT (clean lock release + background drain). Flags:
+  `--persona ops|promo|apigw`, `--timeout <s>` (default 600), `--token <tok.json>`,
+  `--keep-running`. Relies on the bot's success logs `filed GitHub issue for …`
+  and `posted voice report …` for confirmation. **Re-runnable** against the same
+  space: it passes a fresh per-run `--seed-suffix` to `run_staff.py` so the staff's
+  seed/answer `request_id`s are unique each run (otherwise Chat would dedup them to
+  the prior run's old messages, which the no-backfill bot never re-detects).
 
 ## Memory
 Accumulated findings, setup gotchas, and the smoke-test environment live in
@@ -152,7 +190,7 @@ Accumulated findings, setup gotchas, and the smoke-test environment live in
 
 ## goclaw-inspired hardening
 A batch of low-risk hardening ported from a review of the `goclaw/` Go platform
-(all pure-stdlib, gated by the offline suite — now **287 green**; tests in
+(all pure-stdlib, gated by the offline suite — now **302 green**; tests in
 [`tests/test_goclaw_hardening.py`](tests/test_goclaw_hardening.py)):
 - **Observability is actually wired**: `@observe` (was applied to nothing) now
   decorates the 5 LLM boundaries — `analyzer.{detect_issues,assess_clarity,

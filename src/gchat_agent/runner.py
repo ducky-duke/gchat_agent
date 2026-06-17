@@ -31,6 +31,7 @@ from .models import Conversation, Message, QAPair, Status
 
 if TYPE_CHECKING:
     from .chat.base import ChatClient
+    from .github.base import GitHubClient
     from .llm.base import LLMClient
     from .llm.tts import TTSClient
 
@@ -161,6 +162,8 @@ class Runner:
         llm: "Optional[LLMClient]" = None,
         tts: "Optional[TTSClient]" = None,
         voice_executor: "Optional[Any]" = None,
+        github: "Optional[GitHubClient]" = None,
+        publish_executor: "Optional[Any]" = None,
     ) -> None:
         self.chat = chat
         self.analyzer = analyzer
@@ -182,6 +185,16 @@ class Runner:
         # which also respects Chat's per-space 1-write/sec limit.
         self._voice_executor: "Optional[Any]" = voice_executor
         self._owns_voice_executor = voice_executor is None
+        # Optional GitHub export: file each resolved issue (report + collected
+        # thread transcript) as a GitHub issue. `None` ⇒ the feature is off. Like
+        # voice, the network call runs OFF the resolve critical path — but on its
+        # OWN single-worker pool (a separate service, no shared Chat rate limit),
+        # so a GitHub file never queues behind the ~17s voice pipeline. An injected
+        # executor (tests pass a synchronous one) is used as-is; otherwise a pool
+        # is created lazily on first use and drained on shutdown.
+        self._github: "Optional[GitHubClient]" = github
+        self._publish_executor: "Optional[Any]" = publish_executor
+        self._owns_publish_executor = publish_executor is None
         # The working conversation accumulates fetched messages across cycles so
         # threads keep their full context (detection is still windowed).
         self._conversation = Conversation()
@@ -1044,6 +1057,18 @@ class Runner:
             # background worker so it falls outside the measured cycle.
             if voice_attempted:
                 self._submit_voice(issue, report)
+
+            # File the resolved issue to GitHub (report + collected thread
+            # transcript), also OFF the critical path. The payload is rendered
+            # HERE in the foreground (cheap string work, and `thread_conv` is
+            # live only on this thread) so only an immutable (title, body, labels)
+            # tuple crosses into the worker — no shared Issue/Conversation.
+            if self._github is not None:
+                transcript = report_mod.render_chat_transcript(
+                    thread_conv.messages, self.chat.me()
+                )
+                title, body, labels = report_mod.render_github_issue(report, transcript)
+                self._submit_publish(issue.id, title, body, labels)
         issue.status = Status.RESOLVED
         issue.updated_at = now
         self.store.tombstone(issue)
@@ -1072,15 +1097,18 @@ class Runner:
             )
         self._voice_executor.submit(self._deliver_voice_bg, issue, report)
 
-    def _drain_voice(self) -> None:
-        """Wait for any in-flight background voice delivery, then dispose of a
-        pool we created. Called from the lock-guarded entrypoints' `finally` so a
-        `--once` run or a daemon shutdown doesn't drop an upload mid-flight. A
-        caller-injected executor (tests) is left untouched."""
-        ex = self._voice_executor
-        if ex is not None and self._owns_voice_executor:
-            ex.shutdown(wait=True)
+    def _drain_background(self) -> None:
+        """Wait for any in-flight background work (voice delivery + GitHub export),
+        then dispose of the pools we created. Called from the lock-guarded
+        entrypoints' `finally` so a `--once` run or a daemon shutdown doesn't drop
+        an upload or an issue-file mid-flight. Caller-injected executors (tests)
+        are left untouched."""
+        if self._voice_executor is not None and self._owns_voice_executor:
+            self._voice_executor.shutdown(wait=True)
             self._voice_executor = None
+        if self._publish_executor is not None and self._owns_publish_executor:
+            self._publish_executor.shutdown(wait=True)
+            self._publish_executor = None
 
     def _deliver_voice_bg(self, issue, report) -> None:
         """Background voice delivery: narrate the report, synthesize speech, and
@@ -1107,6 +1135,16 @@ class Runner:
                     thread_id=thread_id,
                     request_id=f"client-issue-{issue.id}-voice",
                 )
+                import sys
+
+                # Log the delivery (mirrors the GitHub export's success log) so a
+                # demo / operator can confirm the audio + transcript actually
+                # reached its destination (the DM space, or the issue thread).
+                print(
+                    f"[issue-spotter] posted voice report (audio + transcript) "
+                    f"for issue {issue.id} to {target_space or issue.thread_id}",
+                    file=sys.stderr,
+                )
                 return
             # No audio produced → fall through to the disk safety net.
         except Exception as exc:  # noqa: BLE001 — background, never crash the worker
@@ -1126,6 +1164,51 @@ class Runner:
 
             print(
                 f"disk fallback for issue {issue.id} also failed: {exc}",
+                file=sys.stderr,
+            )
+
+    def _submit_publish(
+        self, issue_id: str, title: str, body: str, labels: list[str]
+    ) -> None:
+        """Schedule `_publish_issue_bg` on the GitHub-export worker (lazily
+        created, separate from the voice pool so a file never waits behind the
+        voice pipeline). Fire-and-forget: the worker never raises, and
+        `_drain_background` flushes it on shutdown so an in-flight file is not
+        lost when the daemon stops."""
+        if self._publish_executor is None:
+            from concurrent.futures import ThreadPoolExecutor
+
+            self._publish_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="gchat-gh"
+            )
+        self._publish_executor.submit(
+            self._publish_issue_bg, issue_id, title, body, labels
+        )
+
+    def _publish_issue_bg(
+        self, issue_id: str, title: str, body: str, labels: list[str]
+    ) -> None:
+        """Background GitHub export: file the resolved issue and log its URL.
+        Self-contained and best-effort — runs on a worker thread, so it NEVER
+        raises; a transport/credential failure is logged and swallowed (the
+        resolution already lives in the thread confirmation and, for the disk/both
+        paths, on disk — GitHub is an additional sink, not the system of record)."""
+        if self._github is None:
+            return
+        try:
+            url = self._github.create_issue(title, body, labels)
+            import sys
+
+            print(
+                f"[issue-spotter] filed GitHub issue for {issue_id}: "
+                f"{url or '(no url returned)'}",
+                file=sys.stderr,
+            )
+        except Exception as exc:  # noqa: BLE001 — background, never crash the worker
+            import sys
+
+            print(
+                f"GitHub export failed for issue {issue_id}: {exc}",
                 file=sys.stderr,
             )
 
@@ -1197,7 +1280,7 @@ class Runner:
         try:
             return self.run_cycle()
         finally:
-            self._drain_voice()  # don't drop an in-flight voice upload on exit
+            self._drain_background()  # don't drop an in-flight voice/GitHub task on exit
             _release_lock(lock_path)
             observability.flush()
 
@@ -1250,7 +1333,7 @@ class Runner:
                 self._log_cycle(summary, time.monotonic() - started)
                 time.sleep(base)
         finally:
-            self._drain_voice()  # let any in-flight voice upload finish on shutdown
+            self._drain_background()  # let any in-flight voice/GitHub task finish on shutdown
             _release_lock(lock_path)
             observability.flush()
 
@@ -1365,6 +1448,7 @@ def build_runner(config: Config) -> Runner:
     """
     from .chat.google_rest import GoogleChatClient
     from .config import validate_config
+    from .github.rest import build_github
     from .llm.openrouter import build_llm
     from .llm.tts import build_tts
     from .rag.store import build_retriever
@@ -1395,10 +1479,11 @@ def build_runner(config: Config) -> Runner:
     chat = GoogleChatClient(config, user_id=bot_id)
     llm = build_llm(config)
     tts = build_tts(config)  # None unless REPORT_DELIVERY needs voice
+    github = build_github(config)  # None unless GITHUB_ISSUES is on (+ a token)
     retriever = build_retriever(config.KB_DIR, history=None, dense=config.RAG_DENSE)
     analyzer = Analyzer(llm, retriever, config.RAG_TOP_K)
 
     return Runner(
         chat, analyzer, store, config,
-        reports_dir=config.REPORTS_DIR, llm=llm, tts=tts,
+        reports_dir=config.REPORTS_DIR, llm=llm, tts=tts, github=github,
     )

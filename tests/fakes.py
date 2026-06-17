@@ -307,3 +307,30 @@ class InlineExecutor:
 
     def shutdown(self, wait: bool = True) -> None:  # noqa: ARG002 — no-op
         pass
+
+
+class FakeGitHubClient:
+    """In-memory `github.base.GitHubClient` for offline tests: records filed
+    issues instead of hitting the network. `fail=True` makes `create_issue` raise
+    so a test can prove the runner's GitHub export is best-effort (never crashes a
+    resolve). Each recorded issue is a dict with `title` / `body` / `labels`."""
+
+    def __init__(
+        self,
+        *,
+        fail: bool = False,
+        url: str = "https://github.test/owner/repo/issues/1",
+    ) -> None:
+        self.issues: list[dict] = []
+        self._fail = fail
+        self._url = url
+
+    def create_issue(
+        self, title: str, body: str, labels: "list[str] | None" = None
+    ) -> str:
+        if self._fail:
+            raise RuntimeError("github down")
+        self.issues.append(
+            {"title": title, "body": body, "labels": list(labels or [])}
+        )
+        return self._url

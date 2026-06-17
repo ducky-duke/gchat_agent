@@ -25,8 +25,10 @@ from gchat_agent.models import QAPair, ResolutionReport, _enum_value
 from gchat_agent.observability import observe
 
 if TYPE_CHECKING:  # only for the type hint — never import the LLM at runtime
+    from collections.abc import Iterable
+
     from gchat_agent.llm.base import LLMClient
-    from gchat_agent.models import Issue
+    from gchat_agent.models import Issue, Message
 
 # Google Chat caps message text near 4096 chars. The spoken narration is meant to
 # be 2-4 sentences (well under this), but a misbehaving live LLM could ignore that;
@@ -235,16 +237,30 @@ def voice_message_text(report: ResolutionReport, narration: str) -> str:
     return f"{caption}\n\n📝 Transcript: {transcript}"
 
 
-def render_markdown(report: ResolutionReport) -> str:
+# Sentinel for render_markdown's `heading` arg so callers can pass `None` to omit
+# the heading entirely (the GitHub export does — GitHub renders the issue title
+# above the body, and "# Resolved:" misframes an OPEN tracker item) while the
+# default still produces the on-disk report's "# Resolved: <title>" H1.
+_DEFAULT_HEADING = object()
+
+
+def render_markdown(report: ResolutionReport, heading: object = _DEFAULT_HEADING) -> str:
     """Render the resolution report to Markdown (§6).
 
     Sections: a title heading, a metadata line (category / severity / id /
     resolved-at), Summary, Resolution, the clarifying Q&A (one block per pair),
-    and source message ids. Always non-empty and always contains the title.
+    and source message ids. Always non-empty.
+
+    `heading` controls the top H1: the default keeps the on-disk report's
+    `# Resolved: <title>`; pass `None` to omit it (the GitHub export, where the
+    title is shown separately and a "Resolved" headline would misframe an OPEN
+    issue), or any string to override it.
     """
     title = report.title or "(untitled issue)"
     severity = _enum_value(report.severity)
-    lines: list[str] = [f"# Resolved: {title}", ""]
+    if heading is _DEFAULT_HEADING:
+        heading = f"# Resolved: {title}"
+    lines: list[str] = [str(heading), ""] if heading else []
 
     meta = [f"**Category:** {report.category or 'n/a'}", f"**Severity:** {severity}"]
     meta.append(f"**Issue id:** {report.issue_id}")
@@ -349,6 +365,65 @@ def write_report(
             pass
         raise
     return path
+
+
+# --- GitHub issue export (§ GitHub) ----------------------------------------
+# Fixed label set, pre-created on the repo so a create never 422s on an unknown
+# label (the runtime never invents free-text labels). Severity maps to the enum
+# *value* (low | med | high) so the label names match.
+_GITHUB_BASE_LABEL: str = "auto-filed"
+
+
+def render_chat_transcript(
+    messages: "Iterable[Message]", bot_id: str | None = None
+) -> str:
+    """Render the collected thread messages into readable Markdown for a GitHub
+    issue body — one labeled blockquote per message, in order.
+
+    Each message is shown as `**<who>** · <time>:` followed by its text as a
+    blockquote (so multi-line pastes / stack traces stay intact). `bot_id` (the
+    bot's own `users/<id>`) is labeled as the bot; everyone else is a person.
+    Returns a placeholder line when there are no messages."""
+    blocks: list[str] = []
+    for m in messages:
+        who = "🤖 bot" if (bot_id and m.sender == bot_id) else f"🧑 {m.sender or '(unknown)'}"
+        stamp = f" · {m.create_time}" if m.create_time else ""
+        text = (m.text or "").strip() or "(no text)"
+        quoted = "\n".join(f"> {line}" for line in text.splitlines())
+        blocks.append(f"**{who}**{stamp}:\n{quoted}")
+    return "\n\n".join(blocks) if blocks else "_(no messages were captured)_"
+
+
+def github_issue_labels(report: ResolutionReport) -> list[str]:
+    """The fixed labels applied to an auto-filed issue: `auto-filed` plus a
+    `severity:<value>` label. Both are pre-created on the repo (see the bot's
+    setup), so the create never trips the unknown-label 422."""
+    return [_GITHUB_BASE_LABEL, f"severity:{_enum_value(report.severity)}"]
+
+
+def render_github_issue(
+    report: ResolutionReport, transcript: str
+) -> tuple[str, str, list[str]]:
+    """Render a resolved report + its collected `transcript` into a GitHub issue
+    `(title, body, labels)`.
+
+    The body reuses :func:`render_markdown` (summary / resolution / Q&A / open
+    questions / source ids — single source of truth, never re-laid-out here) but
+    with its `# Resolved:` H1 dropped: GitHub already shows the issue title above
+    the body, so repeating it as a "# Resolved: <title>" heading is just
+    redundant. The body then appends the "Collected messages" transcript and an
+    auto-filed footer. `transcript` is pre-rendered by
+    :func:`render_chat_transcript`."""
+    title = _one_line(report.title) or "(untitled issue)"
+    body = (
+        render_markdown(report, heading=None)
+        + "\n## Collected messages\n\n"
+        + (transcript or "_(no messages were captured)_")
+        + "\n\n---\n"
+        + f"<sub>🤖 Auto-filed by the gchat_agent issue-spotter — issue "
+        + f"`{report.issue_id}`.</sub>\n"
+    )
+    return title, body, github_issue_labels(report)
 
 
 def confirmation_line(

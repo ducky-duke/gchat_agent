@@ -21,7 +21,8 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
   `_looks_like_decline()` heuristic. Key methods: `run_cycle`, `_detect`,
   `_process_open_issues`, **`_step_issue`** (loop-breaker), `_ask`, `_resolve`,
   `_escalate_due`, `_redirect_out_of_thread`, `_deliver_voice_bg` (background voice,
-  off the resolve critical path — see root CLAUDE.md "Lever C"), `run_forever`.
+  off the resolve critical path — see root CLAUDE.md "Lever C"), `_publish_issue_bg`
+  (background GitHub export — see root CLAUDE.md "GitHub issue export"), `run_forever`.
 - **`observability.py`** — Langfuse shim (`observe`/`trace`/`flush`); no-op by default,
   lazy when `LANGFUSE_*` is set. `@observe` is wired onto the 5 LLM boundaries (3 analyzer
   methods + 2 report builders).
@@ -30,4 +31,7 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
 - **`agent/`** — the brain: detection · clarity · resolution · personas · persistence.
 - **`llm/`** — LLM/TTS transport (protocol, MockLLM, OpenRouter, provider factories).
 - **`chat/`** — Google Chat ingress/egress adapters + user-OAuth (stdlib urllib).
+- **`github/`** — optional GitHub issue export (Protocol + stdlib-urllib REST client +
+  `build_github`). Files each resolved issue off the resolve critical path — see root
+  CLAUDE.md "GitHub issue export".
 - **`rag/`** — retrieval stack (BM25 + boosts + optional dense + RRF fusion).

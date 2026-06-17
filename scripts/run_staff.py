@@ -115,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--persona",
         required=True,
-        choices=("ops", "promo"),
+        choices=("ops", "promo", "apigw"),
         help="which persona from data/scenarios.json to run.",
     )
     parser.add_argument(
@@ -127,6 +127,14 @@ def main(argv: list[str] | None = None) -> int:
         "--once",
         action="store_true",
         help="seed, run a single answer pass, then exit.",
+    )
+    parser.add_argument(
+        "--seed-suffix",
+        default="",
+        help="append a per-run suffix to every post's request_id so a RE-RUN "
+        "against the same space posts fresh seeds/answers instead of deduping to "
+        "a previous run's (old) messages. Empty (default) keeps the stable, "
+        "crash-idempotent ids.",
     )
     args = parser.parse_args(argv)
 
@@ -140,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
 
     llm = build_llm(config)
     chat = GoogleChatClient(config, token_file=args.token)
-    staff = StaffAgent(llm, chat, personas[args.persona])
+    staff = StaffAgent(llm, chat, personas[args.persona], request_suffix=args.seed_suffix)
 
     _run(staff, chat, config, once=args.once)
     return 0
