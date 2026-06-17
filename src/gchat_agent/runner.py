@@ -184,20 +184,13 @@ class Runner:
         own_id = self._resolve_own_id()
 
         new_messages = self._fetch_new_messages()
-        # Only re-run detection when this cycle brought genuinely new *non-bot*
-        # content. An idle cycle — or one that merely re-saw the bot's own post,
-        # which `_detect` drops via `without_sender(own_id)` — leaves the
-        # detection window unchanged, so the LLM call would just re-derive the
-        # same candidates. Skipping it means a quiet poll costs zero frontier-model
-        # round-trips (the dominant cost), so a tight poll interval is cheap.
-        # When `own_id` is unknown (bootstrap), stay conservative and detect on
-        # any new traffic.
-        has_new_foreign = (
-            any(m.sender != own_id for m in new_messages)
-            if own_id
-            else bool(new_messages)
-        )
-        detected = self._detect(own_id) if has_new_foreign else 0
+        # Detection is the dominant per-cycle cost (a full DETECT_WINDOW tail
+        # through the frontier model), so it fires only when this cycle brought
+        # genuinely new traffic that could be a *new* issue — see `_should_detect`.
+        # A pure clarification cycle (the reporter only answered in an open issue's
+        # thread) skips it entirely: that reply is handled by `assess_clarity`, not
+        # a re-detect that would just re-derive the same candidates (Lever B).
+        detected = self._detect(own_id) if self._should_detect(new_messages, own_id) else 0
         asked, resolved, stale, escalated, redirected = self._process_open_issues(own_id)
 
         # Persist a freshly-learned bot id (the client may have learned its own
@@ -324,6 +317,63 @@ class Runner:
         return latest.create_time or prev
 
     # --- step 3 + 4: detection ----------------------------------------------
+    def _should_detect(self, new_messages: list[Message], own_id: str | None) -> bool:
+        """Whether this cycle's new traffic warrants a (costly) re-detection.
+
+        Detection renders the whole `DETECT_WINDOW_MESSAGES` tail through the
+        frontier model — the dominant per-cycle cost — so it must not fire on
+        traffic that cannot be a *new* issue. Two filters gate it:
+
+        * **non-bot** — a cycle that only re-saw the bot's own post brings no new
+          foreign content (`_detect` drops the bot's messages anyway), so skip; and
+        * **out-of-thread** — a reply landing inside an already-open issue's thread
+          (its own thread, its escalation/nudge thread, or the follow-the-reporter
+          `active_thread_id`) is an answer to a clarifying question, handled by
+          `assess_clarity`. Re-detecting over it would just re-derive the same
+          candidates at the price of one big LLM round-trip (Lever B). Detection
+          therefore fires only when at least one new foreign message landed
+          OUTSIDE every open issue's threads — genuinely new top-level traffic,
+          where a new issue is plausible.
+
+        A new issue mentioned *inside* a clarification thread is deferred, not
+        lost: detection still uses the flat `tail(N)` window, so the next time it
+        fires (any out-of-thread traffic) it re-scans those recent in-thread
+        messages too, as long as they are still within the window.
+
+        Conservative fallbacks: with the bot id not yet known (bootstrap) we can't
+        self-filter, so detect on any new traffic; a message carrying no thread_id
+        counts as top-level (outside the open-issue threads), so it triggers
+        detection.
+        """
+        if not new_messages:
+            return False
+        if own_id is None:
+            # Bootstrap: self-id unknown — stay conservative and detect on any new
+            # traffic (matches the pre-Lever-B behavior for this one case).
+            return True
+        foreign = [m for m in new_messages if m.sender != own_id]
+        if not foreign:
+            return False
+        open_threads = self._open_issue_threads()
+        return any((m.thread_id or "") not in open_threads for m in foreign)
+
+    def _open_issue_threads(self) -> set[str]:
+        """Every thread bound to a currently-open issue — its own thread plus the
+        escalation/nudge and follow-the-reporter (`active_thread_id`) threads — so
+        a reply in any of them reads as a clarification answer, not new-issue
+        traffic. Read from the store, which `run_cycle` loaded at the cycle's
+        start, so it reflects the issues open BEFORE this cycle's detection."""
+        threads: set[str] = set()
+        for issue in self.store.open_issues():
+            for tid in (
+                issue.thread_id,
+                issue.active_thread_id,
+                issue.escalation_thread_id,
+            ):
+                if tid:
+                    threads.add(tid)
+        return threads
+
     def _detect(self, own_id: str | None) -> int:
         """Detect candidates over the recent window with the bot's own messages
         dropped, then upsert all that aren't tombstoned."""

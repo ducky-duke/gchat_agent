@@ -19,7 +19,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   `rag/` subpackage indexes), [`tests/CLAUDE.md`](tests/CLAUDE.md),
   [`scripts/CLAUDE.md`](scripts/CLAUDE.md), [`docs/CLAUDE.md`](docs/CLAUDE.md). This root
   file keeps the cross-cutting behavioral specs; the nested files hold per-directory layout.
-- **Run the tests** (offline, no key — the functional gate, currently **268 green**):
+- **Run the tests** (offline, no key — the functional gate, currently **285 green**):
   `PYTHONPATH=src python -m unittest discover -s tests -t . -p "test_*.py"`.
 - **Merged LLM calls (Lever 1, latency)**: detection emits opening
   `clarifying_questions` per issue and clarity emits the next `questions` batch
@@ -29,6 +29,16 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   questions`) and falls back to a dedicated `generate_questions` call only when the
   model returned none — so question quality never regresses. MockLLM emits both
   inline too (`_questions_from_missing`).
+- **Skip in-thread re-detection (Lever B, latency)**: `detect_issues` (a full
+  `DETECT_WINDOW_MESSAGES` tail through the frontier model) fires only when new
+  foreign content landed OUTSIDE every open issue's threads — see
+  `runner._should_detect` / `_open_issue_threads`. A pure clarification cycle (the
+  reporter only answered inside an open issue's thread, its nudge thread, or its
+  `active_thread_id`) skips detect entirely: that reply is `assess_clarity`'s job,
+  not a re-detect that re-derives the same candidates. The detect window is a flat
+  `tail(N)` across ALL threads (top-level + replies), so a new issue raised inside a
+  clarification thread is only deferred, not lost — the next out-of-thread traffic
+  re-detects over it while it's still in-window.
 - **No duplicate questions (loop-breaker)**: the bot never re-asks a question the
   reporter can't answer. Two layers: (1) `clarity_prompt`/`questions_prompt` show
   the model every already-asked question (`prompts._asked_block`) and instruct it

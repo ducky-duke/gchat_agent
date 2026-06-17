@@ -349,10 +349,12 @@ class _DetectSpyAnalyzer(Analyzer):
 
 
 class QuietPollSkipsDetectTest(unittest.TestCase):
-    """Detection only runs when a cycle brings genuinely new *non-bot* content.
-    A cycle that adds nothing — or only re-sees the bot's own post (which
-    `_detect` would drop via `without_sender`) — must NOT call `detect_issues`,
-    so a tight poll interval costs zero frontier-model round-trips when idle."""
+    """Detection only runs when a cycle brings genuinely new *non-bot* content
+    from OUTSIDE every open issue's threads. A cycle that adds nothing, only
+    re-sees the bot's own post (dropped via `without_sender`), or only carries a
+    reporter's in-thread clarification reply (handled by `assess_clarity`,
+    Lever B) must NOT call `detect_issues` — so clarification and idle polls cost
+    zero detection round-trips, the dominant per-cycle cost."""
 
     def test_idle_and_own_only_cycles_skip_detect(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -382,12 +384,24 @@ class QuietPollSkipsDetectTest(unittest.TestCase):
                 analyzer.detect_calls, 1, "a fully idle cycle must not re-detect"
             )
 
-            # A fresh foreign reply re-enables detection.
+            # Lever B: a reporter's reply INSIDE the open issue's own thread is a
+            # clarification answer (handled by assess_clarity), not new-issue
+            # traffic — so detection stays skipped, not re-run.
             issue = store.open_issues()[0]
             chat.inject(STAFF_ID, "Jane owns it.", thread_id=issue.thread_id)
             runner.run_cycle()
             self.assertEqual(
-                analyzer.detect_calls, 2, "fresh non-bot traffic must re-detect"
+                analyzer.detect_calls, 1,
+                "an in-thread clarification reply must NOT re-detect (Lever B)",
+            )
+
+            # Only genuinely new foreign traffic OUTSIDE every open issue's thread
+            # (a fresh top-level message) re-enables detection.
+            chat.inject(STAFF_ID, "The export job is failing too.")
+            runner.run_cycle()
+            self.assertEqual(
+                analyzer.detect_calls, 2,
+                "fresh out-of-thread traffic must re-detect",
             )
 
 
