@@ -100,6 +100,66 @@ post from a non-bot account or the hijack attempt would be dropped before the bo
   Same prereqs: token needs the `meetings.space.created` scope + the Meet REST API
   enabled in the GCP project. Each run mints a fresh meeting (request id keyed to
   the new meeting code → never deduped against a prior call).
+- **`meet_call_browser.py`** — the **native ringing call** via browser automation
+  (the "trick" — no API can ring; only the Chat UI's call button does). Drives the
+  **system Brave** (`/usr/bin/brave-browser`) with **Playwright** (Python pkg only,
+  `pip install playwright` — system browser is reused, NO `playwright install`), in
+  a **persistent profile** (`--profile-dir`, default `.browser-profile/`,
+  gitignored — holds live Google cookies) so login survives runs and never locks
+  the daily browser. Opens a Chat DM (`--space`/`--url`/`--authuser`), finds the
+  call button (aria-label patterns; `--dry-run` DUMPS all visible button labels →
+  pass the right one via `--button-name`), clicks it → **rings** the callee, then
+  holds the call `--duration` s (or `--keep-open`). `--cdp-url` reuses a daily Brave
+  launched with `--remote-debugging-port`. First run is manual: sign into Google in
+  the headed window, open the DM, re-run. ⚠️ Automates Google UI (ToS-violating,
+  brittle selectors, account-flag risk) — demo accounts only. This is the RING +
+  WebRTC-presence half; the AI **voice** half (virtual PulseAudio devices + the
+  `demo_incident_call.py` Gemini Live loop pointed at them) is documented in a
+  footer block in the script, NOT yet wired.
+  - **RECOMMENDED — isolated profile + ONE-TIME MANUAL login (non-disruptive).** Runs
+    its OWN browser instance on `--profile-dir` (per-browser default, gitignored)
+    ALONGSIDE the daily Brave (different user-data-dir → no lock clash, daily session
+    untouched; verified headed alongside a running daily Brave). Do the login in a
+    **plain Brave** (not Playwright, so Google's "browser may not be secure" block
+    doesn't bite): `rm -rf .browser-profile && brave-browser
+    --user-data-dir="$PWD/.browser-profile"` → sign in as **mikmikb26 only** (→ `u/0`,
+    default `--authuser 0`, NO glo.com), open the Duc DM, close. Then place calls:
+    `meet_call_browser.py --browser brave --browser-path /usr/bin/brave-browser
+    --profile-dir .browser-profile --authuser 0 --duration 60`.
+  - **⚠️ DEAD END — copying/importing the session does NOT work (tested 2026-06-17).**
+    `--import-cookies <cdp-url>` (pull live cookies via CDP → inject into an isolated
+    profile) and file-copying the profile both *work for a few minutes then Google
+    signs ALL copies out* (redirect to `accounts.google.com/signin`). Cause: Google
+    binds the session to the original browser via rotating `SIDCC` cookies +
+    **Device-Bound Session Credentials** (a private key the copy lacks). The genuine
+    daily Brave keeps working; only copies die.
+  - **⚠️ WORSE — once the account is FLAGGED, even a fresh isolated login dies
+    (tested 2026-06-18).** After enough automation/copy churn, Google's risk engine
+    flags the account and then *also* invalidates a brand-new isolated profile login
+    within minutes: a clean plain-Brave login (verified: 37 google cookies, 15
+    SID/SAPISID rows persisted) was force-signed-out on the next automated open
+    (Playwright-launch → `signin/challenge/pwd` "Hi Tran"; plain-launch + CDP →
+    `signin/identifier`). The ONLY session that kept working through all of this was
+    the **long-established DAILY Brave via CDP** (`--cdp-url http://127.0.0.1:9222
+    --authuser 1` → call button found). **Conclusion: an "isolated browser that
+    doesn't touch the daily session" is NOT achievable for a flagged account** — its
+    fresh sessions get killed. Realistic paths: (a) **CDP into the genuine daily
+    Brave** (works; the script opens a NEW tab via `new_page`, so existing tabs are
+    untouched — only a call window appears), or (b) wait for the flag to cool down
+    (hours/days) before a fresh isolated login will stick (unproven), or (c) the human
+    clicks the call button manually. The `--import-cookies`/`--login` flags are kept
+    only as documented experiments; don't rely on them for a flagged account.
+  - **PROVEN live recipe (2026-06-17, this machine) — CDP into the daily Brave.**
+    Verified end-to-end but DISRUPTIVE (hijacks your session): 1) quit Brave,
+    `brave-browser --remote-debugging-port=9222 --profile-directory="Default"`;
+    2) `python scripts/meet_call_browser.py --cdp-url http://127.0.0.1:9222 --authuser 1`.
+    Env facts (Work/Default profile): **`u/0` = `dttran@glo.com` (REVOKED — never
+    use)**, **`u/1` = `mikmikb26@gmail.com` (bot/caller)** → `--authuser 1`. Shared
+    facts (both paths): the Chat DM deep link the live app routes to is
+    **`https://chat.google.com/u/<n>/app/chat/<spaceId>`** (the older
+    `#chat/space/...` hash form silently bounces to `/app/home`); the DM call control
+    is labelled **`Start a video call`**, and clicking it shows a Meet pre-join whose
+    **`Join now`** must be clicked to actually ring the callee (the script does this).
 - **`run_webhook.py`** — webhook ingress entrypoint, **Phase-2 DEFERRED** stub.
 
 The repo-root **`demo_live.sh`** wraps `run_poller.py` + `run_staff.py` into a
