@@ -116,6 +116,27 @@ post from a non-bot account or the hijack attempt would be dropped before the bo
   WebRTC-presence half; the AI **voice** half (virtual PulseAudio devices + the
   `demo_incident_call.py` Gemini Live loop pointed at them) is documented in a
   footer block in the script, NOT yet wired.
+  - **Module layout (split for size, behavior-preserving).** `meet_call_browser.py`
+    is now a thin **facade**: the usage docstring + `__main__` + re-exports of the
+    public surface other scripts import (`main`, `_WEBRTC_HOOK`, and the call-button /
+    hang-up probe helpers `_IN_CALL_PATTERNS`/`_find_call_button`/`_dump_buttons`/
+    `_find_button_in_frames`/`_in_call`/`_alone_signal` used by `call_network_capture`).
+    The implementation lives in 4 cohesive sibling modules: **`meet_call_js.py`**
+    (embedded JS — the `_WEBRTC_HOOK` RTCPeerConnection hook + getStats/DOM probe
+    strings), **`meet_call_signals.py`** (path setup + aria/regex pattern constants +
+    every page-probe wrapper that reads the live call page), **`meet_call_setup.py`**
+    (browser launch/CDP-attach/cookie-import/exec-resolve/proc-match/URL + renderer
+    keepalive), **`meet_call_run.py`** (`_start_rest_watch` + `main()` — the call
+    lifecycle, moved verbatim). Import DAG is acyclic: js ← signals ← setup; all ←
+    run; run+js+signals ← facade. Edit the relevant module, not the facade.
+    - **Optional follow-ups (deferred — need a live call to validate):** (1) **Perf:**
+      `main()`'s poll fires ~8 separate CDP `evaluate` round-trips per tick (join +
+      roster + several `_webrtc_*` globals + survey/calling/frame probes), which can
+      stretch the nominal `--join-poll` (the code says so). Batch the per-frame reads
+      into ONE `evaluate` returning all signals to cut latency — behavior-affecting, so
+      verify on a real call before trusting it. (2) **Tidy:** `meet_call_setup` imports
+      `_REPO_ROOT`/`_resolve_path` from `meet_call_signals`; a tiny shared `paths`
+      module would be cleaner (pure taste, no behavior change).
   - **RECOMMENDED — isolated profile + ONE-TIME MANUAL login (non-disruptive).** Runs
     its OWN browser instance on `--profile-dir` (per-browser default, gitignored)
     ALONGSIDE the daily Brave (different user-data-dir → no lock clash, daily session
