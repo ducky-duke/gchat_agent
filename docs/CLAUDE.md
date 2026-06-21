@@ -7,6 +7,11 @@ Hand-written design docs plus a bundled Google Chat REST mirror.
 - **`RAG_ANALYSIS.md`** — the `rag/` retrieval layer as actually built.
 - **`SETUP_GOOGLE_CHAT.md`** — live-demo setup over user OAuth (3 personal accounts, 1
   space). Pairs with the auth gotchas in root [`MEMORY.md`](../MEMORY.md).
+- **`CALL_AUTOMATION.md`** — the deep war-story / dead-end / proven-recipe record behind the
+  `scripts/` native-ringing-call + AI-voice tools (browser session dead-ends, the
+  flagged-account saga, `--watch-join`/`--watch-rest`/`huddle_watch` channels, the audio
+  capture/inject investigation, Wayland-occlusion blocker, greeting-latency fixes). The lean
+  per-script index in [`../scripts/CLAUDE.md`](../scripts/CLAUDE.md) points here.
 - **`google_chat/`** — bundled, read-only Google Chat **REST reference** (`*.md.txt`,
   mirrored under `reference/rest/v1/...`). Consult before changing
   `src/gchat_agent/chat/google_rest.py`; do not treat as project docs to edit.
