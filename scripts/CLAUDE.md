@@ -134,8 +134,12 @@ Wayland-occlusion blocker are all in
   strictly from the report, else says it doesn't know. **Two prompt versions** (`build_incident_persona`
   / `_INCIDENT_PROMPTS`): **English (default)** or **Vietnamese** via `--language vi` — the
   choice sets BOTH the briefing wording AND the spoken language (speech `language_code` pinned
-  to `en-US`/`vi-VN` so the AI actually talks in that language). Flags `--duration`(180),
-  `--persona`, `--callee`(Duc), `--url`, `--port`, `--profile`, `--model`, `--voice`(Aoede),
+  to `en-US`/`vi-VN` so the AI actually talks in that language). **`--incident-file <json>`** is
+  the bot-driven counterpart to `--persona`: same call behavior, but the facts come from a JSON
+  incident the bot wrote (`runner.build_call_incident`) for a REAL resolved issue instead of
+  scenarios.json — this is what `CALL_ON_RESOLVE` spawns (`build_incident_persona_from_file`;
+  `--persona` wins if both are passed). Flags `--duration`(180), `--persona`, `--incident-file`,
+  `--callee`(Duc), `--url`, `--port`, `--profile`, `--model`, `--voice`(Aoede),
   `--system`/`--system-file`, `--language`(en|vi), `--no-greet`, `--no-record`,
   `--quit-browser`, `--diag-pickup`. Run:
   `conda run --no-capture-output -n igaming python -u scripts/gemini_call.py

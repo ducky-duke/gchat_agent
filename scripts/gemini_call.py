@@ -129,6 +129,23 @@ def _persona_lang_key(language: "str | None") -> str:
     return "vi" if (language or "").lower().startswith("vi") else "en"
 
 
+def _render_incident_persona(
+    callee_name: str, owner: str, seeds: str, fact_lines: str, language: "str | None",
+) -> "tuple[str, str, str]":
+    """Format the chosen language version's templates with the incident fields.
+    Shared by both the scenarios.json path (`build_incident_persona`) and the
+    bot-driven path (`build_incident_persona_from_file`). Returns
+    (system_instruction, opening_trigger, BCP-47 speech language_code)."""
+    system_t, opening_t, speech_code = _INCIDENT_PROMPTS[_persona_lang_key(language)]
+    fields = {
+        "callee": callee_name,
+        "owner": owner or "the on-call engineer",
+        "seeds": seeds,
+        "facts": fact_lines,
+    }
+    return system_t.format(**fields), opening_t.format(**fields), speech_code
+
+
 def build_incident_persona(
     persona_id: str, callee_name: str, language: str = "en") -> "tuple[str, str, str]":
     """Load a scenarios.json persona (e.g. apigw = the API-gateway 504 incident) and render
@@ -153,10 +170,64 @@ def build_incident_persona(
     facts = p.get("facts", {}) or {}
     seeds = " ".join(s.strip() for s in (p.get("seed_messages") or [])).strip()
     fact_lines = "\n".join(f"- {k}: {v}" for k, v in facts.items())
+    return _render_incident_persona(callee_name, owner, seeds, fact_lines, language)
 
-    system_t, opening_t, speech_code = _INCIDENT_PROMPTS[_persona_lang_key(language)]
-    fields = {"callee": callee_name, "owner": owner, "seeds": seeds, "facts": fact_lines}
-    return system_t.format(**fields), opening_t.format(**fields), speech_code
+
+def _incident_fact_lines(facts: object, open_questions: object) -> str:
+    """Render a JSON incident file's ``facts`` (a label→value dict, or a list of
+    "k: v"/plain strings) plus its ``open_questions`` into the bulleted block the
+    {facts} placeholder expects. Open questions become explicit "still being
+    determined" lines so the AI tells the caller they're being checked (never
+    invents them). Whitespace is collapsed per value so a multi-line answer stays
+    one bullet."""
+    lines: list[str] = []
+    if isinstance(facts, dict):
+        for k, v in facts.items():
+            val = " ".join(str(v).split())
+            if val:
+                lines.append(f"- {k}: {val}")
+    elif isinstance(facts, (list, tuple)):
+        for item in facts:
+            val = " ".join(str(item).split())
+            if val:
+                lines.append(f"- {val}")
+    for q in (open_questions or []):
+        val = " ".join(str(q).split())
+        if val:
+            lines.append(
+                f"- Still being determined (tell the caller this is being checked): {val}"
+            )
+    return "\n".join(lines)
+
+
+def build_incident_persona_from_file(
+    incident_path: str, callee_name: str, language: str = "") -> "tuple[str, str, str]":
+    """Build (system, opening, speech_code) from a JSON incident file the BOT wrote
+    (`runner.build_call_incident`) — the bot-driven counterpart to
+    :func:`build_incident_persona`. Same call behavior and contract (neutral
+    intermediary, facts-only); the facts come from the resolved issue's report
+    instead of scenarios.json.
+
+    Expected JSON keys (all optional, robust to absence): ``title``, ``owner``,
+    ``situation`` (or ``seeds``), ``facts`` (dict or list), ``open_questions``
+    (list), ``language``. ``language`` arg wins over the file's; both default to
+    English. The title is folded into the spoken situation so the AI leads with
+    the headline."""
+    import json
+
+    with open(incident_path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise SystemExit(f"--incident-file {incident_path!r} is not a JSON object")
+
+    owner = str(data.get("owner") or "").strip() or "the on-call engineer"
+    seeds = " ".join(str(data.get("situation") or data.get("seeds") or "").split()).strip()
+    title = " ".join(str(data.get("title") or "").split()).strip()
+    if title and title.lower() not in seeds.lower():
+        seeds = f"{title}. {seeds}".strip() if seeds else title
+    fact_lines = _incident_fact_lines(data.get("facts") or {}, data.get("open_questions") or [])
+    lang = language or str(data.get("language") or "") or "en"
+    return _render_incident_persona(callee_name, owner, seeds, fact_lines, lang)
 
 
 def main(argv: "list[str] | None" = None) -> int:
@@ -182,6 +253,11 @@ def main(argv: "list[str] | None" = None) -> int:
                          "'apigw' (the API-gateway 504 incident). Overrides the default "
                          "greeting with a spoken incident briefing (English by default; "
                          "pass --language vi for Vietnamese).")
+    ap.add_argument("--incident-file", default=None,
+                    help="relay an incident from a JSON file (written by the bot's "
+                         "CALL_ON_RESOLVE path) instead of a scenarios.json --persona. "
+                         "Same call behavior; the facts come from the resolved issue. "
+                         "Ignored when --persona is also given (--persona wins).")
     ap.add_argument("--callee", default="Duc",
                     help="callee's name the reporter addresses on the call (default Duc).")
     ap.add_argument("--system", default=None,
@@ -216,20 +292,27 @@ def main(argv: "list[str] | None" = None) -> int:
     # into an incident REPORT (AI briefs the callee on the incident), otherwise it's the
     # default friendly-assistant greeting. Precedence: --system-file > --system > persona.
     greet_text = None
-    persona_lang = "en"
     speech_language = a.language
+    incident_mode = None  # set when relaying an incident (persona OR file)
+    persona_speech = "en-US"
     if a.persona:
-        persona_lang = _persona_lang_key(a.language)
+        incident_mode = f"persona={a.persona!r}"
         system, greet_text, persona_speech = build_incident_persona(
-            a.persona, a.callee, language=persona_lang)
+            a.persona, a.callee, language=_persona_lang_key(a.language))
+    elif a.incident_file:
+        incident_mode = f"file={a.incident_file!r}"
+        system, greet_text, persona_speech = build_incident_persona_from_file(
+            a.incident_file, a.callee, language=a.language or "")
+    else:
+        system = a.system or gemini_voice.DEFAULT_SYSTEM
+    if incident_mode:
         # Make the AI SPEAK the report language: pin the Live speech language_code to the
         # version's code (en-US / vi-VN) unless the caller pinned one explicitly.
         if not speech_language:
             speech_language = persona_speech
-        _log(f"  incident-report mode: persona={a.persona!r} → reporting to {a.callee} "
-             f"in {'Vietnamese' if persona_lang == 'vi' else 'English'} ({speech_language})")
-    else:
-        system = a.system or gemini_voice.DEFAULT_SYSTEM
+        spoken = "Vietnamese" if _persona_lang_key(speech_language) == "vi" else "English"
+        _log(f"  incident-report mode: {incident_mode} → reporting to {a.callee} "
+             f"in {spoken} ({speech_language})")
     if a.system_file:
         try:
             with open(a.system_file, encoding="utf-8") as f:

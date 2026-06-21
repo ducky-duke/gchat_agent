@@ -77,6 +77,36 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   `report.render_chat_transcript` / `render_github_issue`. Tests:
   `tests/test_github_export.py` (`FakeGitHubClient`; off-critical-path + never-crash
   contracts).
+- **Outbound voice call on resolve (`CALL_ON_RESOLVE`, default ON, self-gating)**:
+  after the Q&A clarifies an issue, the bot RELAYS it to a human over a real
+  phone-style Chat call — Gemini Live as the "incident-duty assistant" reads the
+  clarified report aloud and answers from its facts. **Default ON** ("always call
+  once clarified"), but **self-gating**: `_maybe_place_call` skips silently (no
+  error) unless `GEMINI_API_KEY` is configured, since `gemini_call.py` can't work
+  without it. That one check makes the offline/test path (no key) and any non-call
+  deployment make no call, while the real demo machine (key set) always does — so
+  the 353-test suite stays hermetic with the default flipped on. On resolve the runner renders the
+  `ResolutionReport` into the `--incident-file` JSON contract
+  (`runner.build_call_incident`: title · owner · situation=summary · facts=
+  severity/category/action + each clarified Q&A answer · open_questions · language)
+  and spawns `scripts/gemini_call.py` (`runner._maybe_place_call`). Unlike
+  voice/GitHub (quick network calls on drained worker pools), the call owns a
+  browser + audio devices and runs for MINUTES, so it is a **detached**
+  `subprocess.Popen` (`start_new_session=True`) — fire-and-forget, never drained,
+  must outlive a `--once` poller — and inherently off the critical path (Popen
+  returns at once). **Serialized** within the process (`_active_call_proc.poll()`):
+  the one caller browser + virtual audio set host ONE call at a time, so a resolve
+  while a prior call is in flight SKIPS its call rather than racing it. Best-effort:
+  a missing script or launch failure is logged + swallowed (the confirmation/disk/
+  GitHub already hold the resolution). The facts cross as a JSON file
+  (`CALL_LOG_DIR`, default `logs/`); the child's stdout → `logs/call-issue-<id>.log`.
+  Config: `CALL_ON_RESOLVE`, `GEMINI_API_KEY` (the gate; distinct from
+  `OPENROUTER_API_KEY`), `CALL_SCRIPT`, `CALL_CALLEE`, `CALL_LANGUAGE`(en|vi),
+  `CALL_URL`, `CALL_OWNER`, `CALL_LOG_DIR`. ⚠️ Needs `GEMINI_API_KEY`, the dedicated
+  caller Brave profile, and a VISIBLE desktop session (Wayland suspends an occluded
+  renderer) — demo-machine only, never headless/CI. The call side reads the JSON via
+  `gemini_call.build_incident_persona_from_file`. Tests: `tests/test_call_on_resolve.py`
+  (`subprocess.Popen` patched; payload + gate + serialize + never-crash contracts).
 - **Meet REST API links (`MEET_LINKS`)**: the `meet/` subpackage mirrors `chat/`
   and `github/` — a `MeetClient` Protocol + stdlib-`urllib` `MeetRestClient.
   create_space` (`POST /v2/spaces`, returning a `MeetSpace` with the `meetingUri`

@@ -40,6 +40,9 @@ Syntax-only check (no `ty` here): `python -m py_compile <file>`.
 - **`test_github_export.py`** — GitHub issue export: payload/transcript renderers, the REST
   client's unknown-label fallback, `build_github` + config validation, and the runner's
   background export (off the critical path; never crashes a resolve).
+- **`test_call_on_resolve.py`** — the outbound voice call on resolve (`CALL_ON_RESOLVE`):
+  `build_call_incident` payload renderer + the runner spawn (`subprocess.Popen` patched —
+  off-critical-path, gate-respecting, serialized one-at-a-time, never-crash contracts).
 - **`test_staff.py`** — staff personas. **`test_google_rest.py`** — live-adapter timeouts.
 - **`test_fakes.py`** — the test double itself.
 

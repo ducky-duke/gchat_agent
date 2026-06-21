@@ -27,7 +27,7 @@ from .agent import report as report_mod
 from .agent.analyzer import Analyzer
 from .agent.state import IssueStore
 from .config import Config
-from .models import Conversation, Message, QAPair, Status
+from .models import Conversation, Message, QAPair, Status, _enum_value
 
 if TYPE_CHECKING:
     from .chat.base import ChatClient
@@ -164,6 +164,72 @@ def _looks_like_decline(text: str) -> bool:
     return not substantive
 
 
+# --- outbound voice-call incident payload (CALL_ON_RESOLVE) -----------------
+# The bot relays a resolved issue to a human by spawning scripts/gemini_call.py,
+# which reads the incident from a JSON file. These helpers render a
+# `ResolutionReport` into that file's contract — the *only* facts the AI is
+# allowed to relay on the call (it answers strictly from them).
+
+
+def _call_fact_label(question: str, index: int) -> str:
+    """A short one-line label for a clarified Q&A fact in the call incident.
+
+    The bot asks a batch of questions joined by newlines, so collapse to one line
+    and cap the length; fall back to a generic "Clarified detail N" when the
+    question text is empty."""
+    one = " ".join((question or "").split())
+    if not one:
+        return f"Clarified detail {index}"
+    if len(one) > 70:
+        one = one[:69].rstrip() + "…"
+    return one
+
+
+def build_call_incident(report, owner: str, language: str) -> dict:
+    """Render a resolved `ResolutionReport` into the JSON incident contract that
+    `gemini_call.py --incident-file` reads. This is the clarified knowledge the
+    bot hands to the voice channel; the AI relays exactly these facts and answers
+    strictly from them. Keys:
+
+    - ``title``        — the issue title (the headline the AI opens the call with);
+    - ``owner``        — who raised/owns the incident (``CALL_OWNER``, else generic);
+    - ``situation``    — ``report.summary`` (what is broken / how players are hit);
+    - ``facts``        — ordered label→value the AI answers from: severity,
+      category, the action being taken (``report.resolution``), then each
+      clarified Q&A answer keyed by its (one-lined) question;
+    - ``open_questions`` — facts the bot could NOT obtain (the AI says these are
+      still being checked, matching the report's "open questions");
+    - ``language``     — ``en``|``vi`` (spoken + briefing language).
+    """
+    facts: dict[str, str] = {}
+    severity = str(_enum_value(report.severity) or "").strip()
+    if severity:
+        facts["Severity"] = severity
+    if (report.category or "").strip():
+        facts["Category"] = report.category.strip()
+    resolution = (report.resolution or "").strip()
+    if resolution:
+        facts["What's being done / current status"] = resolution
+    for i, qa in enumerate(report.qa, start=1):
+        answer = (qa.text or "").strip()
+        if not answer:
+            continue
+        label = _call_fact_label(qa.question, i)
+        if label in facts:  # avoid silently dropping an answer on a label clash
+            label = f"{label} ({i})"
+        facts[label] = " ".join(answer.split())
+    return {
+        "title": (report.title or "").strip(),
+        "owner": (owner or "").strip() or "the on-call engineer",
+        "situation": " ".join((report.summary or "").split()),
+        "facts": facts,
+        "open_questions": [
+            " ".join(str(q).split()) for q in (report.open_questions or []) if str(q).strip()
+        ],
+        "language": (language or "en").strip() or "en",
+    }
+
+
 class Runner:
     """One issue-spotter bot driving a `ChatClient` + `Analyzer` + `IssueStore`."""
 
@@ -210,6 +276,13 @@ class Runner:
         self._github: "Optional[GitHubClient]" = github
         self._publish_executor: "Optional[Any]" = publish_executor
         self._owns_publish_executor = publish_executor is None
+        # Outbound voice call on resolve (CALL_ON_RESOLVE): handle to the most
+        # recently spawned `gemini_call.py` subprocess, used to serialize calls —
+        # the caller browser + virtual audio devices host one call at a time, so a
+        # resolve while a prior call is still in flight skips its call rather than
+        # racing it. Detached + fire-and-forget (never drained): the call owns a
+        # browser, runs minutes, and must outlive a `--once` poller.
+        self._active_call_proc: "Optional[Any]" = None
         # The working conversation accumulates fetched messages across cycles so
         # threads keep their full context (detection is still windowed).
         self._conversation = Conversation()
@@ -1134,6 +1207,13 @@ class Runner:
                 transcript = report_mod.render_chat_transcript(evidence, self.chat.me())
                 title, body, labels = report_mod.render_github_issue(report, transcript)
                 self._submit_publish(issue.id, title, body, labels)
+
+            # Place an outbound voice call that RELAYS this issue to a human, also
+            # OFF the critical path (a detached, fire-and-forget subprocess that
+            # owns its own browser + audio and runs for minutes). Gated by
+            # CALL_ON_RESOLVE; the spawn is best-effort and never blocks the close.
+            if self.config.CALL_ON_RESOLVE:
+                self._maybe_place_call(issue, report)
         issue.status = Status.RESOLVED
         issue.updated_at = now
         self.store.tombstone(issue)
@@ -1274,6 +1354,108 @@ class Runner:
 
             print(
                 f"GitHub export failed for issue {issue_id}: {exc}",
+                file=sys.stderr,
+            )
+
+    def _maybe_place_call(self, issue, report) -> None:
+        """Best-effort: spawn `gemini_call.py` to RELAY this just-resolved issue to
+        a human over a real voice call (CALL_ON_RESOLVE). The AI is the
+        incident-duty assistant: it reads the clarified report aloud on pickup and
+        answers strictly from its facts.
+
+        Detached + fire-and-forget. The call owns a dedicated caller browser +
+        virtual audio devices and runs for minutes, so it is launched in its OWN
+        session (`start_new_session=True`) and never waited on / drained — it must
+        outlive even a `--once` poller, and it is inherently off the resolve
+        critical path (`Popen` returns at once).
+
+        Serialized within this process: that call hardware hosts ONE call at a
+        time, so if a prior call is still in flight this resolve's call is SKIPPED
+        (logged), never raced. The incident facts cross to the subprocess as a JSON
+        file (the `--incident-file` contract); the child's stdout/stderr are
+        redirected to a per-issue log. Any failure to even launch is logged and
+        swallowed — the resolution already lives in the thread confirmation / disk
+        / GitHub, so the call is an extra channel, not the system of record."""
+        import json
+        import os
+        import subprocess
+        import sys
+
+        # Self-gating: CALL_ON_RESOLVE defaults ON, but the call cannot work without
+        # a Gemini key, so skip silently (this is the offline/test path and any
+        # non-call deployment) rather than spawning a process that just exits 2.
+        if not (self.config.GEMINI_API_KEY or "").strip():
+            return
+
+        # Serialize: one call at a time (shared caller browser + audio devices).
+        prior = self._active_call_proc
+        if prior is not None and prior.poll() is None:
+            print(
+                f"[issue-spotter] a voice call is already in progress (pid "
+                f"{prior.pid}); skipping the call for issue {issue.id}",
+                file=sys.stderr,
+            )
+            return
+
+        script = (self.config.CALL_SCRIPT or "").strip()
+        if not script or not os.path.isfile(script):
+            print(
+                f"[issue-spotter] CALL_ON_RESOLVE is on but the call script "
+                f"{script!r} was not found (cwd={os.getcwd()}); skipping the call "
+                f"for issue {issue.id}",
+                file=sys.stderr,
+            )
+            return
+
+        try:
+            incident = build_call_incident(
+                report, self.config.CALL_OWNER, self.config.CALL_LANGUAGE
+            )
+            log_dir = (self.config.CALL_LOG_DIR or "logs").strip() or "logs"
+            os.makedirs(log_dir, exist_ok=True)
+            safe_id = "".join(
+                ch if (ch.isalnum() or ch in "-_") else "-" for ch in (issue.id or "")
+            ).strip("-") or "issue"
+            incident_path = os.path.join(log_dir, f"incident-{safe_id}.json")
+            with open(incident_path, "w", encoding="utf-8") as fh:
+                json.dump(incident, fh, ensure_ascii=False, indent=2)
+
+            # Absolute paths so the detached child resolves them regardless of cwd.
+            argv = [
+                sys.executable, "-u", os.path.abspath(script),
+                "--incident-file", os.path.abspath(incident_path),
+                "--callee", (self.config.CALL_CALLEE or "Duc"),
+                "--language", (self.config.CALL_LANGUAGE or "en"),
+            ]
+            url = (self.config.CALL_URL or "").strip()
+            if url:
+                argv += ["--url", url]
+
+            log_path = os.path.join(log_dir, f"call-issue-{safe_id}.log")
+            log_fh = open(log_path, "ab")
+            try:
+                proc = subprocess.Popen(
+                    argv,
+                    stdout=log_fh,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    start_new_session=True,  # detach: survives a --once poller exit
+                )
+            finally:
+                # The child dup'd the fd at fork; close our copy to avoid a leak.
+                log_fh.close()
+            self._active_call_proc = proc
+            print(
+                f"[issue-spotter] placing voice call for issue {issue.id} "
+                f"(pid {proc.pid}) — relaying to "
+                f"{self.config.CALL_CALLEE or 'Duc'} in "
+                f"{'Vietnamese' if (self.config.CALL_LANGUAGE or 'en').lower().startswith('vi') else 'English'}; "
+                f"call log → {log_path}",
+                file=sys.stderr,
+            )
+        except Exception as exc:  # noqa: BLE001 — best-effort; never crash the resolve
+            print(
+                f"voice call launch failed for issue {issue.id}: {exc}",
                 file=sys.stderr,
             )
 

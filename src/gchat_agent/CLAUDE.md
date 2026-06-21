@@ -11,7 +11,8 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
   lines). Tunables: `MAX_CLARIFY_ROUNDS`, `MAX_NO_PROGRESS_ROUNDS`, `STALE_AFTER_IDLE_CYCLES`,
   `RESOLVE_CONFIDENCE_THRESHOLD`, `EPISODIC_RECALL` (default on), `SEMANTIC_DEDUP` (default on —
   LLM cross-thread duplicate decider), `REDACT_REPORTS` (default off), the safety-mode + voice +
-  provider flags.
+  provider flags, and the `CALL_*` cluster (`CALL_ON_RESOLVE` + script/callee/language/url/owner/
+  log-dir — the outbound voice call on resolve).
 - **`models.py`** — domain dataclasses, lossless JSON round-trip. Enums `SenderType`/
   `Severity`/`Status`; `QAPair`, `Message`, `Issue`, `ClarityAssessment`,
   `ResolutionReport`, `Conversation`, `AgentState`; `issue_fingerprint()`. `Issue` carries
@@ -23,7 +24,10 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
   `_process_open_issues`, **`_step_issue`** (loop-breaker), `_ask`, `_resolve`,
   `_escalate_due`, `_redirect_out_of_thread`, `_deliver_voice_bg` (background voice,
   off the resolve critical path — see root CLAUDE.md "Lever C"), `_publish_issue_bg`
-  (background GitHub export — see root CLAUDE.md "GitHub issue export"), `run_forever`.
+  (background GitHub export — see root CLAUDE.md "GitHub issue export"),
+  `_maybe_place_call` + module-level `build_call_incident` (the outbound voice call
+  on resolve — a detached `gemini_call.py` subprocess; see root CLAUDE.md "Outbound
+  voice call on resolve"), `run_forever`.
 - **`observability.py`** — Langfuse shim (`observe`/`trace`/`flush`); no-op by default,
   lazy when `LANGFUSE_*` is set. `@observe` is wired onto the 5 LLM boundaries (3 analyzer
   methods + 2 report builders).

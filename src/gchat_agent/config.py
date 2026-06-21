@@ -248,6 +248,45 @@ class Config:
     # REST API base (override only for GitHub Enterprise).
     GITHUB_API_URL: str = "https://api.github.com"
 
+    # --- Outbound voice call on resolve (scripts/gemini_call.py) ---
+    # When on, each resolved issue ALSO triggers an outbound voice call that RELAYS
+    # the clarified incident to a human: the runner spawns scripts/gemini_call.py
+    # (Gemini Live as the incident-duty assistant) as a DETACHED subprocess, off
+    # the resolve critical path, reading the report's facts from a JSON file it
+    # writes. Best-effort and self-serializing (one call at a time — the caller
+    # browser + virtual audio devices can't host two).
+    #
+    # DEFAULT ON: once an issue is clarified the bot calls. It is still
+    # SELF-GATING, though — the spawn is skipped (logged, never an error) unless a
+    # GEMINI_API_KEY is configured, because gemini_call.py cannot work without one.
+    # So the offline/test path (no key) and any deployment without a Gemini key
+    # silently make no call; the call only fires on a machine actually set up for
+    # it (key + the dedicated caller Brave profile + a VISIBLE desktop session —
+    # Wayland suspends an occluded renderer, so never headless/CI). Set False to
+    # disable entirely.
+    CALL_ON_RESOLVE: bool = True
+    # Gemini Live API key for the outbound call (DISTINCT from OPENROUTER_API_KEY).
+    # The runner only reads it to decide whether the call can work (the spawn is
+    # skipped when blank); gemini_call.py reads the real key from env/.env itself.
+    GEMINI_API_KEY: str = ""
+    # The call orchestrator to spawn (relative to the poller's cwd, i.e. repo root).
+    CALL_SCRIPT: str = "scripts/gemini_call.py"
+    # The callee's name the AI addresses on the call (who picks up the phone).
+    CALL_CALLEE: str = "Duc"
+    # Spoken + briefing language for the call: "en" (English) or "vi" (Vietnamese).
+    CALL_LANGUAGE: str = "en"
+    # Exact Chat DM URL to ring. Blank ⇒ gemini_call.py's built-in default (the
+    # bot↔Duc DM). Set to call into a different DM/space.
+    CALL_URL: str = ""
+    # Name of the on-call engineer who RAISED/owns the incident, spoken on the call
+    # ("an incident <owner> just raised"). The bot only knows the reporter by Chat
+    # id, so this names them for the relay. Blank ⇒ a generic "the on-call engineer".
+    CALL_OWNER: str = ""
+    # Where the spawn's incident JSON + the call's stdout log are written (relative
+    # to cwd). gitignored. The call orchestrator also writes its own detailed log
+    # under logs/ on the live run.
+    CALL_LOG_DIR: str = "logs"
+
     # --- Google Meet links (optional — Meet REST API, user OAuth) ---
     # When on, the demo can mint a real Google Meet meeting via the Meet REST API
     # (`spaces.create`) and post its join link into Chat so a human joins a live
@@ -278,6 +317,7 @@ _BOOL_KEYS: Final[frozenset[str]] = frozenset(
         "REDACT_REPORTS",
         "GITHUB_ISSUES",
         "MEET_LINKS",
+        "CALL_ON_RESOLVE",
     }
 )
 _INT_KEYS: Final[frozenset[str]] = frozenset({
