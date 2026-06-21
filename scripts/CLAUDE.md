@@ -129,12 +129,15 @@ Wayland-occlusion blocker are all in
   on a real Chat call. Composes `ai_call` + `gemini_voice.GeminiVoiceBridge` +
   `meet_call_browser.main(..., on_join=, on_pickup=)` over CDP with
   `--watch-join --ensure-mic-on`. **`--persona apigw` = incident-report mode**: on pickup the
-  AI reports a scenario incident in Vietnamese as a NEUTRAL INTERMEDIARY ("trợ lý trực sự
-  cố") relaying on behalf of the owner (**Dave** for apigw) — it is NOT that engineer, so
-  "who's responsible?" → Dave; answers strictly from the report, else says it doesn't know.
-  Flags `--duration`(180), `--persona`, `--callee`(Duc), `--url`, `--port`, `--profile`,
-  `--model`, `--voice`(Aoede), `--system`/`--system-file`, `--language`, `--no-greet`,
-  `--no-record`, `--quit-browser`, `--diag-pickup`. Run:
+  AI reports a scenario incident as a NEUTRAL INTERMEDIARY relaying on behalf of the owner
+  (**Dave** for apigw) — it is NOT that engineer, so "who's responsible?" → Dave; answers
+  strictly from the report, else says it doesn't know. **Two prompt versions** (`build_incident_persona`
+  / `_INCIDENT_PROMPTS`): **English (default)** or **Vietnamese** via `--language vi` — the
+  choice sets BOTH the briefing wording AND the spoken language (speech `language_code` pinned
+  to `en-US`/`vi-VN` so the AI actually talks in that language). Flags `--duration`(180),
+  `--persona`, `--callee`(Duc), `--url`, `--port`, `--profile`, `--model`, `--voice`(Aoede),
+  `--system`/`--system-file`, `--language`(en|vi), `--no-greet`, `--no-record`,
+  `--quit-browser`, `--diag-pickup`. Run:
   `conda run --no-capture-output -n igaming python -u scripts/gemini_call.py
   [--persona apigw --callee Duc]`. Keep the window VISIBLE; callee should use a headset (AEC).
 - **`auto_answer.py`** — the unattended CALLEE: drives a 2nd Brave (separate

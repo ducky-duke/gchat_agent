@@ -30,6 +30,7 @@ from meet_call_signals import (
     _scan_page_for_code,
     _webrtc_ice_stats,
     _webrtc_inbound_bytes,
+    _webrtc_outbound_bytes,
     _webrtc_live_audio,
     _webrtc_pc_dead,
     _webrtc_track_count,
@@ -228,6 +229,17 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
         default=0.5,
         help="seconds between roster polls while waiting for the callee to join "
         "(default 0.5 → join detected within ~0.5s of answering).",
+    )
+    parser.add_argument(
+        "--media-flatline-secs",
+        type=float,
+        default=3.0,
+        help="seconds of MUTUAL media silence (NEITHER side sending RTP) before treating "
+        "the inbound-flatline as a hang-up (default 3). One-sided silence — you listening "
+        "while the bot/AI talks (outbound still flowing) — never counts, so a conversation "
+        "isn't cut mid-answer. Raise it for an interactive AI call where natural "
+        "think-pauses are longer (e.g. gemini_call passes 30); the roster-collapse signal "
+        "still catches a clean hang-up fast when the window is visible.",
     )
     parser.add_argument(
         "--diag-pickup",
@@ -800,8 +812,12 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
         peak_tiles = 0  # highest roster tile count seen (0 ⇒ roster never rendered here)
         peak_live = 0   # highest live remote-audio-track count seen (0 ⇒ no remote audio)
         # Inbound-RTP flatline = the robust hang-up signal (media stops when the remote leaves).
+        # But it must be MUTUAL: a poll only counts as flat when NEITHER side is sending media.
+        # While WE talk (outbound growing) and the callee just listens (inbound flat) the call
+        # is alive — counting that as flat dropped the call mid-answer on an AI call (the bug).
         prev_bytes = -1        # last inbound-RTP byte total seen
-        bytes_flat_for = 0     # consecutive polls inbound bytes did NOT grow (post-flow)
+        prev_out_bytes = -1    # last outbound-RTP byte total seen (media we send)
+        bytes_flat_for = 0     # consecutive polls of MUTUAL silence (post-flow)
         bytes_ever_grew = False  # has inbound media meaningfully flowed at least once?
         # media_connected: a LATCH set the first time we observe REAL inbound media —
         # a remote audio track 'unmute' event (RTP started flowing; the primary, can't-be-
@@ -1130,23 +1146,37 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
                                 webrtc_gone_for = 0
                             # MOST ROBUST hang-up signal: inbound RTP flatlines when the
                             # remote leaves (the SFU keeps the PC/tracks alive, so only the
-                            # media itself stops). Independent of any DOM/rendering.
+                            # media itself stops). Independent of any DOM/rendering. BUT we
+                            # require MUTUAL silence: if WE are still sending media (outbound
+                            # growing — e.g. the AI is mid-sentence and the callee is just
+                            # listening), inbound silence is NOT a hang-up. Only when neither
+                            # side has sent media for --media-flatline-secs do we end. This
+                            # stops a one-sided AI monologue from dropping the call mid-answer.
                             if not end_now:
                                 b = _webrtc_inbound_bytes(call_page)
+                                ob = _webrtc_outbound_bytes(call_page)
+                                in_grew = prev_bytes >= 0 and b > prev_bytes + 500
+                                out_grew = prev_out_bytes >= 0 and ob > prev_out_bytes + 500
                                 if b >= 0:
-                                    if prev_bytes >= 0 and b > prev_bytes + 500:
-                                        bytes_ever_grew = True   # media is/was flowing
+                                    if in_grew:
+                                        bytes_ever_grew = True   # remote media is/was flowing
                                         media_connected = True
+                                    # poll silence resets the moment EITHER side sends media
+                                    if in_grew or out_grew:
                                         bytes_flat_for = 0
                                     elif prev_bytes >= 0 and bytes_ever_grew:
-                                        bytes_flat_for += 1      # no growth → remote silent/gone
+                                        bytes_flat_for += 1      # mutual silence (both flat)
+                                        flat_needed = max(
+                                            2, int(args.media_flatline_secs / (wait_ms / 1000.0)))
                                         if bytes_flat_for == 1:
-                                            print(f"   [end] inbound media stopped (bytes={b}) — "
-                                                  "confirming hang-up …")
-                                        if bytes_flat_for >= 6:  # ~3s of no media (post-flow)
-                                            ended_reason = "inbound media stopped (hung up)"
+                                            print(f"   [end] no media either way (in={b} out={ob}) — "
+                                                  f"watching for hang-up ({args.media_flatline_secs:g}s) …")
+                                        if bytes_flat_for >= flat_needed:
+                                            ended_reason = "media silent both ways (hung up)"
                                             end_now = True
                                     prev_bytes = b
+                                    if ob >= 0:
+                                        prev_out_bytes = ob
                         except Exception:  # noqa: BLE001
                             pass
                     if end_now:

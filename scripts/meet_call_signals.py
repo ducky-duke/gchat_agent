@@ -14,6 +14,7 @@ from meet_call_js import (
     _ICE_STATS_FN,
     _INBOUND_BYTES_FN,
     _JOIN_PROBE,
+    _OUTBOUND_BYTES_FN,
     _STRUCTURE_PROBE,
 )
 
@@ -357,6 +358,26 @@ def _webrtc_inbound_bytes(page) -> int:
             continue
         try:
             v = int(fr.evaluate(_INBOUND_BYTES_FN))
+        except Exception:  # noqa: BLE001 - probe must never raise into the loop
+            continue
+        if v > best:
+            best = v
+    return best
+
+
+def _webrtc_outbound_bytes(page) -> int:
+    """Max cumulative outbound-RTP bytesSent across the call PeerConnections — the media WE
+    send to the callee. Grows while we send (e.g. the AI is speaking); flatlines when we go
+    silent. The caller pairs this with _webrtc_inbound_bytes so a one-sided AI monologue (we
+    talk, they listen → inbound flat, outbound growing) is NOT misread as a hang-up. Returns
+    -1 only if every frame's probe failed (inconclusive)."""
+    best = -1
+    for fr in _frames(page):
+        u = fr.url or ""
+        if "meet.google.com" not in u and "chat.google.com" not in u:
+            continue
+        try:
+            v = int(fr.evaluate(_OUTBOUND_BYTES_FN))
         except Exception:  # noqa: BLE001 - probe must never raise into the loop
             continue
         if v > best:

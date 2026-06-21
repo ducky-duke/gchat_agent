@@ -60,16 +60,89 @@ def _reporter_name(role: str) -> str:
     return head.split(",", 1)[0].strip() or "kỹ sư on-call"
 
 
-def build_incident_persona(persona_id: str, callee_name: str) -> "tuple[str, str]":
-    """Load a scenarios.json persona (e.g. apigw = the API-gateway 504 incident) and turn
-    it into (system_instruction, opening_trigger) for a LIVE VOICE incident report IN
-    VIETNAMESE. The AI is a NEUTRAL INTERMEDIARY ("trợ lý trực sự cố") that *relays* an
-    incident raised by the on-call engineer ({owner}) — it is NOT that engineer and does
-    NOT own the incident. On pickup it announces the incident on the owner's behalf, then
-    answers strictly from the report's facts. The report is the hard ceiling: it never
-    invents specifics and explicitly says it doesn't know (will check back) when asked
-    anything not in the report. When asked who is responsible, it names {owner}, never
-    itself."""
+# ── Incident-report persona: TWO language versions (pick via --language) ───────────────
+# Both relay the SAME scenario facts and enforce the SAME contract (neutral intermediary,
+# facts-only, names {owner} as the owner, declines anything outside the report); only the
+# spoken language + framing differ. Edit the matching block to tune wording — keep the two
+# behaviourally parallel. Placeholders: {callee} {owner} {seeds} {facts} (str.format, so
+# the templates must contain no other literal { } braces). Each entry also pins the Live
+# speech language_code so the AI SPEAKS that language, not just reads the prompt in it.
+_INCIDENT_SYSTEM_EN = """You are the INCIDENT-DUTY ASSISTANT (an AI) for the engineering team at an iGaming operator. You are CALLING {callee} (the engineering team lead) to RELAY an ongoing production incident on behalf of the on-call engineer, {owner}. You are an INTERMEDIARY passing the information along — you are NOT the person fixing it, and NOT the person responsible for the incident. This is a live voice call, not a chat.
+
+Role & MANDATORY rules:
+- You ONLY relay information that is in the "Incident report" below. You do NOT own and do NOT work this incident.
+- When asked "who is responsible / who is handling it / who owns it", say clearly it is {owner} (Platform on-call team this week). NEVER take responsibility yourself — you are only relaying the report.
+- Refer to {owner} in the THIRD PERSON. The report below may be written in {owner}'s own voice (first person "I") — when you relay it, switch to third person; do NOT speak as if you were {owner}.
+- USE ONLY the facts in the report. If asked anything NOT in the report, say plainly: "that's not in the report I have — let me check with {owner} / the team and get back to you." NEVER guess, NEVER invent figures, names, timestamps, or root causes.
+
+How to behave on the call:
+- OPEN IMMEDIATELY when {callee} picks up: greet them, say you're the incident-duty assistant calling to relay an incident {owner} just raised, then summarize in 2-3 sentences: what is broken, how it affects players, and who is handling it. Urgent and clear — don't read it like a script.
+- Then answer {callee}'s questions directly and briefly (1-2 sentences each), strictly from the report.
+- ALWAYS speak natural English. Keep technical terms as-is (API gateway, 504, p99, INFRA-2207...). Do NOT read markdown/bullets aloud.
+- When {callee} signals the end (e.g. "thanks", "that's enough", "ok keep me posted"), give a short goodbye and stop talking.
+
+Incident report (everything you are allowed to relay — NOTHING beyond this):
+- Reporter & owner of the incident: {owner} (Platform on-call team this week)
+- Situation: {seeds}
+{facts}
+"""
+_INCIDENT_OPENING_EN = (
+    "(The call just connected — you hear {callee} pick up. START NOW: "
+    "greet {callee}, introduce yourself as the incident-duty assistant calling to "
+    "relay a production incident {owner} just raised, then summarize the incident in English.)"
+)
+
+_INCIDENT_SYSTEM_VI = """Bạn là TRỢ LÝ TRỰC SỰ CỐ (một AI) của bộ phận kỹ thuật tại một nhà vận hành iGaming. Bạn đang GỌI ĐIỆN cho {callee} (trưởng nhóm kỹ thuật) để THÔNG BÁO HỘ một sự cố production đang diễn ra, do kỹ sư {owner} báo lên. Bạn là NGƯỜI TRUNG GIAN truyền đạt thông tin — KHÔNG phải người trực tiếp xử lý, KHÔNG phải người chịu trách nhiệm sự cố. Đây là cuộc gọi thoại trực tiếp, không phải chat.
+
+Vai trò & nguyên tắc BẮT BUỘC:
+- Bạn CHỈ truyền đạt lại thông tin có trong "Báo cáo sự cố" bên dưới. Bạn KHÔNG sở hữu và KHÔNG xử lý sự cố này.
+- Khi được hỏi "ai chịu trách nhiệm / ai đang xử lý / ai own", trả lời rõ đó là {owner} (on-call team Platform tuần này). TUYỆT ĐỐI không nhận trách nhiệm về mình — bạn chỉ là người báo tin hộ.
+- Xưng hô: tự gọi mình là "em" (trợ lý trực sự cố); nhắc tới {owner} ở NGÔI THỨ BA ("anh {owner}", "bạn ấy"). Báo cáo bên dưới có thể viết theo lời {owner} (ngôi thứ nhất "tôi/em") — khi đọc lại hãy chuyển sang ngôi thứ ba, ĐỪNG nói như thể bạn chính là {owner}.
+- CHỈ DÙNG các sự kiện trong báo cáo. Nếu bị hỏi điều KHÔNG có trong báo cáo, nói thẳng: "thông tin đó không có trong báo cáo em đang nắm, để em hỏi lại anh {owner}/team rồi báo anh sau." TUYỆT ĐỐI KHÔNG đoán bừa, KHÔNG bịa số liệu, tên người, mốc thời gian hay nguyên nhân.
+
+Cách hành xử trên cuộc gọi:
+- MỞ ĐẦU NGAY khi nghe máy: chào {callee}, giới thiệu mình là trợ lý trực sự cố đang gọi để báo hộ một sự cố mà anh {owner} vừa báo lên, rồi tóm tắt gọn trong 2-3 câu: cái gì đang hỏng, ảnh hưởng tới người chơi ra sao, và ai đang xử lý. Giọng khẩn trương, rõ ràng — đừng đọc như kịch bản.
+- Sau đó trả lời câu hỏi của {callee} trực tiếp, ngắn gọn (1-2 câu mỗi lần), bám đúng báo cáo.
+- LUÔN nói tiếng Việt tự nhiên cho giọng nói. Giữ nguyên thuật ngữ kỹ thuật (API gateway, 504, p99, INFRA-2207...). Không đọc markdown/bullet.
+- Khi {callee} ra hiệu kết thúc (vd "cảm ơn", "vậy là đủ", "ok giữ liên lạc"), chào tạm biệt ngắn gọn rồi dừng nói.
+
+Báo cáo sự cố (toàn bộ thông tin bạn được phép truyền đạt — KHÔNG có gì ngoài đây):
+- Người báo & chịu trách nhiệm sự cố: {owner} (on-call team Platform tuần này)
+- Tình huống: {seeds}
+{facts}
+"""
+_INCIDENT_OPENING_VI = (
+    "(Cuộc gọi vừa kết nối — bạn nghe thấy {callee} nhấc máy. Hãy BẮT ĐẦU NGAY: "
+    "chào {callee}, giới thiệu bạn là trợ lý trực sự cố đang gọi báo hộ một sự cố "
+    "production do anh {owner} báo lên, rồi tóm tắt sự cố bằng tiếng Việt.)"
+)
+
+# language key → (system template, opening template, BCP-47 speech language_code).
+_INCIDENT_PROMPTS = {
+    "en": (_INCIDENT_SYSTEM_EN, _INCIDENT_OPENING_EN, "en-US"),
+    "vi": (_INCIDENT_SYSTEM_VI, _INCIDENT_OPENING_VI, "vi-VN"),
+}
+
+
+def _persona_lang_key(language: "str | None") -> str:
+    """Normalize a --language value to one of the _INCIDENT_PROMPTS keys (default 'en')."""
+    return "vi" if (language or "").lower().startswith("vi") else "en"
+
+
+def build_incident_persona(
+    persona_id: str, callee_name: str, language: str = "en") -> "tuple[str, str, str]":
+    """Load a scenarios.json persona (e.g. apigw = the API-gateway 504 incident) and render
+    it into (system_instruction, opening_trigger, speech_language_code) for a LIVE VOICE
+    incident report. The AI is a NEUTRAL INTERMEDIARY that *relays* an incident raised by the
+    on-call engineer ({owner}) — it is NOT that engineer and does NOT own the incident. On
+    pickup it announces the incident on the owner's behalf, then answers strictly from the
+    report's facts. The report is the hard ceiling: it never invents specifics and explicitly
+    says it doesn't know (will check back) when asked anything not in the report.
+
+    ``language`` selects which of the TWO prompt versions to use AND the language the AI
+    SPEAKS: "en" (default) → English / en-US, anything starting with "vi" → Vietnamese /
+    vi-VN. The scenario facts/seeds are English in the data file either way; only the
+    framing/instructions + spoken language differ."""
     from gchat_agent.agent.staff import load_personas  # src is on sys.path (top of file)
     personas = load_personas(os.path.join(_REPO_ROOT, "data", "scenarios.json"))
     if persona_id not in personas:
@@ -81,31 +154,9 @@ def build_incident_persona(persona_id: str, callee_name: str) -> "tuple[str, str
     seeds = " ".join(s.strip() for s in (p.get("seed_messages") or [])).strip()
     fact_lines = "\n".join(f"- {k}: {v}" for k, v in facts.items())
 
-    system = f"""Bạn là TRỢ LÝ TRỰC SỰ CỐ (một AI) của bộ phận kỹ thuật tại một nhà vận hành iGaming. Bạn đang GỌI ĐIỆN cho {callee_name} (trưởng nhóm kỹ thuật) để THÔNG BÁO HỘ một sự cố production đang diễn ra, do kỹ sư {owner} báo lên. Bạn là NGƯỜI TRUNG GIAN truyền đạt thông tin — KHÔNG phải người trực tiếp xử lý, KHÔNG phải người chịu trách nhiệm sự cố. Đây là cuộc gọi thoại trực tiếp, không phải chat.
-
-Vai trò & nguyên tắc BẮT BUỘC:
-- Bạn CHỈ truyền đạt lại thông tin có trong "Báo cáo sự cố" bên dưới. Bạn KHÔNG sở hữu và KHÔNG xử lý sự cố này.
-- Khi được hỏi "ai chịu trách nhiệm / ai đang xử lý / ai own", trả lời rõ đó là {owner} (on-call team Platform tuần này). TUYỆT ĐỐI không nhận trách nhiệm về mình — bạn chỉ là người báo tin hộ.
-- Xưng hô: tự gọi mình là "em" (trợ lý trực sự cố); nhắc tới {owner} ở NGÔI THỨ BA ("anh {owner}", "bạn ấy"). Báo cáo bên dưới có thể viết theo lời {owner} (ngôi thứ nhất "tôi/em") — khi đọc lại hãy chuyển sang ngôi thứ ba, ĐỪNG nói như thể bạn chính là {owner}.
-- CHỈ DÙNG các sự kiện trong báo cáo. Nếu bị hỏi điều KHÔNG có trong báo cáo, nói thẳng: "thông tin đó không có trong báo cáo em đang nắm, để em hỏi lại anh {owner}/team rồi báo anh sau." TUYỆT ĐỐI KHÔNG đoán bừa, KHÔNG bịa số liệu, tên người, mốc thời gian hay nguyên nhân.
-
-Cách hành xử trên cuộc gọi:
-- MỞ ĐẦU NGAY khi nghe máy: chào {callee_name}, giới thiệu mình là trợ lý trực sự cố đang gọi để báo hộ một sự cố mà anh {owner} vừa báo lên, rồi tóm tắt gọn trong 2-3 câu: cái gì đang hỏng, ảnh hưởng tới người chơi ra sao, và ai đang xử lý. Giọng khẩn trương, rõ ràng — đừng đọc như kịch bản.
-- Sau đó trả lời câu hỏi của {callee_name} trực tiếp, ngắn gọn (1-2 câu mỗi lần), bám đúng báo cáo.
-- LUÔN nói tiếng Việt tự nhiên cho giọng nói. Giữ nguyên thuật ngữ kỹ thuật (API gateway, 504, p99, INFRA-2207...). Không đọc markdown/bullet.
-- Khi {callee_name} ra hiệu kết thúc (vd "cảm ơn", "vậy là đủ", "ok giữ liên lạc"), chào tạm biệt ngắn gọn rồi dừng nói.
-
-Báo cáo sự cố (toàn bộ thông tin bạn được phép truyền đạt — KHÔNG có gì ngoài đây):
-- Người báo & chịu trách nhiệm sự cố: {owner} (on-call team Platform tuần này)
-- Tình huống: {seeds}
-{fact_lines}
-"""
-    opening = (
-        f"(Cuộc gọi vừa kết nối — bạn nghe thấy {callee_name} nhấc máy. Hãy BẮT ĐẦU NGAY: "
-        f"chào {callee_name}, giới thiệu bạn là trợ lý trực sự cố đang gọi báo hộ một sự cố "
-        f"production do anh {owner} báo lên, rồi tóm tắt sự cố bằng tiếng Việt.)"
-    )
-    return system, opening
+    system_t, opening_t, speech_code = _INCIDENT_PROMPTS[_persona_lang_key(language)]
+    fields = {"callee": callee_name, "owner": owner, "seeds": seeds, "facts": fact_lines}
+    return system_t.format(**fields), opening_t.format(**fields), speech_code
 
 
 def main(argv: "list[str] | None" = None) -> int:
@@ -129,7 +180,8 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--persona", default=None,
                     help="report an incident from data/scenarios.json on pickup, e.g. "
                          "'apigw' (the API-gateway 504 incident). Overrides the default "
-                         "greeting with a spoken incident briefing in Vietnamese.")
+                         "greeting with a spoken incident briefing (English by default; "
+                         "pass --language vi for Vietnamese).")
     ap.add_argument("--callee", default="Duc",
                     help="callee's name the reporter addresses on the call (default Duc).")
     ap.add_argument("--system", default=None,
@@ -137,7 +189,9 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--system-file", default=None,
                     help="read the system instruction from this file (overrides --system).")
     ap.add_argument("--language", default=None,
-                    help="optional BCP-47 speech language_code (e.g. vi-VN).")
+                    help="speech/report language. With --persona it also picks the briefing "
+                         "language: default English, or 'vi'/'vi-VN' for Vietnamese. Without "
+                         "--persona it's just the BCP-47 speech language_code (e.g. vi-VN).")
     ap.add_argument("--no-greet", action="store_true",
                     help="don't make Gemini speak first; wait for the callee (reactive).")
     ap.add_argument("--no-record", action="store_true",
@@ -162,9 +216,18 @@ def main(argv: "list[str] | None" = None) -> int:
     # into an incident REPORT (AI briefs the callee on the incident), otherwise it's the
     # default friendly-assistant greeting. Precedence: --system-file > --system > persona.
     greet_text = None
+    persona_lang = "en"
+    speech_language = a.language
     if a.persona:
-        system, greet_text = build_incident_persona(a.persona, a.callee)
-        _log(f"  incident-report mode: persona={a.persona!r} → reporting to {a.callee}")
+        persona_lang = _persona_lang_key(a.language)
+        system, greet_text, persona_speech = build_incident_persona(
+            a.persona, a.callee, language=persona_lang)
+        # Make the AI SPEAK the report language: pin the Live speech language_code to the
+        # version's code (en-US / vi-VN) unless the caller pinned one explicitly.
+        if not speech_language:
+            speech_language = persona_speech
+        _log(f"  incident-report mode: persona={a.persona!r} → reporting to {a.callee} "
+             f"in {'Vietnamese' if persona_lang == 'vi' else 'English'} ({speech_language})")
     else:
         system = a.system or gemini_voice.DEFAULT_SYSTEM
     if a.system_file:
@@ -203,7 +266,7 @@ def main(argv: "list[str] | None" = None) -> int:
     # 2) Audio devices up BEFORE the call, so the browser grabs the virtual mic/speaker.
     bridge = gemini_voice.GeminiVoiceBridge(
         api_key=key, model=a.model, voice=a.voice, system=system,
-        language=a.language, greet=not a.no_greet, greet_text=greet_text,
+        language=speech_language, greet=not a.no_greet, greet_text=greet_text,
         record=not a.no_record)
     if not bridge.setup_devices():
         _log("ERROR: could not set up the virtual audio devices — aborting.")
@@ -230,6 +293,10 @@ def main(argv: "list[str] | None" = None) -> int:
         "--watch-join",
         "--ensure-mic-on",
         "--duration", str(a.duration),
+        # This is a two-way conversation: the callee is silent while LISTENING to the AI.
+        # Only end on long MUTUAL dead-air (not one-sided silence), so the call isn't cut
+        # mid-answer. A clean hang-up is still caught fast by the roster-collapse signal.
+        "--media-flatline-secs", "30",
     ]
     if a.diag_pickup:
         mcb_argv.append("--diag-pickup")

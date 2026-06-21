@@ -359,6 +359,32 @@ async () => {
 """
 
 
+# Cumulative OUTBOUND-RTP bytes (bytesSent), summed over every call PeerConnection — the
+# mirror of _INBOUND_BYTES_FN for the media WE send (the bot mic → callee; e.g. Gemini's
+# voice during an AI call). The caller uses this to tell "the callee went silent because
+# they're LISTENING to us" (outbound still growing) apart from "the callee LEFT" (both
+# directions flatline). Without it, a one-sided AI monologue reads as a hang-up after a
+# few seconds of inbound silence — the bug where the call dropped mid-answer while the
+# human was just listening. Same async-arrow form as the inbound probe so evaluate() awaits it.
+_OUTBOUND_BYTES_FN = r"""
+async () => {
+  try {
+    const pcs = window.__mcbPCs || [];
+    let total = 0;
+    for (const pc of pcs) {
+      try {
+        const stats = await pc.getStats();
+        stats.forEach(function(r){
+          if (r && r.type === 'outbound-rtp') total += (r.bytesSent || 0);
+        });
+      } catch(e){}
+    }
+    return total;
+  } catch(e) { return -1; }
+}
+"""
+
+
 # WHY does the caller's ICE never connect? getStats() candidate-pair / candidate diagnostics.
 # For each call PeerConnection this reports the iceConnectionState plus, from getStats:
 # the candidate-pair states (succeeded/failed/in-progress), whether any pair was nominated,

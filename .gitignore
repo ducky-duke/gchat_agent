@@ -8,8 +8,9 @@ smoke/.token
 # Python
 __pycache__/
 *.pyc
-# Generated state, reports, and per-account secrets
+# Generated state, reports, logs, and per-account secrets
 reports/
+logs/
 .state/
 secrets/
 *.token
@@ -17,3 +18,7 @@ token_*.json
 # External reference clones (their own git repos — not part of this project)
 goclaw/
 docs/gemini_live/gemini-live-api-examples/
+
+# Playwright automation browser profile (live Google cookies — secret)
+.browser-profile*/
+.chromium-profile*/

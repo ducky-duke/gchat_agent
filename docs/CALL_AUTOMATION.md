@@ -161,6 +161,22 @@ the **browser network** only shows the hang-up indirectly (the clean roster-leav
 inside the `SyncMeetingSpaceCollections` server-stream Playwright can't read mid-stream).
 `call_network_capture.py` is the diagnostic that established that last point.
 
+### Inbound-flatline must be MUTUAL silence (the AI-call mid-answer drop, 2026-06-21)
+The browser-side robust hang-up signal is inbound-RTP `bytesReceived` flatlining (the SFU
+keeps the PC/tracks/roster alive after a leave, so only the media stops). That was tuned for
+ONE-WAY use (inject a tone, callee listens): ~3s of inbound silence ⇒ hang-up. On a TWO-WAY
+`gemini_call` conversation it false-fired **mid-answer** — while the callee LISTENS to the AI
+their mic sends nothing, so "listening" looked identical to "left", and the call dropped ~3s
+into the AI's reply. Fix: also probe OUTBOUND RTP (`_OUTBOUND_BYTES_FN` / `_webrtc_outbound_bytes`,
+`outbound-rtp` `bytesSent` = the media WE send) and only count a poll as flat when NEITHER
+direction grew (true mutual dead-air). New `--media-flatline-secs` (seconds of mutual silence;
+default 3 for back-compat, `gemini_call` passes **30**); a clean hang-up is still caught fast by
+the **roster-collapse** signal (`controls/tiles → 0`, window must be visible). Log line flipped
+from "inbound media stopped — confirming hang-up" to "no media either way (in=… out=…) — watching
+for hang-up (Ns)". Validated live: a ~90s conversation held through goodbyes and only stopped on
+the real hang-up ("call controls disappeared"). The fully silence-immune signal remains
+`huddle_watch.py` (REST `huddleStatus`, lags seconds).
+
 ## Audio: "AI ear" (capture) — the full investigation
 `meet_audio_capture.py` (+ `meet_call_browser --capture-audio`) records the REMOTE voice
 the bot hears to a WAV (**16 kHz mono s16le PCM** = exactly Gemini Live's realtime-input
