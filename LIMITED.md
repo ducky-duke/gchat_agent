@@ -268,6 +268,48 @@ vendors, not automatically.
 
 ---
 
+## 9. Voice call on resolve (caller subsystem)
+
+The `call/` subsystem (Gemini Live as the outbound AI caller — see
+[`call/CLAUDE.md`](call/CLAUDE.md)) is demo-machine-only and is **not exercised by the
+offline suite**. The entries below were observed on live calls.
+
+### 9.1 Caller is half-duplex — callee speech over the AI's turn can be dropped
+**Scenario:** the AI caller is mid-utterance (opening briefing, an answer, or a silence
+check-in) and the callee speaks at the same time.
+
+**Now:** Gemini Live is turn-based. Our side never gates the callee — `gemini_voice.
+GeminiVoiceBridge._ear_to_gemini` forwards **every** ear frame to Gemini even while the model
+is speaking — and a barge-in is honoured when it fires (`_gemini_to_queue` drops the queued AI
+audio on `server_content.interrupted`). VAD sensitivity is already maxed (`build_live_config`'s
+`automatic_activity_detection` = `START_SENSITIVITY_HIGH` / `END_SENSITIVITY_HIGH`,
+`silence_duration_ms=800`).
+
+**Gap:** whether the model actually *abandons its turn to listen* depends on Gemini's own VAD
+tripping on speech that overlaps the model's own output — the hardest case for it. When it
+doesn't trip, the callee's simultaneous sentence is swallowed: the audio reaches Gemini's ear
+but never becomes a turn. There is no half/full-duplex control from our side beyond
+sensitivity, which is already at the ceiling.
+
+### 9.2 Silence nudge can fire on top of an already-speaking callee
+**Scenario:** the callee is talking, but Gemini hasn't (yet) transcribed it, and the caller's
+silence watchdog reaches its threshold and injects a check-in over them.
+
+**Now:** the watchdog (`_ear_to_gemini`, `NUDGE_AFTER_SILENCE_S=12`, `MAX_NUDGES=3`) measures
+"silence" by the last time Gemini *transcribed* the callee — `_gemini_to_queue` resets
+`_last_voice_activity` and `_nudges_sent` only on `input_transcription`. It does **not** look at
+raw ear-audio energy. The nudge itself is a `send_realtime_input(text=NUDGE_TRIGGER)` that
+forces an immediate model turn.
+
+**Gap:** if Gemini's input VAD under-triggers (low ear level, or halting speech under its
+threshold), the callee can be speaking while the watchdog still counts the line as silent — so
+the nudge lands mid-sentence and the model answers the nudge instead of the callee. Compounding
+it, because the dropped speech is never transcribed, the watchdog isn't reset, so a second nudge
+can follow. A raw-energy gate (suppress the nudge whenever the ear has had recent sound, not
+just recent transcription) would close this but is not implemented.
+
+---
+
 ## Priority gaps to close first
 
 If this graduated from demo to product, the highest-value fixes are roughly:
