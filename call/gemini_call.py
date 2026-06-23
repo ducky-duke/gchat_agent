@@ -84,7 +84,7 @@ How to behave on the call:
 - OPEN IMMEDIATELY when {callee} picks up: greet them, say you're the incident-duty assistant calling to relay an incident {owner} just raised, then summarize in 2-3 sentences: what is broken, how it affects players, and who is handling it. Urgent and clear — don't read it like a script.
 - Then answer {callee}'s questions directly and briefly (1-2 sentences each), strictly from the report.
 - ALWAYS speak natural {output_language}. Keep technical terms as-is (API gateway, 504, p99, INFRA-2207...). Do NOT read markdown/bullets aloud.
-- When {callee} signals the end (e.g. "thanks", "that's enough", "ok keep me posted"), give a short goodbye and stop talking.
+- ENDING THE CALL: Judge from what {callee} SAYS whether they want to finish (e.g. "thanks", "that's enough", "ok keep me posted", "talk later", "bye"). If it is clearly a goodbye, say a SHORT warm goodbye in {output_language}, THEN call the `end_call` function to hang up. If you are NOT sure they want to hang up (it might just be a pause, or they may still have a question), ask ONE short confirming question first in {output_language} (e.g. "Is there anything else I can help with, or shall I let you go?") and only call `end_call` after they confirm. NEVER call `end_call` while {callee} still has questions or is mid-sentence. Calling `end_call` hangs up the call — only do it when you are confident the conversation is over.
 
 Incident report (everything you are allowed to relay — NOTHING beyond this):
 - Reporter & owner of the incident: {owner} (Platform on-call team this week)
@@ -272,9 +272,17 @@ def main(argv: "list[str] | None" = None) -> int:
                          "default the caller checks in after a stretch of mutual silence "
                          "(Gemini Live is turn-based, so a silent callee would otherwise "
                          "leave the model mute) — bounded, and reset when the callee speaks.")
+    ap.add_argument("--no-end-call", action="store_true",
+                    help="don't give the AI the end_call tool. By default the model can "
+                         "hang up the call itself when it judges (from what the callee "
+                         "says) that they're done — saying a goodbye, asking ONE verifying "
+                         "question if unsure, then ending the call AND closing the caller "
+                         "browser. Use this to keep the call open until a real hang-up / "
+                         "the duration cap.")
     ap.add_argument("--quit-browser", action="store_true",
                     help="stop the caller Brave on exit. Default: leave it running so the "
-                         "login persists and the next call is instant.")
+                         "login persists and the next call is instant. (Note: when the AI "
+                         "ends the call via end_call, the caller browser is closed anyway.)")
     ap.add_argument("--diag-pickup", action="store_true",
                     help="log a per-poll pickup-signal snapshot while ringing (diagnoses "
                          "greeting latency — shows which real-answer signal lags + the "
@@ -345,11 +353,21 @@ def main(argv: "list[str] | None" = None) -> int:
         _log("  (leaving the browser open so you can finish signing in.)")
         return 2
 
+    # The AI can hang up the call itself (end_call tool): when the bridge fires this, set
+    # the event the call loop polls so it ends the call. We ALSO close the caller browser
+    # in that case (the finally below) — "end the call" means tear the whole thing down.
+    end_event = threading.Event()
+
+    def _on_ai_end_call() -> None:
+        _log("  🔚 AI ended the call (callee asked to wrap up) — hanging up + closing browser")
+        end_event.set()
+
     # 2) Audio devices up BEFORE the call, so the browser grabs the virtual mic/speaker.
     bridge = gemini_voice.GeminiVoiceBridge(
         api_key=key, model=a.model, voice=a.voice, system=system,
         language=speech_language, greet=not a.no_greet, greet_text=greet_text,
-        record=not a.no_record, nudge_on_silence=not a.no_nudge)
+        record=not a.no_record, nudge_on_silence=not a.no_nudge,
+        end_call_tool=not a.no_end_call, on_end_call=_on_ai_end_call)
     if not bridge.setup_devices():
         _log("ERROR: could not set up the virtual audio devices — aborting.")
         if launched and a.quit_browser:
@@ -389,14 +407,22 @@ def main(argv: "list[str] | None" = None) -> int:
         # call playback onto Gemini's ear + open it. on_join is the early (maybe-ringback)
         # signal; the bridge keeps it side-effect-free so the greeting never hits the ring.
         rc = meet_call_browser.main(
-            mcb_argv, on_join=bridge.on_join, on_pickup=bridge.on_pickup)
+            mcb_argv, on_join=bridge.on_join, on_pickup=bridge.on_pickup,
+            stop_event=end_event)
     except KeyboardInterrupt:
         _log("\n  interrupted — ending the call and the Gemini session.")
     finally:
         bridge.signal_stop()
         worker.join(timeout=10)
         bridge.teardown_devices()
-        if launched and a.quit_browser:
+        # Close the caller browser if the user asked (--quit-browser) OR the AI ended the
+        # call itself (end_call). _kill_profile_braves is SCOPED to this dedicated caller
+        # profile path (a /proc cmdline match on `profile`), so it never touches the daily
+        # Brave, the callee profile, or any other browser — only the caller we drove.
+        ai_ended = end_event.is_set()
+        if ai_ended or (launched and a.quit_browser):
+            if ai_ended:
+                _log("  🔚 closing the caller browser (AI ended the call) …")
             ai_call._kill_profile_braves(profile)
         elif launched:
             _log(f"\n  caller Brave left running on :{a.port} "

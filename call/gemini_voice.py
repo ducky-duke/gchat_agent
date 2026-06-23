@@ -50,6 +50,7 @@ import sys
 import threading
 import time
 import wave
+from typing import Callable
 
 # --- audio formats (Gemini Live contract) ----------------------------------------
 # Live API: realtime INPUT is 16 kHz mono s16le PCM; model OUTPUT is 24 kHz mono s16le.
@@ -78,7 +79,12 @@ DEFAULT_SYSTEM = (
     "naturally, introduce yourself as an AI assistant, then ask how you can help. Talk "
     "naturally, in short sentences, with a warm and polite tone. ALWAYS speak English, "
     "unless the other person switches to another language first. Do not read this text "
-    "aloud; just have a conversation."
+    "aloud; just have a conversation. "
+    "ENDING THE CALL: judge from what they say whether they want to finish (e.g. "
+    "'thanks', 'that's all', 'talk later', 'bye'). If it's clearly a goodbye, say a "
+    "short goodbye, THEN call the end_call function to hang up. If you're not sure, ask "
+    "ONE short confirming question first and only call end_call after they confirm. "
+    "Never call end_call while they still have questions or are mid-sentence."
 )
 # Sent as the first user turn when --greet is on, to make Gemini speak first.
 GREET_TRIGGER = "(The call just connected. Greet the person you're calling right now.)"
@@ -116,6 +122,38 @@ NUDGE_TRIGGER = (
     "moment to think, just gently reassure them you're still on the line. Do NOT repeat "
     "your previous message, and do not read this instruction aloud.)"
 )
+
+# --- the "hang up" tool (the model ends the call) ----------------------------------
+# Gemini Live can call this function when it judges, from what the callee SAYS, that the
+# conversation is over (they said goodbye / "that's all" / "talk later"). It is the ONLY
+# way the AI side ends the call — handled in _handle_tool_call, which lets the spoken
+# goodbye finish, then fires the bridge's on_end_call callback (the orchestrator hangs up
+# the browser call). The contract (when to call it, ask one verifying question if unsure,
+# say goodbye first) lives in the SYSTEM PROMPTS so it tracks the spoken language.
+END_CALL_FUNCTION_NAME = "end_call"
+END_CALL_FUNCTION = {
+    "name": END_CALL_FUNCTION_NAME,
+    "description": (
+        "End and hang up the current phone call. Call this ONLY when the person you are "
+        "talking to clearly wants to finish the conversation (for example they say "
+        "goodbye, 'that's all', 'thanks, talk later', or 'I have to go'). Say a short, "
+        "warm goodbye out loud BEFORE calling this. If you are not sure they want to hang "
+        "up, ask ONE short confirming question first and only call this after they "
+        "confirm. Never call it while they still have questions or are mid-sentence."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": (
+                    "Short reason the call is ending, e.g. 'callee said goodbye' or "
+                    "'callee confirmed nothing else needed'."
+                ),
+            },
+        },
+    },
+}
 
 
 # --- persistent debug log -----------------------------------------------------------
@@ -231,17 +269,25 @@ def load_gemini_key(repo_root: "str | None" = None) -> "str | None":
     return None
 
 
-def build_live_config(*, system: str, voice: str, language: "str | None" = None) -> dict:
+def build_live_config(
+    *, system: str, voice: str, language: "str | None" = None,
+    tools: "list | None" = None,
+) -> dict:
     """The LiveConnectConfig as a plain dict (the SDK coerces it). AUDIO out, both
-    transcriptions on (so the bridge can print what each side said), prebuilt voice."""
-    cfg: dict = {
+    transcriptions on (so the bridge can print what each side said), prebuilt voice.
+    ``tools`` (if given) is passed straight through as the Live API ``tools`` list — e.g.
+    ``[{"function_declarations": [END_CALL_FUNCTION]}]`` to let the model hang up."""
+    speech_config: "dict[str, object]" = {
+        "voice_config": {"prebuilt_voice_config": {"voice_name": voice}},
+    }
+    if language:
+        speech_config["language_code"] = language
+    cfg: "dict[str, object]" = {
         "response_modalities": ["AUDIO"],
         "system_instruction": system,
         "output_audio_transcription": {},
         "input_audio_transcription": {},
-        "speech_config": {
-            "voice_config": {"prebuilt_voice_config": {"voice_name": voice}},
-        },
+        "speech_config": speech_config,
         # Make the model actually take its turn when the callee speaks (see the VAD_*
         # constants): a live-call monitor is never truly silent, so the stock VAD can
         # leave the model listening forever without ever replying.
@@ -253,8 +299,8 @@ def build_live_config(*, system: str, voice: str, language: "str | None" = None)
             },
         },
     }
-    if language:
-        cfg["speech_config"]["language_code"] = language
+    if tools:
+        cfg["tools"] = tools
     return cfg
 
 
@@ -277,10 +323,21 @@ class GeminiVoiceBridge:
         greet_text: "str | None" = None,
         record: bool = True,
         nudge_on_silence: bool = True,
+        end_call_tool: bool = True,
+        on_end_call: "Callable[[], None] | None" = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
-        self.config = build_live_config(system=system, voice=voice, language=language)
+        # Give the model the end_call tool so it can hang up when the callee is done.
+        # The contract (judge from what they say, ask one verifying question if unsure,
+        # goodbye first) lives in the system prompt; on_end_call does the actual hang-up.
+        tools = [{"function_declarations": [END_CALL_FUNCTION]}] if end_call_tool else None
+        self.config = build_live_config(
+            system=system, voice=voice, language=language, tools=tools)
+        self.end_call_tool = end_call_tool
+        self.on_end_call = on_end_call
+        self._ending = False          # set once end_call fires (so it runs once)
+        self._out_q: "asyncio.Queue[bytes] | None" = None  # set in run(); drained on end
         self.greet = greet
         # Caller re-engagement on a silent callee (see NUDGE_* constants).
         self.nudge_on_silence = nudge_on_silence
@@ -643,9 +700,12 @@ class GeminiVoiceBridge:
         if not self._start_io():
             return
         out_q: "asyncio.Queue[bytes]" = asyncio.Queue()
+        self._out_q = out_q   # so _drain_and_end can wait for the goodbye to play out
         client = genai.Client(api_key=self.api_key)
         try:
-            async with client.aio.live.connect(model=self.model, config=self.config) as session:
+            # config is a plain dict the SDK coerces to LiveConnectConfig (see
+            # build_live_config); intentional, not a TypedDict — hence the inline ignore.
+            async with client.aio.live.connect(model=self.model, config=self.config) as session:  # ty: ignore[invalid-argument-type]
                 self._session = session
                 _log(f"connected to Gemini Live ({self.model}) — bridging the call")
                 # NOTE: the greeting is NOT sent here — it's driven by trigger_greet()
@@ -739,6 +799,14 @@ class GeminiVoiceBridge:
         while not self._stopping.is_set():
             turn = session.receive()
             async for resp in turn:
+                # Tool call: the model decided to hang up (end_call) — handle it and
+                # don't treat it as audio/transcript. The model says its goodbye in the
+                # SAME turn (audio, before the call), so _handle_tool_call lets the queue
+                # drain before firing the hang-up.
+                tc = getattr(resp, "tool_call", None)
+                if tc is not None and getattr(tc, "function_calls", None):
+                    await self._handle_tool_call(session, tc)
+                    continue
                 sc = getattr(resp, "server_content", None)
                 # Barge-in: the callee interrupted → drop audio we haven't played yet.
                 if sc is not None and getattr(sc, "interrupted", False):
@@ -817,6 +885,64 @@ class GeminiVoiceBridge:
                             self._awaiting_greet = False
                             self._greet_done.set()
 
+    async def _handle_tool_call(self, session, tool_call) -> None:
+        """Respond to a Gemini Live function call. The only tool we expose is end_call
+        (the model hanging up — see END_CALL_FUNCTION); anything else is acknowledged so
+        the model isn't left waiting. On end_call we ACK, then schedule _drain_and_end so
+        the goodbye the model just spoke finishes playing before the call is torn down."""
+        from google.genai import types
+
+        responses = []
+        end_requested = False
+        for fc in getattr(tool_call, "function_calls", None) or []:
+            name = getattr(fc, "name", "") or ""
+            fid = getattr(fc, "id", None)
+            if name == END_CALL_FUNCTION_NAME:
+                end_requested = True
+                reason = ""
+                args = getattr(fc, "args", None)
+                if isinstance(args, dict):
+                    reason = str(args.get("reason", "") or "")
+                _log(f"🔚 end_call requested by the model (reason={reason!r}) — wrapping up")
+                responses.append(types.FunctionResponse(
+                    id=fid, name=name, response={"result": "ending"}))
+            else:
+                _log(f"tool call {name!r} (unhandled) — acknowledging")
+                responses.append(types.FunctionResponse(
+                    id=fid, name=name, response={"result": "ok"}))
+        if responses:
+            try:
+                await session.send_tool_response(function_responses=responses)
+            except Exception as exc:  # noqa: BLE001
+                _log(f"send_tool_response failed: {exc}")
+        if end_requested and not self._ending:
+            self._ending = True
+            asyncio.create_task(self._drain_and_end())
+
+    async def _drain_and_end(self) -> None:
+        """End the call after end_call: let the goodbye the model already spoke play out
+        (wait for the mouth queue to empty, then a short tail for the ffmpeg/Pulse buffer
+        + on-air time), then fire on_end_call (the orchestrator hangs up the browser call
+        and closes the caller browser) and stop the bridge. Hard-capped so a stuck queue
+        can never wedge the teardown."""
+        deadline = time.monotonic() + 8.0
+        q = self._out_q
+        while time.monotonic() < deadline:
+            if q is None or q.empty():
+                await asyncio.sleep(0.4)          # settle: confirm it stays empty
+                if q is None or q.empty():
+                    break
+            await asyncio.sleep(0.2)
+        await asyncio.sleep(1.5)                  # playback tail (buffer + on-air)
+        _log("ending the call (end_call) — goodbye delivered")
+        cb = self.on_end_call
+        if cb is not None:
+            try:
+                cb()
+            except Exception as exc:  # noqa: BLE001
+                _log(f"on_end_call callback failed: {exc}")
+        self.signal_stop()
+
     async def _queue_to_mouth(self, out_q: "asyncio.Queue[bytes]") -> None:
         """Write queued Gemini audio into the mouth ffmpeg (→ ai_mic_sink → callee)."""
         assert self._mouth is not None and self._mouth.stdin is not None
@@ -879,7 +1005,7 @@ def _selftest(model: str, voice: str) -> int:
         client = genai.Client(api_key=key)
         pcm = bytearray()
         text = []
-        async with client.aio.live.connect(model=model, config=cfg) as session:
+        async with client.aio.live.connect(model=model, config=cfg) as session:  # ty: ignore[invalid-argument-type]
             await session.send_client_content(
                 turns={"role": "user", "parts": [{"text": "Say a short friendly hello."}]},
                 turn_complete=True)

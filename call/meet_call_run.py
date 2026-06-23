@@ -94,10 +94,16 @@ def _start_rest_watch(cfg, args, meeting_code: "str | None"):
     return stop, t
 
 
-def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
+def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None,
+         stop_event=None) -> int:
     """on_join / on_pickup: optional zero-arg callbacks for an external audio engine
     (call/gemini_call.py). Both fire AT MOST ONCE; a callback exception is swallowed,
     never crashes the call.
+
+    stop_event: an optional threading.Event. When set, the hold loop ends the call on
+    its next poll (the external engine asked to hang up — e.g. gemini_call's end_call
+    tool, when the AI judged the callee was done). It's the only externally-driven way
+    to end the call short of a real hang-up / the duration cap.
 
       • on_join  — fires when the join is FIRST detected (any signal, incl. the flaky
         WebRTC track-COUNT bump a ringback can cause). Use for early, side-effect-free
@@ -864,6 +870,12 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
         ring_last_poll = t_call
         try:
             while cap is None or time.monotonic() < cap:
+                # External hang-up: an audio engine (gemini_call's end_call tool) asked to
+                # end the call. Checked first so it ends within one poll, then falls through
+                # to the normal teardown (leave-button click, audio finalize, tab cleanup).
+                if stop_event is not None and stop_event.is_set():
+                    ended_reason = "ended by AI assistant (callee asked to wrap up)"
+                    break
                 # REAL-TIME join detection — three independent signals, ANY fires it:
                 #   (a) roster tile count rises to ≥2  — DOM, instant when foreground
                 #   (b) an 'X joined' toast appears    — DOM, gives us the name

@@ -87,6 +87,10 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
     interactive call it fires on every think-pause. It's gated behind `--diag-pickup`
     (default OFF) so it doesn't shred the streaming transcript; the hang-up decision is
     unaffected by the gate.
+  - **External hang-up — `main(..., stop_event=<threading.Event>)`.** When the event is set the
+    hold loop ends the call on its next poll (`ended_reason="ended by AI assistant …"`) then runs the
+    normal teardown (leave-button click, audio finalize, tab cleanup). It's how `gemini_call`'s
+    `end_call` tool makes the AI hang up — the only externally-driven end short of a real hang-up / cap.
 - **`ai_call.py`** — the **minimal AI-mouth call**: launches a DEDICATED caller Brave
   (`.browser-profile-caller`, port 9333) with `--use-fake-ui-for-media-stream` (mic auto-granted,
   getUserMedia binds to ai_mic), then delegates ring+join+inject to `meet_call_browser.main` over
@@ -132,6 +136,17 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
     touching the OS mic volume — it's pinned in code.
   - **Transcript console output** (`_gemini_to_queue`): prints each speaker's 🤖/🧑 prefix ONCE per
     utterance and appends streamed chunks to the same line (continuous), not a prefix per chunk.
+  - **AI hangs up itself (`end_call` tool, default ON)**: the model gets ONE Live-API function,
+    `END_CALL_FUNCTION` (added to `build_live_config`'s new `tools` param), so it can END the call when
+    it judges — from what the callee SAYS — that they're done. The *when* (judge from content, ask ONE
+    verifying question if unsure, say goodbye FIRST) lives in the SYSTEM PROMPTS (`_INCIDENT_SYSTEM` in
+    `gemini_call.py` + `DEFAULT_SYSTEM` here), so it tracks the spoken language. Mechanics: `_gemini_to_queue`
+    spots `resp.tool_call` → `_handle_tool_call` ACKs via `send_tool_response`, then `_drain_and_end`
+    waits for the mouth queue to empty + a ~1.5s playback tail (so the goodbye is actually heard, 8s
+    hard cap) before firing the bridge's `on_end_call` callback and `signal_stop()`. Ctor:
+    `end_call_tool` (gate), `on_end_call` (the hang-up callback). The callback only sets a
+    `threading.Event`; the real hang-up happens in `meet_call_run.main` (see below). Disable with
+    `gemini_call --no-end-call`.
 - **`gemini_call.py`** — the **orchestrator** (this is what `CALL_ON_RESOLVE` spawns): Gemini Live
   is the CALLER, you're the callee, on a real Chat call. Composes `ai_call` +
   `gemini_voice.GeminiVoiceBridge` + `meet_call_browser.main(..., on_join=, on_pickup=)` over CDP
@@ -150,8 +165,15 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   `--persona` wins if both are passed). Flags `--duration`(180; well under Gemini's 15-min
   audio-only session cap — hardcoded default, not a config knob), `--persona`, `--incident-file`,
   `--callee`(Duc), `--url`, `--port`, `--profile`, `--model`, `--voice`(Aoede),
-  `--system`/`--system-file`, `--language`(en|vi|ru|uk), `--no-greet`, `--no-record`, `--quit-browser`,
-  `--diag-pickup`. Run: `conda run --no-capture-output -n igaming python -u call/gemini_call.py
+  `--system`/`--system-file`, `--language`(en|vi|ru|uk), `--no-greet`, `--no-record`, `--no-end-call`,
+  `--quit-browser`, `--diag-pickup`. **AI-driven hang-up (`end_call`)**: it wires the bridge's
+  `on_end_call` to an `end_event` (`threading.Event`) and passes it as `meet_call_browser.main(...,
+  stop_event=end_event)`. When the AI hangs up, the call loop ends on its next poll AND the finally
+  closes the **dedicated caller Brave** — `ai_call._kill_profile_braves(profile)`, a `/proc` cmdline
+  match SCOPED to the caller profile path (`.browser-profile-caller`), so it never touches the daily
+  Brave / callee profile / any other browser. (`--quit-browser` keeps its old `launched`-only
+  semantics; the AI-end close is unconditional.) `--no-end-call` removes the tool. Run: `conda run
+  --no-capture-output -n igaming python -u call/gemini_call.py
   [--persona apigw --callee Duc]`, or the repo-root convenience launcher **`./call_apigw.sh`**
   (wraps `--persona apigw`, previews `--help`, preflights `GEMINI_API_KEY`, forwards extra flags —
   e.g. `./call_apigw.sh --language vi`). Keep the window VISIBLE; callee should use a headset (AEC).
