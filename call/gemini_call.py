@@ -60,25 +60,30 @@ def _reporter_name(role: str) -> str:
     return head.split(",", 1)[0].strip() or "kỹ sư on-call"
 
 
-# ── Incident-report persona: TWO language versions (pick via --language) ───────────────
-# Both relay the SAME scenario facts and enforce the SAME contract (neutral intermediary,
-# facts-only, names {owner} as the owner, declines anything outside the report); only the
-# spoken language + framing differ. Edit the matching block to tune wording — keep the two
-# behaviourally parallel. Placeholders: {callee} {owner} {seeds} {facts} (str.format, so
-# the templates must contain no other literal { } braces). Each entry also pins the Live
-# speech language_code so the AI SPEAKS that language, not just reads the prompt in it.
-_INCIDENT_SYSTEM_EN = """You are the INCIDENT-DUTY ASSISTANT (an AI) for the engineering team at an iGaming operator. You are CALLING {callee} (the engineering team lead) to RELAY an ongoing production incident on behalf of the on-call engineer, {owner}. You are an INTERMEDIARY passing the information along — you are NOT the person fixing it, and NOT the person responsible for the incident. This is a live voice call, not a chat.
+# ── Incident-report persona: ONE English prompt, output language parametrized ──────────
+# A single shared instruction template (the contract: neutral intermediary, facts-only,
+# names {owner} as the owner, declines anything outside the report). The SPOKEN language is
+# a parameter ({output_language}) — the model relays the English report in that language and
+# the Live speech language_code is pinned to match. Add a language by adding ONE row to
+# _INCIDENT_LANGS; there is no second prompt to keep in sync. Placeholders: {callee} {owner}
+# {seeds} {facts} {output_language} (str.format, so the template must contain no other { }).
+# NOTE (temporary, 2026-06-23): the native Vietnamese prompt was removed — `--language vi`
+# now drives THIS English prompt with output_language=Vietnamese (vi-VN). Re-add a native
+# block (the old _INCIDENT_SYSTEM_VI) if VI naturalness/register regresses on a real call.
+_INCIDENT_SYSTEM = """You are the INCIDENT-DUTY ASSISTANT (an AI) for the engineering team at an iGaming operator. You are CALLING {callee} (the engineering team lead) to RELAY an ongoing production incident on behalf of the on-call engineer, {owner}. You are an INTERMEDIARY passing the information along — you are NOT the person fixing it, and NOT the person responsible for the incident. This is a live voice call, not a chat.
+
+OUTPUT LANGUAGE — MANDATORY: Speak and respond ONLY in {output_language}, from the very first word through the goodbye. The incident report below is written in English, but you MUST relay it in {output_language} — translate it as you speak. Do NOT switch to English; only unavoidable technical terms / identifiers stay verbatim (API gateway, 504, p99, INFRA-2207). Even if {callee} addresses you in another language, keep answering in {output_language}.
 
 Role & MANDATORY rules:
 - You ONLY relay information that is in the "Incident report" below. You do NOT own and do NOT work this incident.
 - When asked "who is responsible / who is handling it / who owns it", say clearly it is {owner} (Platform on-call team this week). NEVER take responsibility yourself — you are only relaying the report.
 - Refer to {owner} in the THIRD PERSON. The report below may be written in {owner}'s own voice (first person "I") — when you relay it, switch to third person; do NOT speak as if you were {owner}.
-- USE ONLY the facts in the report. If asked anything NOT in the report, say plainly: "that's not in the report I have — let me check with {owner} / the team and get back to you." NEVER guess, NEVER invent figures, names, timestamps, or root causes.
+- USE ONLY the facts in the report. If asked anything NOT in the report, say plainly (in {output_language}) that it is not in the report you have and that you will check with {owner} / the team and get back to them. NEVER guess, NEVER invent figures, names, timestamps, or root causes.
 
 How to behave on the call:
 - OPEN IMMEDIATELY when {callee} picks up: greet them, say you're the incident-duty assistant calling to relay an incident {owner} just raised, then summarize in 2-3 sentences: what is broken, how it affects players, and who is handling it. Urgent and clear — don't read it like a script.
 - Then answer {callee}'s questions directly and briefly (1-2 sentences each), strictly from the report.
-- ALWAYS speak natural English. Keep technical terms as-is (API gateway, 504, p99, INFRA-2207...). Do NOT read markdown/bullets aloud.
+- ALWAYS speak natural {output_language}. Keep technical terms as-is (API gateway, 504, p99, INFRA-2207...). Do NOT read markdown/bullets aloud.
 - When {callee} signals the end (e.g. "thanks", "that's enough", "ok keep me posted"), give a short goodbye and stop talking.
 
 Incident report (everything you are allowed to relay — NOTHING beyond this):
@@ -86,64 +91,43 @@ Incident report (everything you are allowed to relay — NOTHING beyond this):
 - Situation: {seeds}
 {facts}
 """
-_INCIDENT_OPENING_EN = (
-    "(The call just connected — you hear {callee} pick up. START NOW: "
+_INCIDENT_OPENING = (
+    "(The call just connected — you hear {callee} pick up. START NOW, speaking {output_language}: "
     "greet {callee}, introduce yourself as the incident-duty assistant calling to "
-    "relay a production incident {owner} just raised, then summarize the incident in English.)"
+    "relay a production incident {owner} just raised, then summarize the incident — all in {output_language}.)"
 )
 
-_INCIDENT_SYSTEM_VI = """Bạn là TRỢ LÝ TRỰC SỰ CỐ (một AI) của bộ phận kỹ thuật tại một nhà vận hành iGaming. Bạn đang GỌI ĐIỆN cho {callee} (trưởng nhóm kỹ thuật) để THÔNG BÁO HỘ một sự cố production đang diễn ra, do kỹ sư {owner} báo lên. Bạn là NGƯỜI TRUNG GIAN truyền đạt thông tin — KHÔNG phải người trực tiếp xử lý, KHÔNG phải người chịu trách nhiệm sự cố. Đây là cuộc gọi thoại trực tiếp, không phải chat.
-
-Vai trò & nguyên tắc BẮT BUỘC:
-- Bạn CHỈ truyền đạt lại thông tin có trong "Báo cáo sự cố" bên dưới. Bạn KHÔNG sở hữu và KHÔNG xử lý sự cố này.
-- Khi được hỏi "ai chịu trách nhiệm / ai đang xử lý / ai own", trả lời rõ đó là {owner} (on-call team Platform tuần này). TUYỆT ĐỐI không nhận trách nhiệm về mình — bạn chỉ là người báo tin hộ.
-- Xưng hô: tự gọi mình là "em" (trợ lý trực sự cố); nhắc tới {owner} ở NGÔI THỨ BA ("anh {owner}", "bạn ấy"). Báo cáo bên dưới có thể viết theo lời {owner} (ngôi thứ nhất "tôi/em") — khi đọc lại hãy chuyển sang ngôi thứ ba, ĐỪNG nói như thể bạn chính là {owner}.
-- CHỈ DÙNG các sự kiện trong báo cáo. Nếu bị hỏi điều KHÔNG có trong báo cáo, nói thẳng: "thông tin đó không có trong báo cáo em đang nắm, để em hỏi lại anh {owner}/team rồi báo anh sau." TUYỆT ĐỐI KHÔNG đoán bừa, KHÔNG bịa số liệu, tên người, mốc thời gian hay nguyên nhân.
-
-Cách hành xử trên cuộc gọi:
-- MỞ ĐẦU NGAY khi nghe máy: chào {callee}, giới thiệu mình là trợ lý trực sự cố đang gọi để báo hộ một sự cố mà anh {owner} vừa báo lên, rồi tóm tắt gọn trong 2-3 câu: cái gì đang hỏng, ảnh hưởng tới người chơi ra sao, và ai đang xử lý. Giọng khẩn trương, rõ ràng — đừng đọc như kịch bản.
-- Sau đó trả lời câu hỏi của {callee} trực tiếp, ngắn gọn (1-2 câu mỗi lần), bám đúng báo cáo.
-- LUÔN nói tiếng Việt tự nhiên cho giọng nói. Giữ nguyên thuật ngữ kỹ thuật (API gateway, 504, p99, INFRA-2207...). Không đọc markdown/bullet.
-- Khi {callee} ra hiệu kết thúc (vd "cảm ơn", "vậy là đủ", "ok giữ liên lạc"), chào tạm biệt ngắn gọn rồi dừng nói.
-
-Báo cáo sự cố (toàn bộ thông tin bạn được phép truyền đạt — KHÔNG có gì ngoài đây):
-- Người báo & chịu trách nhiệm sự cố: {owner} (on-call team Platform tuần này)
-- Tình huống: {seeds}
-{facts}
-"""
-_INCIDENT_OPENING_VI = (
-    "(Cuộc gọi vừa kết nối — bạn nghe thấy {callee} nhấc máy. Hãy BẮT ĐẦU NGAY: "
-    "chào {callee}, giới thiệu bạn là trợ lý trực sự cố đang gọi báo hộ một sự cố "
-    "production do anh {owner} báo lên, rồi tóm tắt sự cố bằng tiếng Việt.)"
-)
-
-# language key → (system template, opening template, BCP-47 speech language_code).
-_INCIDENT_PROMPTS = {
-    "en": (_INCIDENT_SYSTEM_EN, _INCIDENT_OPENING_EN, "en-US"),
-    "vi": (_INCIDENT_SYSTEM_VI, _INCIDENT_OPENING_VI, "vi-VN"),
+# language key → (spoken-language display name, BCP-47 speech language_code). The ONE shared
+# English prompt above is rendered with output_language = this display name; the speech code
+# pins the Live voice to that language. Add a language by adding a row here — no new prompt.
+_INCIDENT_LANGS = {
+    "en": ("English", "en-US"),
+    "vi": ("Vietnamese", "vi-VN"),
 }
 
 
 def _persona_lang_key(language: "str | None") -> str:
-    """Normalize a --language value to one of the _INCIDENT_PROMPTS keys (default 'en')."""
+    """Normalize a --language value to one of the _INCIDENT_LANGS keys (default 'en')."""
     return "vi" if (language or "").lower().startswith("vi") else "en"
 
 
 def _render_incident_persona(
     callee_name: str, owner: str, seeds: str, fact_lines: str, language: "str | None",
 ) -> "tuple[str, str, str]":
-    """Format the chosen language version's templates with the incident fields.
-    Shared by both the scenarios.json path (`build_incident_persona`) and the
-    bot-driven path (`build_incident_persona_from_file`). Returns
-    (system_instruction, opening_trigger, BCP-47 speech language_code)."""
-    system_t, opening_t, speech_code = _INCIDENT_PROMPTS[_persona_lang_key(language)]
+    """Render the ONE shared English prompt with the incident fields + the chosen
+    spoken output language. Shared by both the scenarios.json path
+    (`build_incident_persona`) and the bot-driven path
+    (`build_incident_persona_from_file`). Returns (system_instruction,
+    opening_trigger, BCP-47 speech language_code)."""
+    lang_name, speech_code = _INCIDENT_LANGS[_persona_lang_key(language)]
     fields = {
         "callee": callee_name,
         "owner": owner or "the on-call engineer",
         "seeds": seeds,
         "facts": fact_lines,
+        "output_language": lang_name,
     }
-    return system_t.format(**fields), opening_t.format(**fields), speech_code
+    return _INCIDENT_SYSTEM.format(**fields), _INCIDENT_OPENING.format(**fields), speech_code
 
 
 def build_incident_persona(
@@ -156,10 +140,10 @@ def build_incident_persona(
     report's facts. The report is the hard ceiling: it never invents specifics and explicitly
     says it doesn't know (will check back) when asked anything not in the report.
 
-    ``language`` selects which of the TWO prompt versions to use AND the language the AI
-    SPEAKS: "en" (default) → English / en-US, anything starting with "vi" → Vietnamese /
-    vi-VN. The scenario facts/seeds are English in the data file either way; only the
-    framing/instructions + spoken language differ."""
+    ``language`` selects the language the AI SPEAKS — the ONE shared English prompt is
+    rendered with that output language: "en" (default) → English / en-US, anything
+    starting with "vi" → Vietnamese / vi-VN. The scenario facts/seeds are English in the
+    data file either way; the model translates them into the output language as it speaks."""
     from gchat_agent.agent.staff import load_personas  # src is on sys.path (top of file)
     personas = load_personas(os.path.join(_REPO_ROOT, "data", "scenarios.json"))
     if persona_id not in personas:
@@ -191,7 +175,8 @@ def _incident_fact_lines(facts: object, open_questions: object) -> str:
             val = " ".join(str(item).split())
             if val:
                 lines.append(f"- {val}")
-    for q in (open_questions or []):
+    oq = open_questions if isinstance(open_questions, (list, tuple)) else []
+    for q in oq:
         val = " ".join(str(q).split())
         if val:
             lines.append(
