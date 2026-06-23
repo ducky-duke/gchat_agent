@@ -240,6 +240,18 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   space: it passes a fresh per-run `--seed-suffix` to `run_staff.py` so the staff's
   seed/answer `request_id`s are unique each run (otherwise Chat would dedup them to
   the prior run's old messages, which the no-backfill bot never re-detects).
+- **`./demo_live_apigw.sh`** is the **call-centric** cousin of `demo_live.sh`:
+  same QA pipeline (poller + `apigw` staff → detect/clarify/resolve) but the
+  headline is the **outbound voice call**, which `demo_live.sh` leaves as a silent
+  side effect. It HARD-fails preflight if `GEMINI_API_KEY` is missing (the call
+  gate), watches the poller log for `placing voice call for issue …`, parses the
+  call PID + `logs/call-issue-<id>.log` path out of it, stops the bot (the call is
+  DETACHED and survives), then **tails the live call log** until the call process
+  exits (or `--call-wait`, default 260s). No noise/dupe/injection decoys. Flags:
+  `--language en|vi` and `--callee <name>` (exported as `CALL_LANGUAGE`/`CALL_CALLEE`
+  so the poller's Config picks them up), `--timeout`, `--call-wait`, `--token`,
+  `--keep-running`. GitHub + voice DM are reported as secondary confirmations on
+  the same resolve. Demo-machine only (visible desktop + caller Brave profile).
 
 ## Memory
 Accumulated findings, setup gotchas, and the smoke-test environment live in
