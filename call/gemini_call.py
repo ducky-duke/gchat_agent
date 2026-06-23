@@ -103,12 +103,19 @@ _INCIDENT_OPENING = (
 _INCIDENT_LANGS = {
     "en": ("English", "en-US"),
     "vi": ("Vietnamese", "vi-VN"),
+    "ru": ("Russian", "ru-RU"),
+    "uk": ("Ukrainian", "uk-UA"),
 }
 
 
 def _persona_lang_key(language: "str | None") -> str:
-    """Normalize a --language value to one of the _INCIDENT_LANGS keys (default 'en')."""
-    return "vi" if (language or "").lower().startswith("vi") else "en"
+    """Normalize a --language value (a key like 'vi' or a BCP-47 code like 'vi-VN') to one
+    of the _INCIDENT_LANGS keys. Matches by prefix so 'uk-UA' → 'uk'; default 'en'."""
+    lang = (language or "").lower()
+    for key in _INCIDENT_LANGS:
+        if key != "en" and lang.startswith(key):
+            return key
+    return "en"
 
 
 def _render_incident_persona(
@@ -141,9 +148,10 @@ def build_incident_persona(
     says it doesn't know (will check back) when asked anything not in the report.
 
     ``language`` selects the language the AI SPEAKS — the ONE shared English prompt is
-    rendered with that output language: "en" (default) → English / en-US, anything
-    starting with "vi" → Vietnamese / vi-VN. The scenario facts/seeds are English in the
-    data file either way; the model translates them into the output language as it speaks."""
+    rendered with that output language: "en" (default) → English / en-US, else the matching
+    _INCIDENT_LANGS row (vi → Vietnamese, ru → Russian, uk → Ukrainian; BCP-47 forms like
+    "uk-UA" are matched by prefix). The scenario facts/seeds are English in the data file
+    either way; the model translates them into the output language as it speaks."""
     from gchat_agent.agent.staff import load_personas  # src is on sys.path (top of file)
     personas = load_personas(os.path.join(_REPO_ROOT, "data", "scenarios.json"))
     if persona_id not in personas:
@@ -251,8 +259,9 @@ def main(argv: "list[str] | None" = None) -> int:
                     help="read the system instruction from this file (overrides --system).")
     ap.add_argument("--language", default=None,
                     help="speech/report language. With --persona it also picks the briefing "
-                         "language: default English, or 'vi'/'vi-VN' for Vietnamese. Without "
-                         "--persona it's just the BCP-47 speech language_code (e.g. vi-VN).")
+                         "language: default English ('en'), or vi/ru/uk (also accepts the "
+                         "BCP-47 form, e.g. 'vi-VN', 'uk-UA'). Without --persona it's just "
+                         "the BCP-47 speech language_code (e.g. vi-VN).")
     ap.add_argument("--no-greet", action="store_true",
                     help="don't make Gemini speak first; wait for the callee (reactive).")
     ap.add_argument("--no-record", action="store_true",
@@ -300,7 +309,7 @@ def main(argv: "list[str] | None" = None) -> int:
         # version's code (en-US / vi-VN) unless the caller pinned one explicitly.
         if not speech_language:
             speech_language = persona_speech
-        spoken = "Vietnamese" if _persona_lang_key(speech_language) == "vi" else "English"
+        spoken = _INCIDENT_LANGS[_persona_lang_key(speech_language)][0]
         _log(f"  incident-report mode: {incident_mode} → reporting to {a.callee} "
              f"in {spoken} ({speech_language})")
     if a.system_file:

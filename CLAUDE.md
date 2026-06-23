@@ -102,7 +102,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   GitHub already hold the resolution). The facts cross as a JSON file
   (`CALL_LOG_DIR`, default `logs/`); the child's stdout → `logs/call-issue-<id>.log`.
   Config: `CALL_ON_RESOLVE`, `GEMINI_API_KEY` (the gate; distinct from
-  `OPENROUTER_API_KEY`), `CALL_SCRIPT`, `CALL_CALLEE`, `CALL_LANGUAGE`(en|vi),
+  `OPENROUTER_API_KEY`), `CALL_SCRIPT`, `CALL_CALLEE`, `CALL_LANGUAGE`(en|vi|ru|uk),
   `CALL_URL`, `CALL_OWNER`, `CALL_LOG_DIR`. ⚠️ Needs `GEMINI_API_KEY`, the dedicated
   caller Brave profile, and a VISIBLE desktop session (Wayland suspends an occluded
   renderer) — demo-machine only, never headless/CI. The call side reads the JSON via
@@ -248,7 +248,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   call PID + `logs/call-issue-<id>.log` path out of it, stops the bot (the call is
   DETACHED and survives), then **tails the live call log** until the call process
   exits (or `--call-wait`, default 260s). No noise/dupe/injection decoys. Flags:
-  `--language en|vi` and `--callee <name>` (exported as `CALL_LANGUAGE`/`CALL_CALLEE`
+  `--language en|vi|ru|uk` and `--callee <name>` (exported as `CALL_LANGUAGE`/`CALL_CALLEE`
   so the poller's Config picks them up), `--timeout`, `--call-wait`, `--token`,
   `--keep-running`. GitHub + voice DM are reported as secondary confirmations on
   the same resolve. Demo-machine only (visible desktop + caller Brave profile).

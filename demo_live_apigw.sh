@@ -31,7 +31,7 @@
 #
 # Usage:
 #   ./demo_live_apigw.sh                  # English call to the default callee (Duc)
-#   ./demo_live_apigw.sh --language vi    # the AI relays in Vietnamese (speaks vi-VN)
+#   ./demo_live_apigw.sh --language vi    # the AI relays in Vietnamese (vi/ru/uk also ok)
 #   ./demo_live_apigw.sh --callee Bob     # address a different callee on the call
 #   ./demo_live_apigw.sh --timeout 900    # wait up to 15 min for the QA to resolve
 #   ./demo_live_apigw.sh --call-wait 300  # keep tailing the live call up to 5 min
@@ -76,7 +76,7 @@ while [ $# -gt 0 ]; do
     --timeout)   TIMEOUT="${2:?--timeout needs seconds}"; shift 2 ;;
     --call-wait) CALL_WAIT="${2:?--call-wait needs seconds}"; shift 2 ;;
     --token)     STAFF_TOKEN="${2:?--token needs a path}"; shift 2 ;;
-    --language)  CALL_LANGUAGE_OVR="${2:?--language needs en|vi}"; shift 2 ;;
+    --language)  CALL_LANGUAGE_OVR="${2:?--language needs en|vi|ru|uk}"; shift 2 ;;
     --callee)    CALL_CALLEE_OVR="${2:?--callee needs a name}"; shift 2 ;;
     --keep-running) KEEP_RUNNING=1; shift ;;
     -h|--help) usage 0 ;;
@@ -153,7 +153,7 @@ warn "keep the caller browser window VISIBLE — Wayland suspends an occluded re
 # Optional CALL overrides → exported so the poller's Config picks them up
 # (os.environ overrides .env in load_config).
 if [ -n "$CALL_LANGUAGE_OVR" ]; then
-  case "$CALL_LANGUAGE_OVR" in en|vi) ;; *) die "--language must be en|vi (got '$CALL_LANGUAGE_OVR')." ;; esac
+  case "$CALL_LANGUAGE_OVR" in en|vi|ru|uk) ;; *) die "--language must be en|vi|ru|uk (got '$CALL_LANGUAGE_OVR')." ;; esac
   export CALL_LANGUAGE="$CALL_LANGUAGE_OVR"
   ok "call language override: $CALL_LANGUAGE"
 fi

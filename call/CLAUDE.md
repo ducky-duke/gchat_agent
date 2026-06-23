@@ -138,16 +138,19 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   with `--watch-join --ensure-mic-on`. **`--persona apigw` = incident-report mode**: on pickup the
   AI reports a scenario incident as a NEUTRAL INTERMEDIARY relaying on behalf of the owner
   (**Dave** for apigw) — it is NOT that engineer, so "who's responsible?" → Dave; answers strictly
-  from the report, else says it doesn't know. **Two prompt versions** (`build_incident_persona` /
-  `_INCIDENT_PROMPTS`): **English (default)** or **Vietnamese** via `--language vi` — the choice
-  sets BOTH the briefing wording AND the spoken language (speech `language_code` pinned to
-  `en-US`/`vi-VN`). **`--incident-file <json>`** is the bot-driven counterpart to `--persona`: same
+  from the report, else says it doesn't know. **ONE shared English prompt** (`_INCIDENT_SYSTEM`,
+  rendered by `build_incident_persona`) with the spoken **output language parametrized** — add a
+  language by adding ONE row to `_INCIDENT_LANGS` (key → display name + BCP-47 speech code; currently
+  `en`/`vi`/`ru`/`uk`). `--language` (default `en`; accepts `vi`/`ru`/`uk` or BCP-47 like `uk-UA`)
+  sets BOTH the briefing wording AND the spoken language (speech `language_code` pinned to the row's
+  code); the model relays the English report by translating as it speaks. **`--incident-file <json>`**
+  is the bot-driven counterpart to `--persona`: same
   call behavior, but the facts come from a JSON incident the bot wrote (`runner.build_call_incident`)
   for a REAL resolved issue instead of scenarios.json (`build_incident_persona_from_file`;
   `--persona` wins if both are passed). Flags `--duration`(180; well under Gemini's 15-min
   audio-only session cap — hardcoded default, not a config knob), `--persona`, `--incident-file`,
   `--callee`(Duc), `--url`, `--port`, `--profile`, `--model`, `--voice`(Aoede),
-  `--system`/`--system-file`, `--language`(en|vi), `--no-greet`, `--no-record`, `--quit-browser`,
+  `--system`/`--system-file`, `--language`(en|vi|ru|uk), `--no-greet`, `--no-record`, `--quit-browser`,
   `--diag-pickup`. Run: `conda run --no-capture-output -n igaming python -u call/gemini_call.py
   [--persona apigw --callee Duc]`, or the repo-root convenience launcher **`./call_apigw.sh`**
   (wraps `--persona apigw`, previews `--help`, preflights `GEMINI_API_KEY`, forwards extra flags —
