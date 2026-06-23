@@ -79,6 +79,14 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   (DUMP all visible button labels), `--duration`/`--keep-open`, `--watch-join` (real-time join
   detection — 3 signals incl. the WebRTC counter that survives a backgrounded tab), `--watch-rest`,
   `--capture-audio`, `--inject-audio`, `--ensure-mic-on`, `--diag-pickup`.
+  - **Hang-up = mutual RTP silence, not one-sided.** The call ends only when NEITHER side
+    sends media for `--media-flatline-secs` (`gemini_call` passes **30** — generous so a
+    human think-pause never drops the call); one-sided silence (you listening while the AI
+    talks) never counts. The `[end] no media either way … watching for hang-up (Ns)`
+    line is a per-window diagnostic heartbeat, NOT an error or a freeze — during an
+    interactive call it fires on every think-pause. It's gated behind `--diag-pickup`
+    (default OFF) so it doesn't shred the streaming transcript; the hang-up decision is
+    unaffected by the gate.
 - **`ai_call.py`** — the **minimal AI-mouth call**: launches a DEDICATED caller Brave
   (`.browser-profile-caller`, port 9333) with `--use-fake-ui-for-media-stream` (mic auto-granted,
   getUserMedia binds to ai_mic), then delegates ring+join+inject to `meet_call_browser.main` over
@@ -93,6 +101,37 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   `load_gemini_key` / `build_live_config`. Standalone: `--devices-test` / `--selftest`. Needs
   `GEMINI_API_KEY` + `google-genai`. Audio-graph + greeting-hardening detail in
   [`../docs/CALL_AUTOMATION.md`](../docs/CALL_AUTOMATION.md).
+  - **Callee-turn VAD** (`VAD_START_SENSITIVITY`/`VAD_END_SENSITIVITY`/`VAD_SILENCE_MS`, wired into
+    `build_live_config`'s `realtime_input_config.automatic_activity_detection`): a live-call sink
+    monitor is NEVER digitally silent (comfort noise), so the stock server VAD can leave the model
+    listening forever and never reply to the callee. Defaults bias it to hear speech eagerly + treat
+    a ~0.8s pause as end-of-turn. **Tune these** if it won't reply (under-trigger) or cuts the callee
+    off (over-trigger). The ear/mouth WAVs in `logs/gemini_call_*_{ear,mouth}.wav` + the debug log
+    are the diagnostics: real ear audio with zero response/transcription ⇒ a VAD problem, not plumbing.
+  - **Silence watchdog — the CALLER re-engages** (`NUDGE_AFTER_SILENCE_S`/`MAX_NUDGES`/`NUDGE_TRIGGER`,
+    `--no-nudge` to disable; default ON): Gemini Live is turn-based — it only replies after its VAD
+    sees the callee FINISH a turn, so a callee who just stays silent produces no end-of-turn and the
+    model sits mute forever. The callee may be silent; the bot may not. After `NUDGE_AFTER_SILENCE_S`
+    of MUTUAL quiet (post-briefing) the watchdog injects a check-in text turn (same `send_realtime_input(text=)`
+    path as the greeting), up to `MAX_NUDGES` times; the callee speaking resets BOTH the clock and the
+    count (cap is per silent stretch, not per call). It's fired from inside `_ear_to_gemini` — the ONE
+    task that sends to Gemini — so the text turn never interleaves with an audio frame on the wire (no
+    send lock needed). After the cap it goes quiet and the call's 30s mutual-silence hang-up ends things.
+  - **Self-healing devices**: `setup_devices` calls `_unload_stale_modules()` first — a prior call
+    killed before teardown (hard Ctrl+C) leaks the `ai_mic`/`gemini_call_spk` modules AND leaves them
+    the system default (breaking the real mic/speakers everywhere). It unloads only OUR leftover
+    modules + refuses to capture a virtual device as the "previous" default, so each run starts from
+    real hardware. Manual rescue if ever stuck: `pactl unload-module <id>` for each `ai_mic`/`gemini_call_spk`.
+  - **Mic isolation + volume pinning**: the browser's mic is `ai_mic`, a remap-source whose master is
+    `ai_mic_sink.monitor` — fed ONLY by Gemini's voice. The real hardware mic is never in the call path,
+    so ambient sound / someone talking near the laptop CANNOT leak to the callee (it's already a dummy
+    mic by design). But because `setup_devices` makes `ai_mic` the system DEFAULT source, the OS
+    "Microphone" slider then controls `ai_mic` = the gain on Gemini's voice; left low/muted, the AI
+    comes through quiet/silent. Fixed by pinning `ai_mic` (and `gemini_call_spk`) to 100% + unmuted at
+    setup, so AI loudness is deterministic regardless of the slider. Don't "fix" the AI being quiet by
+    touching the OS mic volume — it's pinned in code.
+  - **Transcript console output** (`_gemini_to_queue`): prints each speaker's 🤖/🧑 prefix ONCE per
+    utterance and appends streamed chunks to the same line (continuous), not a prefix per chunk.
 - **`gemini_call.py`** — the **orchestrator** (this is what `CALL_ON_RESOLVE` spawns): Gemini Live
   is the CALLER, you're the callee, on a real Chat call. Composes `ai_call` +
   `gemini_voice.GeminiVoiceBridge` + `meet_call_browser.main(..., on_join=, on_pickup=)` over CDP
@@ -110,7 +149,9 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   `--callee`(Duc), `--url`, `--port`, `--profile`, `--model`, `--voice`(Aoede),
   `--system`/`--system-file`, `--language`(en|vi), `--no-greet`, `--no-record`, `--quit-browser`,
   `--diag-pickup`. Run: `conda run --no-capture-output -n igaming python -u call/gemini_call.py
-  [--persona apigw --callee Duc]`. Keep the window VISIBLE; callee should use a headset (AEC).
+  [--persona apigw --callee Duc]`, or the repo-root convenience launcher **`./call_apigw.sh`**
+  (wraps `--persona apigw`, previews `--help`, preflights `GEMINI_API_KEY`, forwards extra flags —
+  e.g. `./call_apigw.sh --language vi`). Keep the window VISIBLE; callee should use a headset (AEC).
 - **`auto_answer.py`** — the unattended CALLEE: drives a 2nd Brave (separate
   `--remote-debugging-port`, `.browser-profile-callee`, signed in as Duc) over CDP, navigates to the
   DM, and on a ring clicks **answer** then turns mic+camera ON so media flows for the caller's

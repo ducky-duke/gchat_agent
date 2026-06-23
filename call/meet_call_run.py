@@ -1168,7 +1168,14 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
                                         bytes_flat_for += 1      # mutual silence (both flat)
                                         flat_needed = max(
                                             2, int(args.media_flatline_secs / (wait_ms / 1000.0)))
-                                        if bytes_flat_for == 1:
+                                        # Diagnostic-only heartbeat: prints on every entry
+                                        # into a mutual-silence window. During an interactive
+                                        # AI call there are MANY such windows (every natural
+                                        # think-pause), and each one shreds the live transcript
+                                        # (which streams with end=""). Gate it behind
+                                        # --diag-pickup so a normal run keeps a clean transcript;
+                                        # the hang-up DECISION below is unaffected by this gate.
+                                        if bytes_flat_for == 1 and _diag:
                                             print(f"   [end] no media either way (in={b} out={ob}) — "
                                                   f"watching for hang-up ({args.media_flatline_secs:g}s) …")
                                         if bytes_flat_for >= flat_needed:

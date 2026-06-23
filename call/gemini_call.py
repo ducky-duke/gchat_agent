@@ -261,7 +261,7 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--callee", default="Duc",
                     help="callee's name the reporter addresses on the call (default Duc).")
     ap.add_argument("--system", default=None,
-                    help="system instruction (persona). Default: a Vietnamese AI caller.")
+                    help="system instruction (persona). Default: an English AI caller.")
     ap.add_argument("--system-file", default=None,
                     help="read the system instruction from this file (overrides --system).")
     ap.add_argument("--language", default=None,
@@ -273,6 +273,11 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--no-record", action="store_true",
                     help="don't record the call audio to logs/ (recording is on by default "
                          "for debugging — both directions to WAV next to the debug log).")
+    ap.add_argument("--no-nudge", action="store_true",
+                    help="don't have the AI re-engage when the callee goes silent. By "
+                         "default the caller checks in after a stretch of mutual silence "
+                         "(Gemini Live is turn-based, so a silent callee would otherwise "
+                         "leave the model mute) — bounded, and reset when the callee speaks.")
     ap.add_argument("--quit-browser", action="store_true",
                     help="stop the caller Brave on exit. Default: leave it running so the "
                          "login persists and the next call is instant.")
@@ -350,7 +355,7 @@ def main(argv: "list[str] | None" = None) -> int:
     bridge = gemini_voice.GeminiVoiceBridge(
         api_key=key, model=a.model, voice=a.voice, system=system,
         language=speech_language, greet=not a.no_greet, greet_text=greet_text,
-        record=not a.no_record)
+        record=not a.no_record, nudge_on_silence=not a.no_nudge)
     if not bridge.setup_devices():
         _log("ERROR: could not set up the virtual audio devices — aborting.")
         if launched and a.quit_browser:

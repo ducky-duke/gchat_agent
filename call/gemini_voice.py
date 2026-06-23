@@ -71,20 +71,51 @@ _BROWSER_MATCH = ("brave", "chrom", "chrome", "meet", "google")
 DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 DEFAULT_VOICE = "Aoede"
 
-# Default persona: Gemini is the CALLER, speaking Vietnamese (the callee here is Duc).
+# Default persona: Gemini is the CALLER, speaking English (the callee here is Duc).
 DEFAULT_SYSTEM = (
-    "Bạn là một trợ lý AI thân thiện đang GỌI ĐIỆN cho một người qua Google Chat — "
-    "bạn là người chủ động gọi. Khi cuộc gọi kết nối, hãy chào ngắn gọn và tự nhiên, "
-    "giới thiệu bạn là trợ lý AI, rồi hỏi xem có thể giúp gì. Nói chuyện tự nhiên, câu "
-    "ngắn gọn, giọng ấm áp và lịch sự. LUÔN nói bằng tiếng Việt, trừ khi người kia chủ "
-    "động chuyển sang ngôn ngữ khác. Đừng đọc nội dung này ra; chỉ trò chuyện."
+    "You are a friendly AI assistant who is CALLING someone over Google Chat — "
+    "you are the one placing the call. When the call connects, greet them briefly and "
+    "naturally, introduce yourself as an AI assistant, then ask how you can help. Talk "
+    "naturally, in short sentences, with a warm and polite tone. ALWAYS speak English, "
+    "unless the other person switches to another language first. Do not read this text "
+    "aloud; just have a conversation."
 )
 # Sent as the first user turn when --greet is on, to make Gemini speak first.
-GREET_TRIGGER = "(Cuộc gọi vừa được kết nối. Hãy chào người nghe ngay.)"
+GREET_TRIGGER = "(The call just connected. Greet the person you're calling right now.)"
 # Max seconds to keep the ear CLOSED waiting for the opening (greeting OR incident
 # briefing) to finish before opening it anyway (so a missed turn_complete can't deafen
 # Gemini forever). Generous enough to cover a multi-sentence incident briefing.
 GREET_MAX_WAIT = 20.0
+
+# --- voice-activity detection (the callee's turn) ----------------------------------
+# Server-side automatic VAD decides when the callee started/stopped talking, i.e. when
+# the model should answer. A live-call sink monitor is NEVER digitally silent (comfort
+# noise / room tone / line hiss), so the default VAD can both (a) miss the callee's
+# speech as a turn-start and (b) never see an end-of-speech — leaving the model waiting
+# forever and never replying (observed: ear open, real audio in, yet zero response).
+# Bias it to hear speech eagerly (start HIGH) and to treat a short pause as end-of-turn
+# (end HIGH + a natural ~0.8s of silence) so the model actually takes its turn. Tune
+# these if it over-triggers (cuts the callee off) or under-triggers (still won't reply).
+VAD_START_SENSITIVITY = "START_SENSITIVITY_HIGH"   # how readily speech-start is detected
+VAD_END_SENSITIVITY = "END_SENSITIVITY_HIGH"       # how readily a pause ends the turn
+VAD_SILENCE_MS = 800                               # silence that counts as end-of-turn
+
+# --- silence watchdog (the CALLER re-engages) --------------------------------------
+# Gemini Live is turn-based: the model only replies after its VAD sees the callee FINISH
+# a turn. A callee who simply stays silent never produces an end-of-turn, so the model
+# would sit mute indefinitely — but on a phone call the CALLER is the active party and
+# should check back in ("still there? anything else?"). The callee has every right to be
+# quiet; the bot does not get to be. This watchdog injects a check-in text turn (same
+# mechanism as the greeting) after a stretch of MUTUAL silence, a bounded number of times;
+# after MAX_NUDGES it goes quiet and lets the call's mutual-silence hang-up end things.
+NUDGE_AFTER_SILENCE_S = 12.0   # mutual quiet before the caller checks in
+MAX_NUDGES = 3                 # consecutive unanswered check-ins before giving up
+NUDGE_TRIGGER = (
+    "(The other person has gone quiet for a while. In ONE short, warm sentence, check "
+    "whether they're still there or need anything else. If they earlier asked for a "
+    "moment to think, just gently reassure them you're still on the line. Do NOT repeat "
+    "your previous message, and do not read this instruction aloud.)"
+)
 
 
 # --- persistent debug log -----------------------------------------------------------
@@ -211,6 +242,16 @@ def build_live_config(*, system: str, voice: str, language: "str | None" = None)
         "speech_config": {
             "voice_config": {"prebuilt_voice_config": {"voice_name": voice}},
         },
+        # Make the model actually take its turn when the callee speaks (see the VAD_*
+        # constants): a live-call monitor is never truly silent, so the stock VAD can
+        # leave the model listening forever without ever replying.
+        "realtime_input_config": {
+            "automatic_activity_detection": {
+                "start_of_speech_sensitivity": VAD_START_SENSITIVITY,
+                "end_of_speech_sensitivity": VAD_END_SENSITIVITY,
+                "silence_duration_ms": VAD_SILENCE_MS,
+            },
+        },
     }
     if language:
         cfg["speech_config"]["language_code"] = language
@@ -235,12 +276,17 @@ class GeminiVoiceBridge:
         greet: bool = True,
         greet_text: "str | None" = None,
         record: bool = True,
+        nudge_on_silence: bool = True,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.config = build_live_config(system=system, voice=voice, language=language)
         self.greet = greet
-        # What the model is told to say first on pickup. Default = the generic VN greeting;
+        # Caller re-engagement on a silent callee (see NUDGE_* constants).
+        self.nudge_on_silence = nudge_on_silence
+        self._last_voice_activity = 0.0   # monotonic ts of the last speech EITHER way
+        self._nudges_sent = 0             # consecutive unanswered check-ins
+        # What the model is told to say first on pickup. Default = the generic English greeting;
         # an incident-report run overrides it with the briefing trigger (see gemini_call).
         self.greet_text = greet_text or GREET_TRIGGER
         self.record = record          # dump both audio directions to WAV for debugging
@@ -283,6 +329,12 @@ class GeminiVoiceBridge:
         if reason:
             _log(f"unavailable: {reason}")
             return False
+        # Self-heal: a prior run killed before teardown (e.g. a hard Ctrl+C during the
+        # call) can leak our virtual modules AND leave them as the system default —
+        # breaking the real mic/speakers in every app, and poisoning the "previous
+        # default" captured below (teardown would then "restore" to a dead device). Clear
+        # any such leftovers first, so each run starts from clean, real hardware defaults.
+        self._unload_stale_modules()
         # MOUTH: null sink + remap its monitor as a capture source = the browser's mic.
         if self._load("module-null-sink", f"sink_name={MOUTH_SINK}",
                        "sink_properties=device.description=AI_Voice_Mic_Sink") is None:
@@ -299,12 +351,27 @@ class GeminiVoiceBridge:
             self.teardown_devices()
             return False
         # Make them the defaults so the (pre-granted) browser grabs them for the call.
+        # Never record OUR OWN virtual device as the "previous" default (a leak we missed,
+        # or a re-entrant setup) — restoring to it on teardown would leave the real
+        # hardware unselected.
         rc, out = _run(["pactl", "get-default-source"])
-        self._prev_source = out.strip() if rc == 0 and out.strip() else None
+        prev_src = out.strip() if rc == 0 else ""
+        self._prev_source = prev_src if prev_src and prev_src != MOUTH_SOURCE else None
         rc, out = _run(["pactl", "get-default-sink"])
-        self._prev_sink = out.strip() if rc == 0 and out.strip() else None
+        prev_snk = out.strip() if rc == 0 else ""
+        self._prev_sink = prev_snk if prev_snk and prev_snk != EAR_SINK else None
         _run(["pactl", "set-default-source", MOUTH_SOURCE])
         _run(["pactl", "set-default-sink", EAR_SINK])
+        # Pin the AI mic to unity + unmute. ai_mic is now the system DEFAULT source, so
+        # the OS "Microphone" slider points at it — whatever it was left at (low, or
+        # muted) becomes the gain on Gemini's voice into the call, making the AI quiet or
+        # silent for reasons unrelated to the call. 100% = unity (no amplification), so
+        # the model's loudness to the callee is deterministic regardless of the slider.
+        _run(["pactl", "set-source-mute", MOUTH_SOURCE, "0"])
+        _run(["pactl", "set-source-volume", MOUTH_SOURCE, "100%"])
+        # Same for the ear: pin the callee's playback level into Gemini to unity/unmuted.
+        _run(["pactl", "set-sink-mute", EAR_SINK, "0"])
+        _run(["pactl", "set-sink-volume", EAR_SINK, "100%"])
         self._devices_ready = True
         _log(f"virtual devices ready: mic={MOUTH_SOURCE} (was {self._prev_source or '?'}), "
              f"speaker={EAR_SINK} (was {self._prev_sink or '?'})")
@@ -332,6 +399,31 @@ class GeminiVoiceBridge:
             return mid
         _log(f"load-module {name} failed: {out.strip()[:160]!r}")
         return None
+
+    def _unload_stale_modules(self) -> None:
+        """Unload any of OUR virtual-device modules left over from a previous run that
+        didn't tear down cleanly. Matches only null-sink / remap-source modules whose
+        arguments name our own sinks/source (MOUTH_SINK / MOUTH_SOURCE / EAR_SINK), so it
+        never touches unrelated audio. Unloading them lets PulseAudio revert the system
+        default back to real hardware before we capture it. Best-effort; never raises."""
+        rc, out = _run(["pactl", "list", "short", "modules"])
+        if rc != 0:
+            return
+        ours = (MOUTH_SINK, MOUTH_SOURCE, EAR_SINK)
+        unloaded = 0
+        for line in out.splitlines():
+            cols = line.split("\t")
+            if len(cols) < 3:
+                continue
+            mid, mtype, args = cols[0], cols[1], cols[2]
+            if mtype in ("module-null-sink", "module-remap-source") and any(
+                    n in args for n in ours):
+                r2, _ = _run(["pactl", "unload-module", mid])
+                if r2 == 0:
+                    unloaded += 1
+        if unloaded:
+            _log(f"cleaned up {unloaded} leftover virtual-device module(s) from a "
+                 "prior run (real audio defaults restored)")
 
     # -- ffmpeg I/O (started inside run(), torn down in its finally) -------------------
     def _start_io(self) -> bool:
@@ -462,7 +554,10 @@ class GeminiVoiceBridge:
             else:
                 _log(f"greeting not confirmed within {GREET_MAX_WAIT:.0f}s — "
                      "opening the ear anyway")
-        # 4) NOW open the ear; from here Gemini hears the callee live (two-way).
+        # 4) NOW open the ear; from here Gemini hears the callee live (two-way). Start the
+        #    silence clock here so the watchdog measures quiet from the moment we're
+        #    actually listening, not from session connect.
+        self._last_voice_activity = time.monotonic()
         self._answered.set()
         _log("ear opened — Gemini is now listening to the callee")
 
@@ -597,6 +692,24 @@ class GeminiVoiceBridge:
             # Gemini speak before the greeting. on_pickup sets _answered after it greets.
             if not self._answered.is_set():
                 continue
+            # Caller re-engagement: if BOTH sides have been quiet past the threshold (and
+            # the opening briefing is delivered), nudge the model to check in. Done HERE,
+            # in the one task that sends to Gemini, so the text turn never interleaves with
+            # an audio frame on the wire. Bounded by MAX_NUDGES; the callee speaking resets
+            # both the clock and the count (see _gemini_to_queue).
+            if (self.nudge_on_silence and not self._awaiting_greet
+                    and self._nudges_sent < MAX_NUDGES
+                    and self._last_voice_activity > 0.0):
+                idle = time.monotonic() - self._last_voice_activity
+                if idle >= NUDGE_AFTER_SILENCE_S:
+                    try:
+                        await session.send_realtime_input(text=NUDGE_TRIGGER)
+                        self._nudges_sent += 1
+                        self._last_voice_activity = time.monotonic()
+                        _log(f"silence nudge sent ({self._nudges_sent}/{MAX_NUDGES}) — "
+                             f"callee quiet {idle:.0f}s")
+                    except Exception as exc:  # noqa: BLE001
+                        _log(f"silence nudge failed: {exc}")
             try:
                 await session.send_realtime_input(
                     audio={"data": data, "mime_type": f"audio/pcm;rate={EAR_RATE}"})
@@ -607,7 +720,11 @@ class GeminiVoiceBridge:
     async def _gemini_to_queue(self, session, out_q: "asyncio.Queue[bytes]") -> None:
         """Receive Gemini's audio + transcripts; queue audio for the mouth, print + log the
         conversation, and time the greeting (sent→first-audio) for latency investigation."""
-        last_in = False
+        # Which speaker's console line is currently open: 'ai' | 'callee' | None. The
+        # emoji prefix is printed ONCE when a speaker starts an utterance; their streamed
+        # chunks then append to that same line, so the console reads as one continuous
+        # sentence instead of re-stamping the prefix on every chunk.
+        cur_spk: "str | None" = None
         greet_audio_logged = False
         tx_parts: "list[str]" = []
         tx_spk = ""
@@ -653,30 +770,48 @@ class GeminiVoiceBridge:
                 if got_audio and self._awaiting_greet and not greet_audio_logged:
                     greet_audio_logged = True
                     _log("first greeting audio chunk → mouth (model started speaking)")
+                # The AI speaking counts as activity → resets the silence watchdog so it
+                # measures quiet from the END of the AI's turn, not the last callee word.
+                if got_audio:
+                    self._last_voice_activity = time.monotonic()
                 # Transcripts (console stream + per-utterance lines in the debug log).
+                # On a speaker change: close the open console line, flush the finished
+                # utterance to the log, then print the new speaker's emoji prefix ONCE.
                 if sc is not None:
                     ot = getattr(sc, "output_transcription", None)
                     if ot is not None and getattr(ot, "text", None):
-                        if last_in:
-                            print(flush=True)
+                        if cur_spk != "ai":
+                            if cur_spk is not None:
+                                print(flush=True)
                             flush_tx()
-                            last_in = False
-                        print(f"   🤖 {ot.text}", end="", flush=True)
+                            print("   🤖 ", end="", flush=True)
+                            cur_spk = "ai"
+                        print(ot.text, end="", flush=True)
                         tx_parts.append(ot.text)
                         tx_spk = "🤖 AI:"
                     it = getattr(sc, "input_transcription", None)
                     if it is not None and getattr(it, "text", None):
-                        if not last_in:
-                            print(flush=True)
+                        if cur_spk != "callee":
+                            if cur_spk is not None:
+                                print(flush=True)
                             flush_tx()
-                            last_in = True
-                        print(f"   🧑 {it.text}", end="", flush=True)
+                            print("   🧑 ", end="", flush=True)
+                            cur_spk = "callee"
+                        print(it.text, end="", flush=True)
                         tx_parts.append(it.text)
                         tx_spk = "🧑 callee:"
-                    # Turn finished: flush the utterance line; if it was the greeting turn,
-                    # release the ear (see _on_pickup_work — turn_complete means the spoken
-                    # hello has been fully emitted, so the callee can't have cut it).
+                        # Callee spoke → reset the silence clock AND the consecutive-nudge
+                        # count (they re-engaged, so the cap is per silent stretch, not
+                        # per call).
+                        self._last_voice_activity = time.monotonic()
+                        self._nudges_sent = 0
+                    # Turn finished: close the console line + flush the utterance to the
+                    # log; if it was the greeting turn, release the ear (see _on_pickup_work
+                    # — turn_complete means the spoken hello was fully emitted, uncuttable).
                     if getattr(sc, "turn_complete", False):
+                        if cur_spk is not None:
+                            print(flush=True)
+                            cur_spk = None
                         flush_tx()
                         if self._awaiting_greet:
                             self._awaiting_greet = False
