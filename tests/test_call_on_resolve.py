@@ -1,7 +1,7 @@
 """Tests for the outbound voice call on resolve (CALL_ON_RESOLVE).
 
 Covers the incident-payload builder (`build_call_incident` — the JSON contract
-`gemini_call.py --incident-file` reads) and the runner's spawn path: it launches
+`call/gemini_call.py --incident-file` reads) and the runner's spawn path: it launches
 the call subprocess off the resolve critical path, serializes concurrent calls,
 honors the gate, and never crashes a resolve when the launch fails.
 

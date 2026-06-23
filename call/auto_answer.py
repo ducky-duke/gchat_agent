@@ -23,7 +23,7 @@ recipe that works for the caller's daily Brave.)
 
 Then auto-answer (callee = Duc → fresh profile makes Duc u/0, NOT glo.com):
 
-  python scripts/auto_answer.py --cdp-url http://127.0.0.1:9223 \
+  python call/auto_answer.py --cdp-url http://127.0.0.1:9223 \
     --url https://chat.google.com/u/0/app/chat/qtotjoAAAAE --answer-seconds 20
 
 Discovery: on first use the Answer/Leave button labels are unknown — run with --dry-run to

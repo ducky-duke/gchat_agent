@@ -30,11 +30,11 @@ module it loaded.
 
 This module owns ONLY the audio + the Gemini session. Placing/holding the actual call
 (ring, join detection, mic-unmute, hang-up detection) is delegated to
-``meet_call_browser`` by the orchestrator ``scripts/gemini_call.py`` — keep them split.
+``meet_call_browser`` by the orchestrator ``call/gemini_call.py`` — keep them split.
 
 Standalone checks (no call needed):
-    python scripts/gemini_voice.py --devices-test     # set up the 2 sinks, probe, tear down
-    python scripts/gemini_voice.py --selftest         # Gemini text→audio round-trip → WAV
+    python call/gemini_voice.py --devices-test     # set up the 2 sinks, probe, tear down
+    python call/gemini_voice.py --selftest         # Gemini text→audio round-trip → WAV
 
 ⚠️  Live calls automate the Google UI (ToS / account-flag risk) — demo accounts only.
 """

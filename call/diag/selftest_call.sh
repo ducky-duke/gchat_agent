@@ -14,7 +14,7 @@
 #     --use-fake-ui-for-media-stream --use-fake-device-for-media-stream
 #   → sign in as Duc (trantrongducqt@gmail.com), open the DM, leave it running.
 #
-# Usage:  scripts/selftest_call.sh [--answer-seconds 20] [--duration 90] [--dry-run-answer]
+# Usage:  call/diag/selftest_call.sh [--answer-seconds 20] [--duration 90] [--dry-run-answer]
 set -u
 
 CALLER_CDP="http://127.0.0.1:9222"
@@ -148,7 +148,7 @@ teardown_caller() {  # tear down a caller Brave WE launched (Xvfb OR headed dedi
   # killing the launcher PID ($!) orphans the real browser (it kept holding the profile lock and
   # blocked the next run). Sweep every process still on OUR dedicated profile by its path. Safe:
   # only brave processes carry --user-data-dir=<profile> in their cmdline; the selftest's own
-  # bash ("bash scripts/selftest_call.sh …") and the meet_call python do NOT, and pkill skips
+  # bash ("bash call/diag/selftest_call.sh …") and the meet_call python do NOT, and pkill skips
   # its own PID — so this never self-matches. NOT run for --caller-real (returned above).
   pkill -f "$CALLER_PROFILE" 2>/dev/null; sleep 1; pkill -9 -f "$CALLER_PROFILE" 2>/dev/null
   [ -n "$XVFB_PID" ] && kill "$XVFB_PID" 2>/dev/null
@@ -296,7 +296,7 @@ fi
 # --- preflight: verify the caller profile (NO ring, NO callee), then exit -------------------
 if [ "$PREFLIGHT" = "1" ]; then
   echo ">> PREFLIGHT (no ring): locating the call button on $CALLER_URL …"
-  conda run --no-capture-output -n igaming python -u scripts/meet_call_browser.py \
+  conda run --no-capture-output -n igaming python -u call/meet_call_browser.py \
     --cdp-url "$CALLER_CDP" --url "$CALLER_URL" --dry-run 2>&1 | tee "$OUT/preflight.log"
   PF=${PIPESTATUS[0]}
   teardown_caller
@@ -364,12 +364,12 @@ fi
 # --- discovery mode: just dump the callee's button labels (find Answer/Leave names) -------
 if [ "$DRY_ANSWER" = "1" ]; then
   echo ">> DISCOVERY: starting auto-answer in --dry-run (dumps callee buttons), then ringing."
-  conda run --no-capture-output -n igaming python -u scripts/auto_answer.py \
+  conda run --no-capture-output -n igaming python -u call/auto_answer.py \
     --cdp-url "$CALLEE_CDP" --url "$CALLEE_URL" --dry-run --timeout "$DURATION" \
     > "$CALLEE_LOG" 2>&1 &
   ANS=$!
   sleep 2
-  conda run --no-capture-output -n igaming python -u scripts/meet_call_browser.py \
+  conda run --no-capture-output -n igaming python -u call/meet_call_browser.py \
     --cdp-url "$CALLER_CDP" --url "$CALLER_URL" --watch-join --join-poll 0.5 \
     --duration "$DURATION" > "$CALLER_LOG" 2>&1 &
   CALL=$!
@@ -390,7 +390,7 @@ if [ "$NO_CALLEE" = "1" ]; then
   echo "   (the caller rings now; it self-stops when you hang up. Cap = ${DURATION}s.)"
 else
   echo ">> starting callee auto-answer (answers, holds ${ANSWER_SECONDS}s, then leaves) …"
-  conda run --no-capture-output -n igaming python -u scripts/auto_answer.py \
+  conda run --no-capture-output -n igaming python -u call/auto_answer.py \
     --cdp-url "$CALLEE_CDP" --url "$CALLEE_URL" --answer-seconds "$ANSWER_SECONDS" \
     --timeout "$DURATION" > "$CALLEE_LOG" 2>&1 &
   ANS=$!
@@ -403,7 +403,7 @@ fi
 #    daily browser or other apps. The robust path for Meet (the in-browser 'webrtc' tap is
 #    blind to Meet's decoded audio). Routing is always restored on stop.
 echo ">> ringing (caller captures audio [$AUDIO_MODE] to $AUDIO_OUT) …"
-conda run --no-capture-output -n igaming python -u scripts/meet_call_browser.py \
+conda run --no-capture-output -n igaming python -u call/meet_call_browser.py \
   --cdp-url "$CALLER_CDP" --url "$CALLER_URL" --watch-join --join-poll 0.5 \
   --duration "$DURATION" --capture-audio --audio-mode "$AUDIO_MODE" --audio-out "$AUDIO_OUT" \
   $DIAG_FLAG $FG_FLAG \

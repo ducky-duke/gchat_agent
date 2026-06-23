@@ -59,7 +59,7 @@ HTTP_TIMEOUT_SECONDS = 30.0
 
 # v1 demo scopes (§5.4): read + write Chat messages, create the demo space,
 # create a Google Meet meeting (Meet REST API `spaces.create`, used by
-# scripts/demo_meet_call.py when MEET_LINKS is on), and userinfo.email so we can
+# call/demo_meet_call.py when MEET_LINKS is on), and userinfo.email so we can
 # confirm (and refuse) the consenting account. NOTE: adding a scope here means an
 # already-minted refresh token must be re-authorized to gain it (an old token
 # 403s on a Meet create until you re-run this flow).

@@ -274,7 +274,7 @@ def _import_cookies(pw, args, verify_url: str) -> int:
         print(f"\n✅ Cookies imported — the isolated profile is signed in as {acct}.")
         print("   Place a call with (no --cdp-url, no manual login):")
         print(
-            f"     python scripts/meet_call_browser.py --browser {args.browser} "
+            f"     python call/meet_call_browser.py --browser {args.browser} "
             f"--authuser {args.authuser} --duration 60"
         )
         return 0

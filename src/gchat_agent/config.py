@@ -248,9 +248,9 @@ class Config:
     # REST API base (override only for GitHub Enterprise).
     GITHUB_API_URL: str = "https://api.github.com"
 
-    # --- Outbound voice call on resolve (scripts/gemini_call.py) ---
+    # --- Outbound voice call on resolve (call/gemini_call.py) ---
     # When on, each resolved issue ALSO triggers an outbound voice call that RELAYS
-    # the clarified incident to a human: the runner spawns scripts/gemini_call.py
+    # the clarified incident to a human: the runner spawns call/gemini_call.py
     # (Gemini Live as the incident-duty assistant) as a DETACHED subprocess, off
     # the resolve critical path, reading the report's facts from a JSON file it
     # writes. Best-effort and self-serializing (one call at a time — the caller
@@ -270,7 +270,7 @@ class Config:
     # skipped when blank); gemini_call.py reads the real key from env/.env itself.
     GEMINI_API_KEY: str = ""
     # The call orchestrator to spawn (relative to the poller's cwd, i.e. repo root).
-    CALL_SCRIPT: str = "scripts/gemini_call.py"
+    CALL_SCRIPT: str = "call/gemini_call.py"
     # The callee's name the AI addresses on the call (who picks up the phone).
     CALL_CALLEE: str = "Duc"
     # Spoken + briefing language for the call: "en" (English) or "vi" (Vietnamese).

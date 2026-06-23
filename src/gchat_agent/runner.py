@@ -165,7 +165,7 @@ def _looks_like_decline(text: str) -> bool:
 
 
 # --- outbound voice-call incident payload (CALL_ON_RESOLVE) -----------------
-# The bot relays a resolved issue to a human by spawning scripts/gemini_call.py,
+# The bot relays a resolved issue to a human by spawning call/gemini_call.py,
 # which reads the incident from a JSON file. These helpers render a
 # `ResolutionReport` into that file's contract — the *only* facts the AI is
 # allowed to relay on the call (it answers strictly from them).

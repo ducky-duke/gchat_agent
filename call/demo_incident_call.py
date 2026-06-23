@@ -36,10 +36,10 @@ Setup (one-time, in the ``igaming`` env)::
 
 Run::
 
-    python scripts/demo_incident_call.py                  # voice call (default)
-    python scripts/demo_incident_call.py --text           # type questions, hear answers
-    python scripts/demo_incident_call.py --persona apigw  # scenario (default: apigw)
-    python scripts/demo_incident_call.py --announce        # also ping GOOGLE_SPACE
+    python call/demo_incident_call.py                  # voice call (default)
+    python call/demo_incident_call.py --text           # type questions, hear answers
+    python call/demo_incident_call.py --persona apigw  # scenario (default: apigw)
+    python call/demo_incident_call.py --announce        # also ping GOOGLE_SPACE
 
 Use headphones for the voice mode — the default mic/speaker have no echo
 cancellation, so without them Alex can hear (and interrupt) himself.

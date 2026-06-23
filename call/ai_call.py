@@ -26,7 +26,7 @@ virtual-mic setup/teardown, hang-up detection) is REUSED — this script is a th
 launcher. Later: swap the static tone for a Gemini Live TTS stream into
 ai_mic_sink (see meet_audio_inject) so the AI actually talks on the call.
 
-  conda run --no-capture-output -n igaming python -u scripts/ai_call.py
+  conda run --no-capture-output -n igaming python -u call/ai_call.py
   # first run only: sign the dedicated profile in as mikmikb26 (the script tells you how)
 
 ⚠️  Automates the Google UI (ToS / account-flag risk) — demo accounts only. Keep

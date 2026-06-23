@@ -26,10 +26,10 @@ log line), so Brave kept playing to the BT headset and the null sink stayed empt
 The null-sink mechanism itself is sound (a realtime paplay tone into it was captured at
 -25 dB); the breakage was purely the match step. Monitor mode has no match step.
 
-Driven by scripts/meet_call_browser.py via --capture-audio (start after the call
+Driven by call/meet_call_browser.py via --capture-audio (start after the call
 connects, stop on hang-up). Standalone smoke tests:
-    python scripts/meet_audio_capture.py --selftest                 # 2s, no call
-    python scripts/meet_audio_capture.py --out /tmp/x.wav --seconds 20
+    python call/meet_audio_capture.py --selftest                 # 2s, no call
+    python call/meet_audio_capture.py --out /tmp/x.wav --seconds 20
 
 All pactl/ffmpeg calls are best-effort: a failure logs + degrades, never raises into
 the call loop (audio is an extra sink, not the system of record).

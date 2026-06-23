@@ -21,7 +21,7 @@ What it does
 
 This is the browser/ring half. The AI **voice** half (capture the Meet's audio +
 inject TTS so the AI talks on the call) is NOT here — that's virtual PulseAudio
-devices + the Gemini Live loop from ``scripts/demo_incident_call.py`` pointed at
+devices + the Gemini Live loop from ``call/demo_incident_call.py`` pointed at
 those devices. See the "AUDIO (next phase)" note at the bottom. Reason: audio is
 WebRTC; Playwright drives the page, not the media — but this script is the WebRTC
 client that must be *in* the call for that audio to flow, so it's the foundation.
@@ -44,19 +44,19 @@ window that appears, open the target DM once, then re-run. The cookies persist i
 Run
 ---
   # 1) sign in once (headed), confirm the DM loads, find the button:
-  python scripts/meet_call_browser.py --dry-run
+  python call/meet_call_browser.py --dry-run
 
   # 2) place the real ringing call (default target = GOOGLE_VOICE_SPACE = the
   #    bot↔Duc DM), ring for 90s:
-  python scripts/meet_call_browser.py --duration 90
+  python call/meet_call_browser.py --duration 90
 
   # most reliable targeting: open the DM in the window, copy the address-bar URL,
   # and pass it verbatim:
-  python scripts/meet_call_browser.py --url 'https://chat.google.com/u/0/...'
+  python call/meet_call_browser.py --url 'https://chat.google.com/u/0/...'
 
   # reuse your DAILY Brave session instead of a dedicated profile (quit Brave, then
   # `brave-browser --remote-debugging-port=9222`, then):
-  python scripts/meet_call_browser.py --cdp-url http://127.0.0.1:9222
+  python call/meet_call_browser.py --cdp-url http://127.0.0.1:9222
 
 Exit codes: 0 ok · 2 setup error (Playwright missing / no target) · 1 runtime
 error (button not found / navigation failed).
@@ -101,7 +101,7 @@ __all__ = [
 #   2. Launch this browser pinned to them (per-app routing via pavucontrol, or run
 #      under a PULSE_SINK/PULSE_SOURCE env so Brave uses ai_mic as its microphone
 #      and ai_speaker as its output).
-#   3. Run the Gemini Live loop from scripts/demo_incident_call.py with pyaudio
+#   3. Run the Gemini Live loop from call/demo_incident_call.py with pyaudio
 #      input = ai_speaker.monitor (Meet audio in) and output = ai_mic_sink (AI voice
 #      out). The existing loop already does 16 kHz in / 24 kHz out bidirectional.
 # That keeps the ring (this script) and the brain (Gemini Live) decoupled.

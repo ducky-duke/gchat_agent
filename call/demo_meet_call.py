@@ -18,7 +18,7 @@ Meet *REST* API's ``spaces.create`` only mints a meeting and returns a join link
 So the real, shippable integration is: create a meeting + share its link so a
 HUMAN joins the call. This script does NOT put an AI on a call.
 
-It complements ``scripts/demo_incident_call.py`` — that one places a local Gemini
+It complements ``call/demo_incident_call.py`` — that one places a local Gemini
 Live API voice "phone call" (the AI talks on YOUR mic/speaker, not on Meet); this
 one mints a shareable Meet link for a human-staffed call in the Chat demo world.
 Reference for the Meet APIs is bundled at ``docs/google_meet/``.
@@ -35,11 +35,11 @@ gets a 403 until re-authorized.
 
 Run::
 
-    python scripts/demo_meet_call.py                       # mint + post (apigw → Duc)
-    python scripts/demo_meet_call.py --dry-run             # mint + print, do NOT post
-    python scripts/demo_meet_call.py --persona ops         # a different scenario
-    python scripts/demo_meet_call.py --token secrets/token_promo.json
-    python scripts/demo_meet_call.py --message "Custom briefing"   # link still appended
+    python call/demo_meet_call.py                       # mint + post (apigw → Duc)
+    python call/demo_meet_call.py --dry-run             # mint + print, do NOT post
+    python call/demo_meet_call.py --persona ops         # a different scenario
+    python call/demo_meet_call.py --token secrets/token_promo.json
+    python call/demo_meet_call.py --message "Custom briefing"   # link still appended
 
 Exit codes: 0 ok · 2 setup error (missing token/client/space) · 1 runtime error
 (Meet create / Chat post failed).
@@ -298,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # Run example::
-#   python scripts/demo_meet_call.py --persona apigw --callee Duc
-#   python scripts/demo_meet_call.py --dry-run        # mint + show, no Chat post
+#   python call/demo_meet_call.py --persona apigw --callee Duc
+#   python call/demo_meet_call.py --dry-run        # mint + show, no Chat post
 if __name__ == "__main__":
     raise SystemExit(main())

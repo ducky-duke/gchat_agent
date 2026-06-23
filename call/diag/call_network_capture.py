@@ -39,14 +39,14 @@ Run
 ---
   # 1) SAFE dry pass — open the DM + attach capture, do NOT ring (verify harness,
   #    see which WebSockets exist even idle):
-  python scripts/call_network_capture.py --no-call --probe-secs 20
+  python call/diag/call_network_capture.py --no-call --probe-secs 20
 
   # 2) REAL ringing call — rings the callee; ANSWER on the other account and HANG
   #    UP to capture the target signal. Exits early when the call ends.
-  python scripts/call_network_capture.py --duration 240
+  python call/diag/call_network_capture.py --duration 240
 
 Defaults target the bot↔Duc DM (qtotjoAAAAE) on u/1 (mikmikb26) via the daily
-Brave at http://127.0.0.1:9222 — i.e. the proven recipe in scripts/CLAUDE.md.
+Brave at http://127.0.0.1:9222 — i.e. the proven recipe in call/CLAUDE.md.
 
 ⚠️  Same caveats as meet_call_browser.py: this automates Google's UI (ToS, brittle,
 account-flag risk) — demo accounts only.
@@ -61,9 +61,10 @@ import re
 import sys
 import time
 
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, ".."))
-sys.path.insert(0, _THIS_DIR)            # to import the sibling script as a module
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))           # call/diag
+_CALL_DIR = os.path.dirname(_THIS_DIR)                           # call/ (holds meet_call_browser)
+_REPO_ROOT = os.path.dirname(_CALL_DIR)                          # repo root
+sys.path.insert(0, _CALL_DIR)            # to import the sibling call module
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
 
 import meet_call_browser as mcb          # reuse the proven call-placement helpers

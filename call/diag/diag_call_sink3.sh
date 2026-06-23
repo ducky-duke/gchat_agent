@@ -7,7 +7,7 @@
 # Before answering: plug EARPHONES into the other device (device B) to break the acoustic
 # loop → the capture should also come out echo-free.
 #
-# Usage: scripts/diag_call_sink3.sh   (then ANSWER on device B + talk ~10s + hang up)
+# Usage: call/diag/diag_call_sink3.sh   (then ANSWER on device B + talk ~10s + hang up)
 set -u
 
 CDP="http://127.0.0.1:9222"
@@ -47,7 +47,7 @@ ffmpeg -hide_banner -loglevel error -nostdin -y -f pulse -i "$MON" \
 REC=$!
 
 # 2) place the call in background
-conda run --no-capture-output -n igaming python -u scripts/meet_call_browser.py \
+conda run --no-capture-output -n igaming python -u call/meet_call_browser.py \
   --cdp-url "$CDP" --url "$URL" \
   --watch-join --join-poll 0.5 --duration "$DUR" > "$OUT/call.log" 2>&1 &
 CALL=$!

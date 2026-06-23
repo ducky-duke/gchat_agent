@@ -50,12 +50,12 @@ from meet_call_setup import (
 
 def _start_rest_watch(cfg, args, meeting_code: "str | None"):
     """Spin up the Meet REST room-data watch in a DAEMON thread. It is urllib-only
-    (reuses scripts/meet_rest_watch), so it never touches Playwright objects from the
+    (reuses call/meet_rest_watch), so it never touches Playwright objects from the
     main thread — only the OAuth token + the Meet REST API. Returns (stop_event,
     thread); (None, None) if the watcher can't be started."""
     import threading
     try:
-        import meet_rest_watch as mrw  # sibling script (scripts/ is on sys.path)
+        import meet_rest_watch as mrw  # sibling script (call/ is on sys.path)
     except Exception as exc:  # noqa: BLE001
         print(f"   ⚠️  --watch-rest: couldn't import meet_rest_watch ({exc}); skipping.",
               file=sys.stderr)
@@ -96,7 +96,7 @@ def _start_rest_watch(cfg, args, meeting_code: "str | None"):
 
 def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
     """on_join / on_pickup: optional zero-arg callbacks for an external audio engine
-    (scripts/gemini_call.py). Both fire AT MOST ONCE; a callback exception is swallowed,
+    (call/gemini_call.py). Both fire AT MOST ONCE; a callback exception is swallowed,
     never crashes the call.
 
       • on_join  — fires when the join is FIRST detected (any signal, incl. the flaky
@@ -306,7 +306,7 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
         "the INPUT path for a future Gemini Live loop. Creates a dedicated null sink, "
         "moves the browser's playback stream into it, records its monitor at 16kHz "
         "mono PCM (Gemini Live's format). Routing is always restored. Needs "
-        "pactl+ffmpeg (PipeWire/PulseAudio). See scripts/meet_audio_capture.py.",
+        "pactl+ffmpeg (PipeWire/PulseAudio). See call/meet_audio_capture.py.",
     )
     parser.add_argument(
         "--audio-out",
@@ -364,7 +364,7 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
         "FILE into it (ffmpeg-decodable: wav/mp3/…). Bare --inject-audio (no FILE) plays a "
         "generated 4-note test tone — unmistakable on the callee's device vs the ringback. "
         "Fully reversible: the previous default mic + modules are restored on exit. Verify "
-        "the chain offline first: python scripts/meet_audio_inject.py --verify.",
+        "the chain offline first: python call/meet_audio_inject.py --verify.",
     )
     parser.add_argument(
         "--inject-at-join",
@@ -383,7 +383,7 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None) -> int:
         action="store_true",
         help="On join, make sure the bot's mic is ON (unmute it if Meet remembered a "
         "muted state). Independent of --inject-audio — use it when an EXTERNAL engine "
-        "(e.g. scripts/gemini_call.py) owns the mic audio via a virtual default-source, "
+        "(e.g. call/gemini_call.py) owns the mic audio via a virtual default-source, "
         "so meet_call_browser only places/holds the call. A muted track transmits "
         "silence no matter what feeds the virtual mic.",
     )

@@ -24,10 +24,10 @@ lag empirically.
 Run
 ---
   # target a specific meeting by its join code (from the meet.google.com/<code> link):
-  python scripts/meet_rest_watch.py --meeting-code abc-mnop-xyz
+  python call/meet_rest_watch.py --meeting-code abc-mnop-xyz
 
   # or auto-find the bot account's currently-active conference:
-  python scripts/meet_rest_watch.py --auto
+  python call/meet_rest_watch.py --auto
 
 Defaults: bot token (secrets/token_bot.json = mikmikb26 = the caller), poll 2s,
 self = the bot's user id (everyone else = a REMOTE whose leave is the signal).

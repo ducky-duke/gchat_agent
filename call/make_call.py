@@ -18,8 +18,8 @@ Google Meet. The Meet *Media* API (live audio/video) is **receive-only** and
 **Developer-Preview-gated** (every scope is ``.readonly``). The Meet *REST* API's
 ``spaces.create`` only mints a meeting and returns a join link. So this is a real,
 joinable call invite for a HUMAN — it does not put an AI on the line. (For a local
-AI-voice session see ``scripts/demo_incident_call.py``; for the incident-scenario
-variant of this same Meet flow see ``scripts/demo_meet_call.py``.)
+AI-voice session see ``call/demo_incident_call.py``; for the incident-scenario
+variant of this same Meet flow see ``call/demo_meet_call.py``.)
 
 Auth: user OAuth, the same refresh-token flow as the Chat client. The minting +
 posting account is the BOT's token file (default ``secrets/token_bot.json``),
@@ -32,10 +32,10 @@ meet.googleapis.com``).
 
 Run::
 
-    python scripts/make_call.py                       # bot → Duc (DM), mint + send
-    python scripts/make_call.py --dry-run             # mint + print, do NOT post
-    python scripts/make_call.py --to Alex --space spaces/AAAA...
-    python scripts/make_call.py --message "Quick sync?"   # link still appended
+    python call/make_call.py                       # bot → Duc (DM), mint + send
+    python call/make_call.py --dry-run             # mint + print, do NOT post
+    python call/make_call.py --to Alex --space spaces/AAAA...
+    python call/make_call.py --message "Quick sync?"   # link still appended
 
 Exit codes: 0 ok · 2 setup error (missing token/client/space) · 1 runtime error
 (Meet create / Chat post failed).
@@ -237,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # Run example::
-#   python scripts/make_call.py                 # bot → Duc (DM): mint + send
-#   python scripts/make_call.py --dry-run       # mint + show, no Chat post
+#   python call/make_call.py                 # bot → Duc (DM): mint + send
+#   python call/make_call.py --dry-run       # mint + show, no Chat post
 if __name__ == "__main__":
     raise SystemExit(main())

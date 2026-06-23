@@ -368,7 +368,7 @@ REST API.**
 - **✅ Chat REST API (`spaces.messages.list`) — THE clean, supported signal.** A DM call
   posts a *message* whose annotation is a `RICH_LINK` / `richLinkType: MEET_SPACE` with
   `meetSpaceLinkData: {meetingCode, type:"HUDDLE", huddleStatus}`. **`huddleStatus`
-  is the call lifecycle** — captured live by `scripts/huddle_watch.py`:
+  is the call lifecycle** — captured live by `call/huddle_watch.py`:
   `None → STARTED` (live/ringing) → terminal **`MISSED`** (ring never answered, ~40 s
   ring timeout) **or `ENDED`** (connected then hung up). So the hang-up = the
   `STARTED → ENDED` transition; poll the DM messages and watch it. Needs only the
@@ -398,17 +398,17 @@ REST API.**
   browser sees the *consequence* (UI teardown), not a discrete event — use the DOM
   heuristic (`meet_call_browser._in_call` / `_alone_signal`) if you must scrape, but
   prefer the Chat REST `huddleStatus`.
-- **Scripts**: `scripts/huddle_watch.py` (Chat REST poller — the deliverable),
-  `scripts/meet_rest_watch.py` (Meet REST participant-leave watcher — only works on
-  bot-minted spaces), `scripts/call_network_capture.py` (CDP network capture + DOM
-  marker — diagnostic), `scripts/meet_call_browser.py` (places the ringing call via CDP
+- **Scripts**: `call/huddle_watch.py` (Chat REST poller — the deliverable),
+  `call/meet_rest_watch.py` (Meet REST participant-leave watcher — only works on
+  bot-minted spaces), `call/diag/call_network_capture.py` (CDP network capture + DOM
+  marker — diagnostic), `call/meet_call_browser.py` (places the ringing call via CDP
   into the daily Brave). Coordination gotcha: the ring times out in ~40 s, so the callee
   must answer the **incoming ring on their device** (NOT tap a Meet link in the DM)
   within that window or it logs `MISSED`.
 
 ## Unattended call self-test — browser-side join/hang-up + isolated voice capture (2026-06-19)
-The hands-off loop (`scripts/selftest_call.sh`): caller (mikmikb26, daily Brave via CDP
-`:9222`) rings → callee (`scripts/auto_answer.py` on a 2nd Brave `:9223`, fresh
+The hands-off loop (`call/diag/selftest_call.sh`): caller (mikmikb26, daily Brave via CDP
+`:9222`) rings → callee (`call/auto_answer.py` on a 2nd Brave `:9223`, fresh
 `.browser-profile-callee`, Duc) auto-answers + turns mic/cam on → both hold → callee
 auto-leaves → caller self-stops on hang-up + captures the call-only audio. Verdicts are
 independent: HANG-UP DETECTION (answered + an end-reason + no duration cap) and AUDIO
@@ -501,7 +501,7 @@ media. Corrected model of the failure modes (they are DISTINCT):
   Chromium's OWN occlusion calc decides suspension and the disable-flag suppresses it (unlike native
   Wayland, where Mutter gates frames below the flag), while the real GPU keeps media connecting
   (unlike Xvfb/swiftshader). Targets the connects-then-drops failure directly. Try this on the next
-  `call lại`: `bash scripts/selftest_call.sh --caller-xwayland --diag --no-callee --duration 160`.
+  `call lại`: `bash call/diag/selftest_call.sh --caller-xwayland --diag --no-callee --duration 160`.
 - **⛔ STILL OPEN — voice capture (req #3) NEVER verified non-silent.** Run #5 (the only stable-media
   run) captured silence and PREDATES the capture fix (shared MediaStream + `createMediaElementSource`
   + autoplay flag). The fix is staged but UNTESTABLE until a stable media connection is available
@@ -799,14 +799,14 @@ VAD section). Conclusions, parked for when we wire the "AI ear" stream:
 
 ### ✅ AI-MOUTH path WORKS — caller injects audio the callee hears (USER-CONFIRMED 2026-06-20)
 The reverse of capture: make the CALLER (bot) PLAY audio that the CALLEE hears, via a virtual mic.
-Built `scripts/meet_audio_inject.py` (`AudioInjector`) + wired `--inject-audio [FILE]` /
+Built `call/meet_audio_inject.py` (`AudioInjector`) + wired `--inject-audio [FILE]` /
 `--inject-at-join` / `--inject-once` into `meet_call_browser.py`. The user answered on their phone and
 **HEARD the injected 4-note test tone** — proven end-to-end.
 - **How it works**: `module-null-sink ai_mic_sink` + `module-remap-source ai_mic` (master =
   `ai_mic_sink.monitor`) → ai_mic is a real capture device the browser uses as its mic; ffmpeg plays
   the file (`-re`, looping) into ai_mic_sink. setup() runs BEFORE the call-button click and swaps the
   default source to ai_mic; stop() restores the previous default + unloads modules (atexit-guarded).
-  Offline-proven by recording the ai_mic SOURCE directly: `python scripts/meet_audio_inject.py
+  Offline-proven by recording the ai_mic SOURCE directly: `python call/meet_audio_inject.py
   --verify` → mean −12.5 dB (the chain carries audio).
 - **Gotcha 1 — the default-source swap is NOT enough; you MUST move the browser's mic source-output
   onto ai_mic.** Chrome/Meet pins a specific deviceId (remembers the last real mic), so getUserMedia
@@ -832,7 +832,7 @@ Built `scripts/meet_audio_inject.py` (`AudioInjector`) + wired `--inject-audio [
   call. Pair with the AI-ear capture (allsinks) for full bidirectional.
 
 ### ✅ gemini_call.py — Gemini Live talks TWO-WAY on the call (USER-CONFIRMED 2026-06-20)
-`scripts/gemini_call.py` + `scripts/gemini_voice.py` are the bidirectional follow-on to the
+`call/gemini_call.py` + `call/gemini_voice.py` are the bidirectional follow-on to the
 AI-mouth (`ai_call.py`): **Gemini Live is the CALLER, the human is the callee, and they hold a
 real two-way voice conversation** over the live Chat call. Confirmed live — the user spoke
 (EN+VI), Gemini answered in Vietnamese, incl. a weather question ("Thời tiết Hồ Chí Minh hôm
@@ -864,7 +864,7 @@ nay" → "trời nắng, có thể mưa rào… 26–33 độ C"); the call ende
   greeted to nobody; the REAL answer was +10.8s `tracks=5`. **FIXED (session 2) → see "Greeting
   hardening" below**: greeting now fires on a separate ringback-safe `on_pickup` callback, not
   `on_join`.
-- **Validated before the live call**: `python scripts/gemini_voice.py --devices-test` (sinks up +
+- **Validated before the live call**: `python call/gemini_voice.py --devices-test` (sinks up +
   ai_mic probe + clean teardown) and `--selftest` (Gemini text→audio→WAV: 2.57s, 24 kHz mono,
   −17 dB — model+key OK). Needs `GEMINI_API_KEY` (env/.env) + `google-genai` (in `igaming`).
 - **Echo**: callee should use a phone/headset — the callee-side AEC is what stops Gemini's own
@@ -956,7 +956,7 @@ symptom appears, MEASURE each stage with elapsed stamps before theorizing — I 
 noise/transport/renderer guesses that the stamps refuted in one call each.
 
 ### ✅ ai_call.py — dedicated PRE-GRANTED browser removes the manual mic-allow + the move-dance (USER-CONFIRMED 2026-06-20)
-`scripts/ai_call.py` is the minimal entry point for the AI-mouth direction: it launches a DEDICATED
+`call/ai_call.py` is the minimal entry point for the AI-mouth direction: it launches a DEDICATED
 caller Brave (`.browser-profile-caller`, port 9333) with `--use-fake-ui-for-media-stream`, runs a
 login gate, then delegates ring+join+inject to `meet_call_browser.main` over CDP. The user heard the
 tone with **NO manual allow click** — the three gotchas above are all resolved by launching OUR OWN

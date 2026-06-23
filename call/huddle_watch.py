@@ -35,7 +35,7 @@ message`` events over Pub/Sub) — this watcher measures the lag empirically.
 Run
 ---
   # start watching BEFORE placing the call (so --since pins to now):
-  python scripts/huddle_watch.py --duration 240
+  python call/huddle_watch.py --duration 240
   # then place the ringing call (meet_call_browser.py / call_network_capture.py),
   # answer the RING on the callee's device, stay, then hang up.
 

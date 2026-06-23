@@ -14,7 +14,7 @@ Also logs frame attached/detached EVENTS with timestamps.
 
 Run (after `brave-browser --remote-debugging-port=9222`, signed in as mikmikb26 at
 authuser 1):
-    conda run --no-capture-output -n igaming python -u scripts/diag_call_dom.py
+    conda run --no-capture-output -n igaming python -u call/diag/diag_call_dom.py
 
 Then on the callee device: PICK UP, wait a few seconds, HANG UP. Watch which line(s)
 change at the hang-up. Ctrl+C to stop early. This RINGS a real person — demo only.

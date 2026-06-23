@@ -43,7 +43,7 @@ Hand-written design docs plus a bundled Google Chat REST mirror.
     programmatically and post it to Chat. Also conferences/participants/artifacts
     (recordings, transcripts) — all *after/around* a call, never live audio.
     Now IMPLEMENTED in `src/gchat_agent/meet/` (`spaces.create`) +
-    `scripts/demo_meet_call.py`, gated by `MEET_LINKS`.
+    `call/demo_meet_call.py`, gated by `MEET_LINKS`.
   - **Meet Media API** (`media-api/...`, Developer-Preview-gated): real-time media.
     ⚠️ **Receive-only** — every scope is `…media[.audio|.video].readonly` ("Capture
     real-time audio/video"); there is NO send/inject capability. So a bot can

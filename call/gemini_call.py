@@ -23,7 +23,7 @@ Threading: the bridge's Gemini session is async and runs in a worker thread (its
 event loop); the main thread drives the browser (sync Playwright) and blocks until the
 call ends, then stops the bridge and restores the audio devices.
 
-  conda run --no-capture-output -n igaming python -u scripts/gemini_call.py
+  conda run --no-capture-output -n igaming python -u call/gemini_call.py
   # first run only: sign the dedicated profile in (ai_call.py prints how)
 
 Requires GEMINI_API_KEY (env or .env) and `pip install google-genai` (already in the

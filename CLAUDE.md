@@ -18,7 +18,8 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
 - **Nested indexes** (per-subtree maps, read the local one before touching files there):
   [`src/gchat_agent/CLAUDE.md`](src/gchat_agent/CLAUDE.md) (+ `agent/`, `llm/`, `chat/`,
   `rag/` subpackage indexes), [`tests/CLAUDE.md`](tests/CLAUDE.md),
-  [`scripts/CLAUDE.md`](scripts/CLAUDE.md), [`docs/CLAUDE.md`](docs/CLAUDE.md). This root
+  [`scripts/CLAUDE.md`](scripts/CLAUDE.md), [`call/CLAUDE.md`](call/CLAUDE.md) (the voice-call
+  subsystem), [`docs/CLAUDE.md`](docs/CLAUDE.md). This root
   file keeps the cross-cutting behavioral specs; the nested files hold per-directory layout.
 - **Run the tests** (offline, no key — the functional gate, currently **302 green**):
   `PYTHONPATH=src python -m unittest discover -s tests -t . -p "test_*.py"`.
@@ -89,7 +90,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   `ResolutionReport` into the `--incident-file` JSON contract
   (`runner.build_call_incident`: title · owner · situation=summary · facts=
   severity/category/action + each clarified Q&A answer · open_questions · language)
-  and spawns `scripts/gemini_call.py` (`runner._maybe_place_call`). Unlike
+  and spawns `call/gemini_call.py` (`runner._maybe_place_call`). Unlike
   voice/GitHub (quick network calls on drained worker pools), the call owns a
   browser + audio devices and runs for MINUTES, so it is a **detached**
   `subprocess.Popen` (`start_new_session=True`) — fire-and-forget, never drained,
@@ -116,7 +117,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   because an AI **cannot speak on a Meet** (the Meet *Media* API is receive-only and
   Developer-Preview-gated — see `docs/CLAUDE.md` `google_meet/`), so the REST path
   instead mints + shares a join link for a HUMAN-staffed incident call. Demo via
-  `scripts/demo_meet_call.py`; tests `tests/test_meet.py` (+ `FakeMeetClient`).
+  `call/demo_meet_call.py`; tests `tests/test_meet.py` (+ `FakeMeetClient`).
 - **No duplicate questions (loop-breaker)**: the bot never re-asks a question the
   reporter can't answer. Two layers: (1) `clarity_prompt`/`questions_prompt` show
   the model every already-asked question (`prompts._asked_block`) and instruct it

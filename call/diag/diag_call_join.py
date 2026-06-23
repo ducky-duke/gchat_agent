@@ -20,7 +20,7 @@ Captured per second (to stderr + /tmp/call_join.log):
 
 Run (after `brave-browser --remote-debugging-port=9222`, signed in as mikmikb26 at
 authuser 1):
-    python scripts/diag_call_join.py
+    python call/diag/diag_call_join.py
 
 Then on the CALLEE device (the Duc account): ANSWER the ring, STAY ~20s, then hang up.
 Watch which line(s) change at the moment of answering. Ctrl+C to stop early.

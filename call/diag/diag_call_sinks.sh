@@ -8,7 +8,7 @@
 # sink states + sink-inputs with their Sink:/media.name/role). After the call, each WAV's
 # volume is measured — the one with real speech during the talk window IS the call's sink.
 #
-# Usage: scripts/diag_call_sinks.sh   (then ANSWER on the other device + talk ~10s + hang up)
+# Usage: call/diag/diag_call_sinks.sh   (then ANSWER on the other device + talk ~10s + hang up)
 set -u
 
 CDP="http://127.0.0.1:9222"
@@ -37,7 +37,7 @@ for s in "${SINKS[@]}"; do
 done
 
 # 2) place the call in the background (just connects + holds; no built-in capture)
-conda run --no-capture-output -n igaming python -u scripts/meet_call_browser.py \
+conda run --no-capture-output -n igaming python -u call/meet_call_browser.py \
   --cdp-url "$CDP" --url "$URL" \
   --watch-join --join-poll 0.5 --duration "$DUR" > "$OUT/call.log" 2>&1 &
 CALL=$!

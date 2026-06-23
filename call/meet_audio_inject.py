@@ -308,7 +308,7 @@ def _proc_cmdline(pid: str) -> str:
 
 
 # -- standalone self-test (no call): prove the virtual-mic chain end-to-end ------
-#   python scripts/meet_audio_inject.py --verify
+#   python call/meet_audio_inject.py --verify
 # Sets up the virtual mic, plays the tone, RECORDS the ai_mic SOURCE directly (exactly
 # what the browser would capture), prints mean/max dB, then tears everything down.
 def _main() -> int:

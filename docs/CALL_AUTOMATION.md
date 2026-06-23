@@ -62,7 +62,7 @@ account-flag risk) — **demo accounts only**.
 - **PROVEN live recipe (2026-06-17, this machine) — CDP into the daily Brave.** Verified
   end-to-end but DISRUPTIVE (hijacks your session): 1) quit Brave,
   `brave-browser --remote-debugging-port=9222 --profile-directory="Default"`;
-  2) `python scripts/meet_call_browser.py --cdp-url http://127.0.0.1:9222 --authuser 1`.
+  2) `python call/meet_call_browser.py --cdp-url http://127.0.0.1:9222 --authuser 1`.
   (Work/Default profile: `u/0` = glo.com REVOKED, `u/1` = mikmikb26 = bot/caller.)
 
 ## `meet_call_browser.py` module layout (split for size, behavior-preserving)
@@ -220,7 +220,7 @@ which needs a **realtime** producer — a non-`-re` ffmpeg tone dumps its buffer
 monitor records silence (a test artifact; Brave's live stream is realtime). All modes
 record what the bot RECEIVES = the REMOTE voice, so the human must actually SPEAK on the
 OTHER (Duc) device, else the WAV is (near-)silent. Capture is blind to the local mic (fine
-— the bot has none). Standalone OS-tooling check: `python scripts/meet_audio_capture.py
+— the bot has none). Standalone OS-tooling check: `python call/meet_audio_capture.py
 --selftest`. `diag_call_sink3.sh` / `diag_call_sinks.sh` are the shell diagnostics that
 pinpointed the call's sink.
 
