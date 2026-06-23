@@ -103,7 +103,16 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   (`CALL_LOG_DIR`, default `logs/`); the child's stdout → `logs/call-issue-<id>.log`.
   Config: `CALL_ON_RESOLVE`, `GEMINI_API_KEY` (the gate; distinct from
   `OPENROUTER_API_KEY`), `CALL_SCRIPT`, `CALL_CALLEE`, `CALL_LANGUAGE`(en|vi|ru|uk),
-  `CALL_URL`, `CALL_OWNER`, `CALL_LOG_DIR`. ⚠️ Needs `GEMINI_API_KEY`, the dedicated
+  `CALL_OWNER`, `CALL_LOG_DIR`. **Destination — NO hardcode**: the call rings
+  `GOOGLE_VOICE_SPACE`; if it's blank the runner SKIPS the call with a clear log (and
+  `gemini_call.py --url`/`ai_call.py` ABORT with an error) — it never silently rings
+  some built-in default DM. `--url` accepts a full URL, `spaces/<id>`, `chat/<id>`, or a
+  bare `<id>` and overrides the config destination. **Callee auto-resolution**:
+  `CALL_CALLEE` defaults to BLANK — when empty the runner omits `--callee` and
+  `gemini_call.py` reads the partner's display name straight off that DM (browser scrape
+  via `call/dm_resolve.py`; the REST API hides `displayName` under user OAuth, so the
+  rendered UI is the only name source). Set `CALL_CALLEE` to force a name. ⚠️ Needs
+  `GEMINI_API_KEY`, the dedicated
   caller Brave profile, and a VISIBLE desktop session (Wayland suspends an occluded
   renderer) — demo-machine only, never headless/CI. The call side reads the JSON via
   `gemini_call.build_incident_persona_from_file`. Tests: `tests/test_call_on_resolve.py`

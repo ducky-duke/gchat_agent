@@ -184,6 +184,9 @@ class RunnerCallTest(unittest.TestCase):
         # The call self-gates on a Gemini key; the offline suite has none, so
         # spawn-expecting tests supply a fake one (overridable per test).
         cfg_over.setdefault("GEMINI_API_KEY", "test-key")
+        # A call also needs a destination (no hardcoded default) — give one so
+        # spawn-expecting tests spawn; the no-destination test overrides it to "".
+        cfg_over.setdefault("GOOGLE_VOICE_SPACE", "chat/test-dm")
         chat = FakeChatClient(me="users/bot", space="spaces/MAIN")
         store = IssueStore(os.path.join(tmp, "issues.json"))
         store.load()
@@ -205,8 +208,8 @@ class RunnerCallTest(unittest.TestCase):
             script = self._dummy_script(tmp)
             runner, chat, store = self._runner(
                 tmp, CALL_ON_RESOLVE=True, CALL_SCRIPT=script,
-                CALL_CALLEE="Bob", CALL_LANGUAGE="vi", CALL_URL="https://chat.example/dm",
-                CALL_OWNER="Dave",
+                CALL_CALLEE="Bob", CALL_LANGUAGE="vi",
+                GOOGLE_VOICE_SPACE="https://chat.example/dm", CALL_OWNER="Dave",
             )
             issue = _issue()
             with contextlib.redirect_stderr(io.StringIO()):
@@ -236,6 +239,38 @@ class RunnerCallTest(unittest.TestCase):
             self.assertEqual(inc["title"], "API gateway timing out")
             self.assertEqual(inc["owner"], "Dave")
             self.assertEqual(inc["facts"]["Severity"], "high")
+
+    def test_empty_callee_omits_the_flag(self) -> None:
+        # With no CALL_CALLEE configured (the default), the runner omits --callee so
+        # gemini_call.py resolves the partner's name off the DM itself.
+        with tempfile.TemporaryDirectory() as tmp, _patched_popen() as Popen:
+            script = self._dummy_script(tmp)
+            runner, _chat, _ = self._runner(
+                tmp, CALL_ON_RESOLVE=True, CALL_SCRIPT=script, CALL_CALLEE="",
+                GOOGLE_VOICE_SPACE="chat/qtotjoAAAAE",
+            )
+            with contextlib.redirect_stderr(io.StringIO()):
+                runner._resolve(_issue(), _thread())
+            self.assertEqual(len(Popen.instances), 1)
+            argv = Popen.instances[0].argv
+            self.assertNotIn("--callee", argv)
+            # The destination is still forwarded (gemini_call normalizes the short form).
+            self.assertEqual(argv[argv.index("--url") + 1], "chat/qtotjoAAAAE")
+
+    def test_no_destination_skips_call(self) -> None:
+        # No GOOGLE_VOICE_SPACE ⇒ nowhere to ring ⇒ skip + log, never fall back to a
+        # hardcoded default DM. Resolve still completes.
+        with tempfile.TemporaryDirectory() as tmp, _patched_popen() as Popen:
+            runner, _chat, _ = self._runner(
+                tmp, CALL_ON_RESOLVE=True, CALL_SCRIPT=self._dummy_script(tmp),
+                GOOGLE_VOICE_SPACE="",
+            )
+            issue = _issue()
+            with contextlib.redirect_stderr(io.StringIO()):
+                runner._resolve(issue, _thread())
+            self.assertEqual(len(Popen.instances), 0)
+            self.assertIsNone(runner._active_call_proc)
+            self.assertEqual(issue.status, Status.RESOLVED)
 
     def test_gate_off_spawns_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, _patched_popen() as Popen:

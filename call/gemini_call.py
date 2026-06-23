@@ -44,6 +44,7 @@ sys.path.insert(0, _THIS_DIR)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
 
 import ai_call               # noqa: E402  (browser launch / login / teardown helpers)
+import dm_resolve            # noqa: E402  (URL normalize + scrape the callee's name)
 import gemini_voice          # noqa: E402  (the Gemini Live ⇄ call audio bridge)
 import meet_call_browser     # noqa: E402  (the proven ring + join + hang-up engine)
 
@@ -229,8 +230,13 @@ def main(argv: "list[str] | None" = None) -> int:
         description="Place a ringing call and let Gemini Live converse with the callee.")
     ap.add_argument("--duration", type=float, default=180.0,
                     help="MAX seconds to hold the call (exits early on hang-up; default 180).")
-    ap.add_argument("--url", default=ai_call._DEFAULT_URL,
-                    help="exact Chat DM URL to call into (default: the bot↔Duc DM, u/0).")
+    ap.add_argument("--url", default=None,
+                    help="DM to call into (REQUIRED — no hardcoded default). Accepts a "
+                         "full Chat URL, 'spaces/<id>', 'chat/<id>', or a bare '<id>'. "
+                         "If omitted, falls back to GOOGLE_VOICE_SPACE in .env; if that "
+                         "is unset the call ABORTS with an error. Whatever resolves is "
+                         "also where the callee's name is read from when --callee is "
+                         "omitted.")
     ap.add_argument("--port", type=int, default=ai_call._DEFAULT_PORT,
                     help=f"CDP/debug port for the caller Brave (default {ai_call._DEFAULT_PORT}).")
     ap.add_argument("--profile", default=ai_call._DEFAULT_PROFILE,
@@ -251,8 +257,10 @@ def main(argv: "list[str] | None" = None) -> int:
                          "CALL_ON_RESOLVE path) instead of a scenarios.json --persona. "
                          "Same call behavior; the facts come from the resolved issue. "
                          "Ignored when --persona is also given (--persona wins).")
-    ap.add_argument("--callee", default="Duc",
-                    help="callee's name the reporter addresses on the call (default Duc).")
+    ap.add_argument("--callee", default=None,
+                    help="callee's name the AI addresses on the call. Omit it and the "
+                         "name is read automatically from the --url DM (the partner's "
+                         "display name); an explicit value always wins.")
     ap.add_argument("--system", default=None,
                     help="system instruction (persona). Default: an English AI caller.")
     ap.add_argument("--system-file", default=None,
@@ -295,38 +303,17 @@ def main(argv: "list[str] | None" = None) -> int:
         _log("  set GEMINI_API_KEY in .env or the environment, then re-run.")
         return 2
 
-    # Persona/system + the opening the AI says first on pickup. --persona turns the call
-    # into an incident REPORT (AI briefs the callee on the incident), otherwise it's the
-    # default friendly-assistant greeting. Precedence: --system-file > --system > persona.
-    greet_text = None
-    speech_language = a.language
-    incident_mode = None  # set when relaying an incident (persona OR file)
-    persona_speech = "en-US"
-    if a.persona:
-        incident_mode = f"persona={a.persona!r}"
-        system, greet_text, persona_speech = build_incident_persona(
-            a.persona, a.callee, language=_persona_lang_key(a.language))
-    elif a.incident_file:
-        incident_mode = f"file={a.incident_file!r}"
-        system, greet_text, persona_speech = build_incident_persona_from_file(
-            a.incident_file, a.callee, language=a.language or "")
-    else:
-        system = a.system or gemini_voice.DEFAULT_SYSTEM
-    if incident_mode:
-        # Make the AI SPEAK the report language: pin the Live speech language_code to the
-        # version's code (en-US / vi-VN) unless the caller pinned one explicitly.
-        if not speech_language:
-            speech_language = persona_speech
-        spoken = _INCIDENT_LANGS[_persona_lang_key(speech_language)][0]
-        _log(f"  incident-report mode: {incident_mode} → reporting to {a.callee} "
-             f"in {spoken} ({speech_language})")
-    if a.system_file:
-        try:
-            with open(a.system_file, encoding="utf-8") as f:
-                system = f.read().strip()
-        except OSError as exc:
-            _log(f"ERROR: could not read --system-file: {exc}")
-            return 2
+    # Resolve the destination: --url, else GOOGLE_VOICE_SPACE from .env. No hardcoded
+    # fallback — if neither is set we abort with a clear error rather than silently
+    # ringing some default DM. Accepts a full Chat URL, "spaces/<id>", "chat/<id>", or
+    # a bare "<id>" — all reduce to the standalone DM deep link we ring AND scrape the
+    # callee's name from.
+    raw_url = a.url or dm_resolve.env_value(_REPO_ROOT, "GOOGLE_VOICE_SPACE")
+    if not raw_url:
+        _log("ERROR: no call destination. Pass --url (a full Chat URL, 'spaces/<id>', "
+             "'chat/<id>', or a bare '<id>'), or set GOOGLE_VOICE_SPACE in .env.")
+        return 2
+    url = dm_resolve.normalize_dm_url(raw_url)
 
     profile = os.path.abspath(a.profile)
     if not os.path.isdir(profile):
@@ -349,9 +336,57 @@ def main(argv: "list[str] | None" = None) -> int:
             if launched and a.quit_browser:
                 ai_call._kill_profile_braves(profile)
             return 2
-    if not ai_call._ensure_logged_in(a.port, a.url, wait_s=a.login_wait):
+    if not ai_call._ensure_logged_in(a.port, url, wait_s=a.login_wait):
         _log("  (leaving the browser open so you can finish signing in.)")
         return 2
+
+    # 2) Who are we calling? An explicit --callee wins; otherwise read the partner's
+    #    name straight off the DM the caller just opened — so you can hand this tool
+    #    JUST a URL/space id and skip --callee. (The REST API hides displayName under
+    #    user OAuth, so the rendered UI is the only name source.) Falls back to a
+    #    neutral label if the page can't be read.
+    callee = (a.callee or "").strip()
+    if not callee:
+        _log("  resolving the callee's name from the DM …")
+        callee = dm_resolve.resolve_callee_name(a.port, url, log=_log) or ""
+        if callee:
+            _log(f"  callee resolved from the DM: {callee}")
+        else:
+            callee = "the team lead"
+            _log(f"  ⚠️  could not resolve the callee's name; using {callee!r}")
+
+    # 3) Persona/system + the opening the AI says first on pickup. --persona turns the
+    #    call into an incident REPORT (AI briefs the callee on the incident), otherwise
+    #    it's the default friendly greeting. Precedence: --system-file > --system > persona.
+    greet_text = None
+    speech_language = a.language
+    incident_mode = None  # set when relaying an incident (persona OR file)
+    persona_speech = "en-US"
+    if a.persona:
+        incident_mode = f"persona={a.persona!r}"
+        system, greet_text, persona_speech = build_incident_persona(
+            a.persona, callee, language=_persona_lang_key(a.language))
+    elif a.incident_file:
+        incident_mode = f"file={a.incident_file!r}"
+        system, greet_text, persona_speech = build_incident_persona_from_file(
+            a.incident_file, callee, language=a.language or "")
+    else:
+        system = a.system or gemini_voice.DEFAULT_SYSTEM
+    if incident_mode:
+        # Make the AI SPEAK the report language: pin the Live speech language_code to the
+        # version's code (en-US / vi-VN) unless the caller pinned one explicitly.
+        if not speech_language:
+            speech_language = persona_speech
+        spoken = _INCIDENT_LANGS[_persona_lang_key(speech_language)][0]
+        _log(f"  incident-report mode: {incident_mode} → reporting to {callee} "
+             f"in {spoken} ({speech_language})")
+    if a.system_file:
+        try:
+            with open(a.system_file, encoding="utf-8") as f:
+                system = f.read().strip()
+        except OSError as exc:
+            _log(f"ERROR: could not read --system-file: {exc}")
+            return 2
 
     # The AI can hang up the call itself (end_call tool): when the bridge fires this, set
     # the event the call loop polls so it ends the call. We ALSO close the caller browser
@@ -389,7 +424,7 @@ def main(argv: "list[str] | None" = None) -> int:
     #    owns the audio, so no --inject-audio — just unmute the bot mic on answer.
     mcb_argv = [
         "--cdp-url", f"http://127.0.0.1:{a.port}",
-        "--url", a.url,
+        "--url", url,
         "--watch-join",
         "--ensure-mic-on",
         "--duration", str(a.duration),

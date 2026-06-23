@@ -1407,6 +1407,18 @@ class Runner:
             )
             return
 
+        # No hardcoded destination: the call rings the configured voice DM
+        # (GOOGLE_VOICE_SPACE). If it's not set, skip the call with a clear log rather
+        # than spawn one that has nowhere to ring.
+        dest = (self.config.GOOGLE_VOICE_SPACE or "").strip()
+        if not dest:
+            print(
+                f"[issue-spotter] CALL_ON_RESOLVE is on but GOOGLE_VOICE_SPACE is not "
+                f"set (no call destination); skipping the call for issue {issue.id}",
+                file=sys.stderr,
+            )
+            return
+
         try:
             incident = build_call_incident(
                 report, self.config.CALL_OWNER, self.config.CALL_LANGUAGE
@@ -1424,12 +1436,14 @@ class Runner:
             argv = [
                 sys.executable, "-u", os.path.abspath(script),
                 "--incident-file", os.path.abspath(incident_path),
-                "--callee", (self.config.CALL_CALLEE or "Duc"),
                 "--language", (self.config.CALL_LANGUAGE or "en"),
             ]
-            url = (self.config.CALL_URL or "").strip()
-            if url:
-                argv += ["--url", url]
+            # Pass an explicit callee ONLY if one is configured; otherwise let
+            # gemini_call.py read the partner's name off the destination DM itself.
+            callee = (self.config.CALL_CALLEE or "").strip()
+            if callee:
+                argv += ["--callee", callee]
+            argv += ["--url", dest]
 
             log_path = os.path.join(log_dir, f"call-issue-{safe_id}.log")
             log_fh = open(log_path, "ab")

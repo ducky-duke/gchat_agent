@@ -30,9 +30,9 @@
 # BY THE BOT from the facts it clarified live in the QA loop — the full pipeline.
 #
 # Usage:
-#   ./demo_live_apigw.sh                  # English call to the default callee (Duc)
+#   ./demo_live_apigw.sh                  # English; callee name auto-read from the GOOGLE_VOICE_SPACE DM
 #   ./demo_live_apigw.sh --language vi    # the AI relays in Vietnamese (vi/ru/uk also ok)
-#   ./demo_live_apigw.sh --callee Bob     # address a different callee on the call
+#   ./demo_live_apigw.sh --callee Bob     # force the callee name (else it's auto-resolved)
 #   ./demo_live_apigw.sh --timeout 900    # wait up to 15 min for the QA to resolve
 #   ./demo_live_apigw.sh --call-wait 300  # keep tailing the live call up to 5 min
 #   ./demo_live_apigw.sh --token secrets/token_promo.json  # seed as a specific account

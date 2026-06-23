@@ -272,12 +272,11 @@ class Config:
     # The call orchestrator to spawn (relative to the poller's cwd, i.e. repo root).
     CALL_SCRIPT: str = "call/gemini_call.py"
     # The callee's name the AI addresses on the call (who picks up the phone).
-    CALL_CALLEE: str = "Duc"
+    # Blank (the default) ⇒ gemini_call.py reads the partner's display name straight
+    # off the call DM (GOOGLE_VOICE_SPACE), so no name need be configured. Set to override.
+    CALL_CALLEE: str = ""
     # Spoken + briefing language for the call: "en" (English) or "vi" (Vietnamese).
     CALL_LANGUAGE: str = "en"
-    # Exact Chat DM URL to ring. Blank ⇒ gemini_call.py's built-in default (the
-    # bot↔Duc DM). Set to call into a different DM/space.
-    CALL_URL: str = ""
     # Name of the on-call engineer who RAISED/owns the incident, spoken on the call
     # ("an incident <owner> just raised"). The bot only knows the reporter by Chat
     # id, so this names them for the relay. Blank ⇒ a generic "the on-call engineer".

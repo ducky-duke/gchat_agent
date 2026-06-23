@@ -42,7 +42,12 @@ Syntax-only check (no `ty` here): `python -m py_compile <file>`.
   background export (off the critical path; never crashes a resolve).
 - **`test_call_on_resolve.py`** — the outbound voice call on resolve (`CALL_ON_RESOLVE`):
   `build_call_incident` payload renderer + the runner spawn (`subprocess.Popen` patched —
-  off-critical-path, gate-respecting, serialized one-at-a-time, never-crash contracts).
+  off-critical-path, gate-respecting, serialized one-at-a-time, never-crash; an empty
+  `CALL_CALLEE` omits `--callee` so the call auto-resolves the name).
+- **`test_dm_resolve.py`** — `call/dm_resolve.py` pure helpers: `normalize_dm_url` (full URL /
+  `spaces|chat/<id>` / bare id), `_space_id`, and `pick_callee_name` (region/title signals,
+  rejects generic + signed-in labels). Adds `call/` to `sys.path` like the call entry scripts;
+  Playwright stays unimported (lazy in the resolver).
 - **`test_staff.py`** — staff personas. **`test_google_rest.py`** — live-adapter timeouts.
 - **`test_fakes.py`** — the test double itself.
 

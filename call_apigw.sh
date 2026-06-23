@@ -11,10 +11,21 @@
 # prompt, NOT the generic DEFAULT_SYSTEM).
 #
 # Usage:
-#   ./call_apigw.sh                  # call Duc in English (the defaults)
-#   ./call_apigw.sh --language vi    # report in Vietnamese (speaks vi-VN)
-#   ./call_apigw.sh --callee Bob     # address a different callee
-#   ./call_apigw.sh --duration 240   # longer call (default 180s)
+#   ./call_apigw.sh --url chat/qtotjoAAAAE       # call this DM, English
+#   ./call_apigw.sh --url chat/qtotjoAAAAE --language vi   # report in Vietnamese
+#   ./call_apigw.sh --url chat/qtotjoAAAAE --duration 240  # longer call (default 180s)
+#
+# Pick WHO to call by passing the DM — a full URL, "spaces/<id>", "chat/<id>", or a
+# bare "<id>". You do NOT need --callee: the callee's name is read automatically off
+# that DM (the partner's display name). An explicit --callee still wins.
+#   ./call_apigw.sh --url https://chat.google.com/u/0/app/chat/qtotjoAAAAE
+#   ./call_apigw.sh --url chat/qtotjoAAAAE       # short form
+#   ./call_apigw.sh --url qtotjoAAAAE            # bare space id
+#   ./call_apigw.sh --url chat/qtotjoAAAAE --callee Bob   # override the resolved name
+#
+# There is NO hardcoded default DM. If you omit --url it falls back to GOOGLE_VOICE_SPACE
+# in .env; if that is unset the call ABORTS with an error (it never silently rings some
+# default). So `./call_apigw.sh` alone works ONLY if .env sets GOOGLE_VOICE_SPACE.
 # Every extra flag is passed straight through to call/gemini_call.py
 # (--voice, --model, --no-greet, --quit-browser, --diag-pickup, ...).
 #

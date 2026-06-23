@@ -24,9 +24,12 @@ below stay lean and point there; read it before debugging a call.
   are two levels down, so they compute `_CALL_DIR`/`_REPO_ROOT` explicitly (see
   `diag/call_network_capture.py`).
 - **Import graph (the coupled cluster — must stay co-located):** `gemini_call` →
-  `ai_call`, `gemini_voice`, `meet_call_browser`; `meet_call_browser` (facade) →
+  `ai_call`, `dm_resolve`, `gemini_voice`, `meet_call_browser`; `ai_call` →
+  `dm_resolve`, `meet_call_browser`; `meet_call_browser` (facade) →
   `meet_call_{js,run,setup,signals}`; `meet_call_run` → `meet_audio_{capture,inject}`,
   `meet_rest_watch`, `meet_call_{js,setup,signals}`; `diag/call_network_capture` → `meet_call_browser`.
+  `dm_resolve` is a LEAF (stdlib only at import; Playwright imported lazily inside it) —
+  safe to import from anywhere without dragging the heavy graph.
 
 ## Meet/Call LINKS — REST + local Gemini Live (no UI automation)
 None of these makes the AI *speak* on a Google call — a hard ceiling (Meet Media API is
@@ -95,7 +98,9 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   (`.browser-profile-caller`, port 9333) with `--use-fake-ui-for-media-stream` (mic auto-granted,
   getUserMedia binds to ai_mic), then delegates ring+join+inject to `meet_call_browser.main` over
   CDP. **PROVEN + user-confirmed 2026-06-20** (callee heard the tone, no allow click, no move-dance).
-  Flags `--audio FILE` (default test tone), `--duration`, `--at-join`, `--once`, `--url`, `--port`,
+  Flags `--audio FILE` (default test tone), `--duration`, `--at-join`, `--once`, `--url` (full URL /
+  `spaces|chat/<id>` / bare `<id>`; no hardcoded default — falls back to `GOOGLE_VOICE_SPACE`
+  in `.env`, else aborts; via `dm_resolve`), `--port`,
   `--profile`, `--login-wait`, `--quit-browser` (stop via /proc scan — never `pkill -f <profile>`,
   self-matches). First run needs the dedicated profile signed in as mikmikb26 (script prints the
   command). Keep the window VISIBLE (Wayland suspends an occluded renderer → drop).
@@ -147,6 +152,15 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
     `end_call_tool` (gate), `on_end_call` (the hang-up callback). The callback only sets a
     `threading.Event`; the real hang-up happens in `meet_call_run.main` (see below). Disable with
     `gemini_call --no-end-call`.
+- **`dm_resolve.py`** — **leaf helper**: source a DM destination (no hardcode) + read the partner's
+  name off the rendered page. `normalize_dm_url` (full URL / `spaces/<id>` / `chat/<id>` / bare
+  `<id>` → the standalone deep link; a full URL passes through), `env_value(repo_root, *keys)` (first
+  non-empty env/`.env` value — used so the destination comes from `GOOGLE_VOICE_SPACE`,
+  never a baked-in URL), `pick_callee_name` (the two scraped signals → a name; rejects generic UI
+  labels + the signed-in `Google Account:` label), and `resolve_callee_name(port, url)` (CDP into the
+  signed-in caller browser, poll the DM page; cleanest signal is the `role="main"` aria-label,
+  fallback the document title minus ` - Chat`). Stdlib at import, Playwright lazy inside the resolver,
+  never raises. Pure parts tested in `tests/test_dm_resolve.py`. Used by `gemini_call.py` + `ai_call.py`.
 - **`gemini_call.py`** — the **orchestrator** (this is what `CALL_ON_RESOLVE` spawns): Gemini Live
   is the CALLER, you're the callee, on a real Chat call. Composes `ai_call` +
   `gemini_voice.GeminiVoiceBridge` + `meet_call_browser.main(..., on_join=, on_pickup=)` over CDP
@@ -162,9 +176,17 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   is the bot-driven counterpart to `--persona`: same
   call behavior, but the facts come from a JSON incident the bot wrote (`runner.build_call_incident`)
   for a REAL resolved issue instead of scenarios.json (`build_incident_persona_from_file`;
-  `--persona` wins if both are passed). Flags `--duration`(180; well under Gemini's 15-min
+  `--persona` wins if both are passed). **Destination + callee auto-resolution** (`dm_resolve`):
+  `--url` accepts a full Chat URL, `spaces/<id>`, `chat/<id>`, or a bare `<id>`. There is **NO
+  hardcoded default DM** — omit `--url` and it falls back to `GOOGLE_VOICE_SPACE` from `.env`
+  (`dm_resolve.env_value`); if that is unset the call **aborts with an error** (it never
+  silently rings a built-in DM). `--callee` is OPTIONAL too — omit it and the AI reads the partner's
+  display name straight off the resolved DM (an explicit `--callee` still wins). The name is a
+  browser SCRAPE on purpose: under user OAuth the Chat REST API populates a `User`'s `name`/`type`
+  only, never `displayName`, so the rendered UI is the only name source (resolve happens AFTER login,
+  so the persona is built with the resolved name). Flags `--duration`(180; well under Gemini's 15-min
   audio-only session cap — hardcoded default, not a config knob), `--persona`, `--incident-file`,
-  `--callee`(Duc), `--url`, `--port`, `--profile`, `--model`, `--voice`(Aoede),
+  `--callee`, `--url`, `--port`, `--profile`, `--model`, `--voice`(Aoede),
   `--system`/`--system-file`, `--language`(en|vi|ru|uk), `--no-greet`, `--no-record`, `--no-end-call`,
   `--quit-browser`, `--diag-pickup`. **AI-driven hang-up (`end_call`)**: it wires the bridge's
   `on_end_call` to an `end_event` (`threading.Event`) and passes it as `meet_call_browser.main(...,
@@ -174,7 +196,7 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   Brave / callee profile / any other browser. (`--quit-browser` keeps its old `launched`-only
   semantics; the AI-end close is unconditional.) `--no-end-call` removes the tool. Run: `conda run
   --no-capture-output -n igaming python -u call/gemini_call.py
-  [--persona apigw --callee Duc]`, or the repo-root convenience launcher **`./call_apigw.sh`**
+  [--persona apigw --url chat/<id>]`, or the repo-root convenience launcher **`./call_apigw.sh`**
   (wraps `--persona apigw`, previews `--help`, preflights `GEMINI_API_KEY`, forwards extra flags —
   e.g. `./call_apigw.sh --language vi`). Keep the window VISIBLE; callee should use a headset (AEC).
 - **`auto_answer.py`** — the unattended CALLEE: drives a 2nd Brave (separate

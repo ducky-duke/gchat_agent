@@ -48,6 +48,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, ".."))
 sys.path.insert(0, _THIS_DIR)            # so `import meet_call_browser` works
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
 
+import dm_resolve  # noqa: E402  (accept a full URL / spaces|chat/<id> / bare id)
 import meet_call_browser  # noqa: E402  (thin reuse of the proven ring+inject engine)
 
 _BRAVE = "/usr/bin/brave-browser"
@@ -56,9 +57,6 @@ _BRAVE = "/usr/bin/brave-browser"
 # serves both.
 _DEFAULT_PROFILE = os.path.join(_REPO_ROOT, ".browser-profile-caller")
 _DEFAULT_PORT = 9333
-# The bot↔Duc DM (GOOGLE_VOICE_SPACE = spaces/qtotjoAAAAE). u/0 = mikmikb26 in a
-# single-account dedicated profile.
-_DEFAULT_URL = "https://chat.google.com/u/0/app/chat/qtotjoAAAAE"
 
 
 def _log(msg: str) -> None:
@@ -208,8 +206,11 @@ def main(argv: "list[str] | None" = None) -> int:
                          "from ring — proven robust; pre-answer audio never reaches them).")
     ap.add_argument("--once", action="store_true",
                     help="play the audio ONCE instead of looping until hang-up.")
-    ap.add_argument("--url", default=_DEFAULT_URL,
-                    help="exact Chat DM URL to call into (default: the bot↔Duc DM, u/0).")
+    ap.add_argument("--url", default=None,
+                    help="DM to call into (REQUIRED — no hardcoded default): a full Chat "
+                         "URL, 'spaces/<id>', 'chat/<id>', or a bare '<id>'. If omitted, "
+                         "falls back to GOOGLE_VOICE_SPACE in .env; aborts with an error "
+                         "if that is unset.")
     ap.add_argument("--port", type=int, default=_DEFAULT_PORT,
                     help=f"CDP/debug port for the dedicated caller Brave (default {_DEFAULT_PORT}).")
     ap.add_argument("--profile", default=_DEFAULT_PROFILE,
@@ -221,6 +222,14 @@ def main(argv: "list[str] | None" = None) -> int:
                     help="stop the dedicated caller Brave on exit. Default: leave it "
                          "running so the login persists and the next call is instant.")
     a = ap.parse_args(argv)
+    # Destination: --url, else GOOGLE_VOICE_SPACE from .env. No hardcoded fallback —
+    # abort with a clear error if nothing is configured.
+    raw_url = a.url or dm_resolve.env_value(_REPO_ROOT, "GOOGLE_VOICE_SPACE")
+    if not raw_url:
+        _log("ERROR: no call destination. Pass --url (a full Chat URL, 'spaces/<id>', "
+             "'chat/<id>', or a bare '<id>'), or set GOOGLE_VOICE_SPACE in .env.")
+        return 2
+    url = dm_resolve.normalize_dm_url(raw_url)
 
     profile = os.path.abspath(a.profile)
     if not os.path.isdir(profile):
@@ -243,14 +252,14 @@ def main(argv: "list[str] | None" = None) -> int:
                 _kill_profile_braves(profile)
             return 2
 
-    if not _ensure_logged_in(a.port, a.url, wait_s=a.login_wait):
+    if not _ensure_logged_in(a.port, url, wait_s=a.login_wait):
         _log("  (leaving the browser open so you can finish signing in.)")
         return 2
 
     # Delegate the ring + WebRTC-join + audio-injection to the proven engine.
     mcb_argv = [
         "--cdp-url", f"http://127.0.0.1:{a.port}",
-        "--url", a.url,
+        "--url", url,
         "--watch-join",
         "--duration", str(a.duration),
         "--inject-audio",
