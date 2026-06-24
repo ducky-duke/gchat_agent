@@ -209,7 +209,7 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--url", default=None,
                     help="DM to call into (REQUIRED — no hardcoded default): a full Chat "
                          "URL, 'spaces/<id>', 'chat/<id>', or a bare '<id>'. If omitted, "
-                         "falls back to GOOGLE_VOICE_SPACE in .env; aborts with an error "
+                         "falls back to GOOGLE_CHAT_REPORT_SPACE in .env; aborts with an error "
                          "if that is unset.")
     ap.add_argument("--port", type=int, default=_DEFAULT_PORT,
                     help=f"CDP/debug port for the dedicated caller Brave (default {_DEFAULT_PORT}).")
@@ -222,12 +222,12 @@ def main(argv: "list[str] | None" = None) -> int:
                     help="stop the dedicated caller Brave on exit. Default: leave it "
                          "running so the login persists and the next call is instant.")
     a = ap.parse_args(argv)
-    # Destination: --url, else GOOGLE_VOICE_SPACE from .env. No hardcoded fallback —
+    # Destination: --url, else GOOGLE_CHAT_REPORT_SPACE from .env. No hardcoded fallback —
     # abort with a clear error if nothing is configured.
-    raw_url = a.url or dm_resolve.env_value(_REPO_ROOT, "GOOGLE_VOICE_SPACE")
+    raw_url = a.url or dm_resolve.env_value(_REPO_ROOT, "GOOGLE_CHAT_REPORT_SPACE")
     if not raw_url:
         _log("ERROR: no call destination. Pass --url (a full Chat URL, 'spaces/<id>', "
-             "'chat/<id>', or a bare '<id>'), or set GOOGLE_VOICE_SPACE in .env.")
+             "'chat/<id>', or a bare '<id>'), or set GOOGLE_CHAT_REPORT_SPACE in .env.")
         return 2
     url = dm_resolve.normalize_dm_url(raw_url)
 

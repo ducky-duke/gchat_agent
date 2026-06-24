@@ -23,7 +23,7 @@ account-flag risk) — **demo accounts only**.
   pre-join whose **`Join now`** must be clicked to actually ring the callee (the script
   does this). Across CDP runs we've also seen `(no 'Join now' button)` — the call still
   rings directly, which is fine.
-- Bot↔Duc DM = `spaces/qtotjoAAAAE` (`GOOGLE_VOICE_SPACE`).
+- Bot↔Duc DM = `spaces/qtotjoAAAAE` (`GOOGLE_CHAT_REPORT_SPACE`).
 
 ## Browser session: what works, what's a dead end
 - **⚠️ DEAD END — copying/importing the session does NOT work (tested 2026-06-17).**

@@ -11,8 +11,10 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
   lines). Tunables: `MAX_CLARIFY_ROUNDS`, `MAX_NO_PROGRESS_ROUNDS`, `STALE_AFTER_IDLE_CYCLES`,
   `RESOLVE_CONFIDENCE_THRESHOLD`, `EPISODIC_RECALL` (default on), `SEMANTIC_DEDUP` (default on —
   LLM cross-thread duplicate decider), `REDACT_REPORTS` (default off), the safety-mode + voice +
-  provider flags, and the `CALL_*` cluster (`CALL_ON_RESOLVE` + script/callee/language/url/owner/
-  log-dir — the outbound voice call on resolve).
+  provider flags, the `CALL_*` cluster (`CALL_ON_RESOLVE` + script/callee/language/url/owner/
+  log-dir — the outbound voice call on resolve), and `REPORT_ASSISTANT` /
+  `REPORT_MISSED_CALL_OFFER` (the two-way report-DM assistant). The report channel is
+  `GOOGLE_CHAT_REPORT_SPACE`.
 - **`models.py`** — domain dataclasses, lossless JSON round-trip. Enums `SenderType`/
   `Severity`/`Status`; `QAPair`, `Message`, `Issue`, `ClarityAssessment`,
   `ResolutionReport`, `Conversation`, `AgentState`; `issue_fingerprint()`. `Issue` carries
@@ -33,7 +35,8 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
   methods + 2 report builders).
 
 ## Subpackages (each has its own CLAUDE.md)
-- **`agent/`** — the brain: detection · clarity · resolution · personas · persistence.
+- **`agent/`** — the brain: detection · clarity · resolution · personas · persistence ·
+  the report-DM assistant (`report_assistant.py`).
 - **`llm/`** — LLM/TTS transport (protocol, MockLLM, Gemini (live default, `google-genai`),
   legacy OpenRouter, provider factories).
 - **`chat/`** — Google Chat ingress/egress adapters + user-OAuth (stdlib urllib).

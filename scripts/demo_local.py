@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         POLL_BACKFILL_SINCE="2020-01-01T00:00:00Z",
         MAX_CLARIFY_ROUNDS=args.max_rounds,
         # Voice mode: synthesize a spoken report and "post" it (recorded in the
-        # FakeChatClient); GOOGLE_VOICE_SPACE stays empty so it threads in-place.
+        # FakeChatClient); GOOGLE_CHAT_REPORT_SPACE stays empty so it threads in-place.
         REPORT_DELIVERY="voice" if args.voice else base.REPORT_DELIVERY,
     )
 

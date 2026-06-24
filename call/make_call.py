@@ -11,7 +11,7 @@ this script:
      Chat **DM**, which notifies the callee so they can tap to join.
 
 Default route: **mikmikb26 (bot) → Duc (trantrongducqt@gmail.com)** in their DM
-(``GOOGLE_VOICE_SPACE`` = spaces/qtotjoAAAAE).
+(``GOOGLE_CHAT_REPORT_SPACE`` = spaces/qtotjoAAAAE).
 
 WHAT THIS IS NOT — the project truth, do not be misled: an AI CANNOT speak on a
 Google Meet. The Meet *Media* API (live audio/video) is **receive-only** and
@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         "--space",
         default="",
         help="Chat space/DM to post into (e.g. spaces/AAAA...). Empty => the "
-        "bot↔callee DM (GOOGLE_VOICE_SPACE), else GOOGLE_SPACE.",
+        "bot↔callee DM (GOOGLE_CHAT_REPORT_SPACE), else GOOGLE_SPACE.",
     )
     parser.add_argument(
         "--message",
@@ -196,15 +196,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # --- 5. DM the invite + link as the bot --------------------------------------
-    # Prefer an explicit --space, then the bot↔callee DM (GOOGLE_VOICE_SPACE — the
+    # Prefer an explicit --space, then the bot↔callee DM (GOOGLE_CHAT_REPORT_SPACE — the
     # same DM voice reports use), then the shared space as a last resort.
     target_space = (
-        args.space or cfg.GOOGLE_VOICE_SPACE or cfg.GOOGLE_SPACE or ""
+        args.space or cfg.GOOGLE_CHAT_REPORT_SPACE or cfg.GOOGLE_SPACE or ""
     ).strip()
     if not target_space:
         print(
             "ERROR: no Chat space to post to — pass --space spaces/<id> or set "
-            "GOOGLE_VOICE_SPACE / GOOGLE_SPACE in .env. (The Meet link was created: "
+            "GOOGLE_CHAT_REPORT_SPACE / GOOGLE_SPACE in .env. (The Meet link was created: "
             f"{space.meeting_uri})",
             file=sys.stderr,
         )

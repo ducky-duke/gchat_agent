@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None,
         "--space",
         default="",
         help="Chat DM/space to call into (id or spaces/<id>). Default: "
-        "GOOGLE_VOICE_SPACE from .env (the bot↔Duc DM).",
+        "GOOGLE_CHAT_REPORT_SPACE from .env (the bot↔Duc DM).",
     )
     parser.add_argument(
         "--authuser",
@@ -403,11 +403,11 @@ def main(argv: list[str] | None = None, *, on_join=None, on_pickup=None,
     from gchat_agent.config import load_config  # lazy: project module
 
     cfg = load_config(os.path.join(_REPO_ROOT, ".env"))
-    space = args.space or cfg.GOOGLE_VOICE_SPACE or cfg.GOOGLE_SPACE
+    space = args.space or cfg.GOOGLE_CHAT_REPORT_SPACE or cfg.GOOGLE_SPACE
     url = args.url.strip() or (_default_url(space, args.authuser) if space else "")
     if not url:
         print(
-            "ERROR: no target — pass --url, or --space / set GOOGLE_VOICE_SPACE.",
+            "ERROR: no target — pass --url, or --space / set GOOGLE_CHAT_REPORT_SPACE.",
             file=sys.stderr,
         )
         return 2

@@ -27,7 +27,7 @@ from .agent import report as report_mod
 from .agent.analyzer import Analyzer
 from .agent.state import IssueStore
 from .config import Config
-from .models import Conversation, Message, QAPair, Status, _enum_value
+from .models import Conversation, Issue, Message, QAPair, Status, _enum_value
 
 if TYPE_CHECKING:
     from .chat.base import ChatClient
@@ -230,6 +230,17 @@ def build_call_incident(report, owner: str, language: str) -> dict:
     }
 
 
+def _safe_call_id(issue_id: str | None) -> str:
+    """A filesystem-safe stem for a per-issue incident/call-log file: keep
+    alphanumerics, `-` and `_`, collapse everything else to `-`, and fall back to
+    "issue" when nothing survives. Shared by the resolve-time call and the
+    call-back so both resolve to the SAME `incident-<id>.json` / `call-issue-<id>.log`."""
+    safe = "".join(
+        ch if (ch.isalnum() or ch in "-_") else "-" for ch in (issue_id or "")
+    ).strip("-")
+    return safe or "issue"
+
+
 class Runner:
     """One issue-spotter bot driving a `ChatClient` + `Analyzer` + `IssueStore`."""
 
@@ -245,6 +256,7 @@ class Runner:
         voice_executor: "Optional[Any]" = None,
         github: "Optional[GitHubClient]" = None,
         publish_executor: "Optional[Any]" = None,
+        report_chat: "Optional[ChatClient]" = None,
     ) -> None:
         self.chat = chat
         self.analyzer = analyzer
@@ -286,6 +298,22 @@ class Runner:
         # The working conversation accumulates fetched messages across cycles so
         # threads keep their full context (detection is still windowed).
         self._conversation = Conversation()
+        # Optional two-way assistant over the report DM (REPORT_ASSISTANT). When a
+        # report-DM chat client is wired (a second GoogleChatClient bound to
+        # GOOGLE_CHAT_REPORT_SPACE with the same bot token), the poller also
+        # services that DM each cycle (run_cycle → assistant.step): answering
+        # questions about the incidents the bot has reported and placing a call-back
+        # on request. None ⇒ the feature is off. It shares THIS runner's store and
+        # the one-call serialization (its call-back routes through _place_call_back,
+        # which uses the same _active_call_proc + _spawn_call as the resolve call).
+        self._assistant: "Optional[Any]" = None
+        if report_chat is not None:
+            from .agent.report_assistant import ReportAssistant
+
+            self._assistant = ReportAssistant(
+                report_chat, store, config, self._llm, self.reports_dir,
+                call_back=self._place_call_back,
+            )
 
     # --- one orchestration iteration ---------------------------------------
     def run_cycle(self) -> dict:
@@ -304,6 +332,23 @@ class Runner:
         detected = self._detect(own_id) if self._should_detect(new_messages, own_id) else 0
         asked, resolved, stale, escalated, redirected = self._process_open_issues(own_id)
 
+        # Report-DM assistant (REPORT_ASSISTANT): service the report channel as a
+        # conversational helper — answer questions about reported incidents and
+        # place a call-back on request. Best-effort and OFF the issue loop's
+        # correctness path: a failure here is logged and swallowed, never failing
+        # the cycle (so an assistant hiccup can't break issue detection/resolution).
+        assistant = {"replied": 0, "called": 0, "offered": 0}
+        if self._assistant is not None:
+            try:
+                assistant = self._assistant.step(own_id)
+            except Exception as exc:  # noqa: BLE001 — auxiliary; never fail the cycle
+                import sys
+
+                print(
+                    f"[issue-spotter] report assistant step failed: {exc}",
+                    file=sys.stderr,
+                )
+
         # Persist a freshly-learned bot id (the client may have learned its own
         # users/<id> from a post this cycle) so a restart self-filters at once.
         self._remember_bot_id(self.chat.me())
@@ -317,6 +362,11 @@ class Runner:
             "stale": stale,
             "escalated": escalated,
             "redirected": redirected,
+            # Report-DM assistant activity this cycle (REPORT_ASSISTANT): chat
+            # replies posted, call-backs placed, missed-call offers posted.
+            "replied": assistant.get("replied", 0),
+            "called": assistant.get("called", 0),
+            "offered": assistant.get("offered", 0),
             # LLM tokens this cycle billed across all calls (0 when the model
             # doesn't report usage; an estimate on the mock path). Surfaced in the
             # cycle log so quota spend is visible at a glance.
@@ -1265,7 +1315,7 @@ class Runner:
             narration = report_mod.build_narration(report, self._llm)
             audio = self._tts.synthesize(narration) if self._tts is not None else None
             if audio:
-                target_space = (self.config.GOOGLE_VOICE_SPACE or "").strip() or None
+                target_space = (self.config.GOOGLE_CHAT_REPORT_SPACE or "").strip() or None
                 # A separate space is posted top-level; the fallback threads into
                 # the issue's own space so the voice still reaches the discussion.
                 thread_id = None if target_space else issue.thread_id
@@ -1363,60 +1413,21 @@ class Runner:
         incident-duty assistant: it reads the clarified report aloud on pickup and
         answers strictly from its facts.
 
-        Detached + fire-and-forget. The call owns a dedicated caller browser +
-        virtual audio devices and runs for minutes, so it is launched in its OWN
-        session (`start_new_session=True`) and never waited on / drained — it must
-        outlive even a `--once` poller, and it is inherently off the resolve
-        critical path (`Popen` returns at once).
-
-        Serialized within this process: that call hardware hosts ONE call at a
-        time, so if a prior call is still in flight this resolve's call is SKIPPED
-        (logged), never raced. The incident facts cross to the subprocess as a JSON
-        file (the `--incident-file` contract); the child's stdout/stderr are
-        redirected to a per-issue log. Any failure to even launch is logged and
-        swallowed — the resolution already lives in the thread confirmation / disk
-        / GitHub, so the call is an extra channel, not the system of record."""
+        Renders the report into the `--incident-file` JSON contract, records the
+        issue id so a later "call me back" in the report DM can re-relay it, then
+        hands off to `_spawn_call` (the shared, detached, serialized launcher).
+        Self-gating: with no Gemini key it returns immediately, writing no incident
+        file and spawning nothing (the offline/test path and any non-call
+        deployment). Best-effort — the resolution already lives in the thread
+        confirmation / disk / GitHub, so a failed render/launch is logged and
+        swallowed, never crashing the resolve."""
         import json
         import os
-        import subprocess
         import sys
 
-        # Self-gating: CALL_ON_RESOLVE defaults ON, but the call cannot work without
-        # a Gemini key, so skip silently (this is the offline/test path and any
-        # non-call deployment) rather than spawning a process that just exits 2.
+        # Self-gating: skip before doing any work (no incident file, no spawn) when
+        # there is no Gemini key — the call subprocess could not work without one.
         if not (self.config.GEMINI_API_KEY or "").strip():
-            return
-
-        # Serialize: one call at a time (shared caller browser + audio devices).
-        prior = self._active_call_proc
-        if prior is not None and prior.poll() is None:
-            print(
-                f"[issue-spotter] a voice call is already in progress (pid "
-                f"{prior.pid}); skipping the call for issue {issue.id}",
-                file=sys.stderr,
-            )
-            return
-
-        script = (self.config.CALL_SCRIPT or "").strip()
-        if not script or not os.path.isfile(script):
-            print(
-                f"[issue-spotter] CALL_ON_RESOLVE is on but the call script "
-                f"{script!r} was not found (cwd={os.getcwd()}); skipping the call "
-                f"for issue {issue.id}",
-                file=sys.stderr,
-            )
-            return
-
-        # No hardcoded destination: the call rings the configured voice DM
-        # (GOOGLE_VOICE_SPACE). If it's not set, skip the call with a clear log rather
-        # than spawn one that has nowhere to ring.
-        dest = (self.config.GOOGLE_VOICE_SPACE or "").strip()
-        if not dest:
-            print(
-                f"[issue-spotter] CALL_ON_RESOLVE is on but GOOGLE_VOICE_SPACE is not "
-                f"set (no call destination); skipping the call for issue {issue.id}",
-                file=sys.stderr,
-            )
             return
 
         try:
@@ -1425,13 +1436,114 @@ class Runner:
             )
             log_dir = (self.config.CALL_LOG_DIR or "logs").strip() or "logs"
             os.makedirs(log_dir, exist_ok=True)
-            safe_id = "".join(
-                ch if (ch.isalnum() or ch in "-_") else "-" for ch in (issue.id or "")
-            ).strip("-") or "issue"
-            incident_path = os.path.join(log_dir, f"incident-{safe_id}.json")
+            incident_path = os.path.join(
+                log_dir, f"incident-{_safe_call_id(issue.id)}.json"
+            )
             with open(incident_path, "w", encoding="utf-8") as fh:
                 json.dump(incident, fh, ensure_ascii=False, indent=2)
+        except Exception as exc:  # noqa: BLE001 — best-effort; never crash the resolve
+            print(
+                f"voice call launch failed for issue {issue.id}: {exc}",
+                file=sys.stderr,
+            )
+            return
 
+        # Remember the incident so a "call me back" in the report DM can re-relay
+        # THIS issue from the same JSON file (see `_place_call_back`).
+        self.store.set_last_relayed_issue_id(issue.id)
+        self._spawn_call(
+            incident_path=incident_path,
+            issue_id=issue.id,
+            label=f"issue {issue.id}",
+        )
+
+    def _place_call_back(self) -> bool:
+        """Re-relay the most recently relayed incident over a fresh outbound call —
+        the report-DM assistant's "call me back" action. Reuses the incident JSON
+        the resolve-time call already wrote (`logs/incident-<id>.json`), so the AI
+        relays the same clarified facts. Returns True iff a call was launched
+        (False when gated off, nothing has been relayed yet, the incident file is
+        gone, or a call is already in flight). Shares `_spawn_call`'s one-call
+        serialization with the resolve-time call."""
+        import os
+        import sys
+
+        if not (self.config.GEMINI_API_KEY or "").strip():
+            return False
+        issue_id = self.store.get_last_relayed_issue_id()
+        if not issue_id:
+            print(
+                "[issue-spotter] call-back requested but no incident has been "
+                "relayed yet; nothing to call back about",
+                file=sys.stderr,
+            )
+            return False
+        log_dir = (self.config.CALL_LOG_DIR or "logs").strip() or "logs"
+        incident_path = os.path.join(
+            log_dir, f"incident-{_safe_call_id(issue_id)}.json"
+        )
+        return self._spawn_call(
+            incident_path=incident_path,
+            issue_id=issue_id,
+            label=f"issue {issue_id}",
+        )
+
+    def _spawn_call(self, *, incident_path: str, issue_id: str, label: str) -> bool:
+        """Launch the detached `gemini_call.py` to relay `incident_path` to the
+        report DM (GOOGLE_CHAT_REPORT_SPACE). The ONE place a call is spawned, so
+        the resolve-time call and the assistant's call-back share the same gate,
+        the same single-call serialization (`_active_call_proc` — the caller
+        browser + virtual audio host one call at a time), the same destination, and
+        the same detached fire-and-forget launch (`start_new_session=True`, never
+        waited on / drained — it must outlive even a `--once` poller and is
+        inherently off the critical path). Returns True iff a process started;
+        every skip/failure is logged and swallowed (best-effort)."""
+        import os
+        import subprocess
+        import sys
+
+        if not (self.config.GEMINI_API_KEY or "").strip():
+            return False
+
+        # Serialize: one call at a time (shared caller browser + audio devices).
+        prior = self._active_call_proc
+        if prior is not None and prior.poll() is None:
+            print(
+                f"[issue-spotter] a voice call is already in progress (pid "
+                f"{prior.pid}); skipping the call for {label}",
+                file=sys.stderr,
+            )
+            return False
+
+        script = (self.config.CALL_SCRIPT or "").strip()
+        if not script or not os.path.isfile(script):
+            print(
+                f"[issue-spotter] the call script {script!r} was not found "
+                f"(cwd={os.getcwd()}); skipping the call for {label}",
+                file=sys.stderr,
+            )
+            return False
+
+        # No hardcoded destination: ring the configured report DM. If unset, skip
+        # with a clear log rather than spawn one that has nowhere to ring.
+        dest = (self.config.GOOGLE_CHAT_REPORT_SPACE or "").strip()
+        if not dest:
+            print(
+                f"[issue-spotter] GOOGLE_CHAT_REPORT_SPACE is not set (no call "
+                f"destination); skipping the call for {label}",
+                file=sys.stderr,
+            )
+            return False
+
+        if not os.path.isfile(incident_path):
+            print(
+                f"[issue-spotter] incident file {incident_path!r} is missing; "
+                f"skipping the call for {label}",
+                file=sys.stderr,
+            )
+            return False
+
+        try:
             # Absolute paths so the detached child resolves them regardless of cwd.
             argv = [
                 sys.executable, "-u", os.path.abspath(script),
@@ -1445,7 +1557,11 @@ class Runner:
                 argv += ["--callee", callee]
             argv += ["--url", dest]
 
-            log_path = os.path.join(log_dir, f"call-issue-{safe_id}.log")
+            log_dir = (self.config.CALL_LOG_DIR or "logs").strip() or "logs"
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(
+                log_dir, f"call-issue-{_safe_call_id(issue_id)}.log"
+            )
             log_fh = open(log_path, "ab")
             try:
                 proc = subprocess.Popen(
@@ -1459,19 +1575,24 @@ class Runner:
                 # The child dup'd the fd at fork; close our copy to avoid a leak.
                 log_fh.close()
             self._active_call_proc = proc
+            lang = (
+                "Vietnamese"
+                if (self.config.CALL_LANGUAGE or "en").lower().startswith("vi")
+                else "English"
+            )
             print(
-                f"[issue-spotter] placing voice call for issue {issue.id} "
-                f"(pid {proc.pid}) — relaying to "
-                f"{self.config.CALL_CALLEE or 'Duc'} in "
-                f"{'Vietnamese' if (self.config.CALL_LANGUAGE or 'en').lower().startswith('vi') else 'English'}; "
+                f"[issue-spotter] placing voice call for {label} (pid {proc.pid}) "
+                f"— relaying to {self.config.CALL_CALLEE or 'Duc'} in {lang}; "
                 f"call log → {log_path}",
                 file=sys.stderr,
             )
-        except Exception as exc:  # noqa: BLE001 — best-effort; never crash the resolve
+            return True
+        except Exception as exc:  # noqa: BLE001 — best-effort; never crash the caller
             print(
-                f"voice call launch failed for issue {issue.id}: {exc}",
+                f"voice call launch failed for {label}: {exc}",
                 file=sys.stderr,
             )
+            return False
 
     @staticmethod
     def _report_ref(report, disk_written: bool) -> str:
@@ -1744,7 +1865,19 @@ def build_runner(config: Config) -> Runner:
     retriever = build_retriever(config.KB_DIR, history=None, dense=config.RAG_DENSE)
     analyzer = Analyzer(llm, retriever, config.RAG_TOP_K)
 
+    # Report-DM assistant (REPORT_ASSISTANT): a SECOND chat client bound to
+    # GOOGLE_CHAT_REPORT_SPACE with the SAME bot token/id, so the poller can read +
+    # reply in the report DM alongside the monitored GOOGLE_SPACE. Self-gating:
+    # only wired when the flag is on AND a report space is configured (else the
+    # assistant would have nowhere to listen). Same single process/lock/store.
+    report_chat = None
+    if config.REPORT_ASSISTANT and (config.GOOGLE_CHAT_REPORT_SPACE or "").strip():
+        report_chat = GoogleChatClient(
+            config, user_id=bot_id, space=config.GOOGLE_CHAT_REPORT_SPACE
+        )
+
     return Runner(
         chat, analyzer, store, config,
         reports_dir=config.REPORTS_DIR, llm=llm, tts=tts, github=github,
+        report_chat=report_chat,
     )

@@ -30,7 +30,7 @@
 # BY THE BOT from the facts it clarified live in the QA loop — the full pipeline.
 #
 # Usage:
-#   ./demo_live_apigw.sh                  # English; callee name auto-read from the GOOGLE_VOICE_SPACE DM
+#   ./demo_live_apigw.sh                  # English; callee name auto-read from the GOOGLE_CHAT_REPORT_SPACE DM
 #   ./demo_live_apigw.sh --language vi    # the AI relays in Vietnamese (vi/ru/uk also ok)
 #   ./demo_live_apigw.sh --callee Bob     # force the callee name (else it's auto-resolved)
 #   ./demo_live_apigw.sh --timeout 900    # wait up to 15 min for the QA to resolve
@@ -42,7 +42,7 @@
 #   * .env with a live GEMINI_API_KEY — it powers BOTH the LLM transport
 #     (LLM_PROVIDER=gemini) AND the outbound call gate, so it is a HARD requirement
 #     here (the call is the whole point of this demo); GOOGLE_SPACE +
-#     GOOGLE_VOICE_SPACE (the DM the call rings), and the OAuth tokens under
+#     GOOGLE_CHAT_REPORT_SPACE (the DM the call rings), and the OAuth tokens under
 #     secrets/ (token_bot.json + a staff token);
 #   * the dedicated caller Brave profile (.browser-profile-caller) signed in as
 #     the bot account (first run, gemini_call.py prints the one-time sign-in cmd);
@@ -100,7 +100,7 @@ envget() { sed -nE "s/^$1=([^#]*).*/\1/p" .env | head -1 | sed -E 's/[[:space:]]
 # --- resolve config from .env ----------------------------------------------
 [ -f .env ] || die ".env not found (run from the repo root)."
 GOOGLE_SPACE="$(envget GOOGLE_SPACE)"
-VOICE_SPACE="$(envget GOOGLE_VOICE_SPACE)"
+VOICE_SPACE="$(envget GOOGLE_CHAT_REPORT_SPACE)"
 REPORT_DELIVERY="$(envget REPORT_DELIVERY)"
 GITHUB_REPO="$(envget GITHUB_REPO)"
 GITHUB_ISSUES="$(envget GITHUB_ISSUES)"
@@ -126,9 +126,9 @@ ok "persona '$PERSONA' present; reporting as $STAFF_TOKEN"
 
 # The outbound Gemini Live call rides the resolve regardless of REPORT_DELIVERY
 # (the legacy TTS voice-DM report is retired), so it is no longer required to be
-# voice|both. GOOGLE_VOICE_SPACE is the DM the call rings — required here.
+# voice|both. GOOGLE_CHAT_REPORT_SPACE is the DM the call rings — required here.
 [ -n "$GOOGLE_SPACE" ] || die "GOOGLE_SPACE is empty in .env."
-[ -n "$VOICE_SPACE" ]  || die "GOOGLE_VOICE_SPACE is empty — the outbound call has nowhere to ring."
+[ -n "$VOICE_SPACE" ]  || die "GOOGLE_CHAT_REPORT_SPACE is empty — the outbound call has nowhere to ring."
 ok "chat space: $GOOGLE_SPACE   call DM: $VOICE_SPACE   delivery: $REPORT_DELIVERY"
 
 # The CALL gate: GEMINI_API_KEY. Without it the bot self-gates the call to a

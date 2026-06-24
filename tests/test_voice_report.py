@@ -114,7 +114,7 @@ class _Harness:
         self.chat = FakeChatClient(me="users/bot", space="spaces/MAIN")
         self.store = IssueStore(os.path.join(tmp, "issues.json"))
         self.store.load()
-        cfg = _cfg(tmp, REPORT_DELIVERY=delivery, GOOGLE_VOICE_SPACE=voice_space)
+        cfg = _cfg(tmp, REPORT_DELIVERY=delivery, GOOGLE_CHAT_REPORT_SPACE=voice_space)
         analyzer = Analyzer(MockLLM(), None, 5)
         # Run background voice delivery synchronously so assertions can inspect
         # the voice post / disk fallback right after `resolve()`.
@@ -262,7 +262,7 @@ class BackgroundVoiceTest(unittest.TestCase):
         chat = FakeChatClient(me="users/bot", space="spaces/MAIN")
         store = IssueStore(os.path.join(tmp, "issues.json"))
         store.load()
-        cfg = _cfg(tmp, REPORT_DELIVERY=delivery, GOOGLE_VOICE_SPACE=voice_space)
+        cfg = _cfg(tmp, REPORT_DELIVERY=delivery, GOOGLE_CHAT_REPORT_SPACE=voice_space)
         runner = Runner(chat, Analyzer(MockLLM(), None, 5), store, cfg,
                         reports_dir=tmp, llm=MockLLM(), tts=MockTTS(),
                         voice_executor=ex)
@@ -300,7 +300,7 @@ class BackgroundVoiceTest(unittest.TestCase):
             chat = FakeChatClient(me="users/bot", space="spaces/MAIN")
             store = IssueStore(os.path.join(tmp, "issues.json"))
             store.load()
-            cfg = _cfg(tmp, REPORT_DELIVERY="voice", GOOGLE_VOICE_SPACE="spaces/REPORTS")
+            cfg = _cfg(tmp, REPORT_DELIVERY="voice", GOOGLE_CHAT_REPORT_SPACE="spaces/REPORTS")
             runner = Runner(chat, Analyzer(MockLLM(), None, 5), store, cfg,
                             reports_dir=tmp, llm=MockLLM(), tts=_BoomTTS(),
                             voice_executor=ex)

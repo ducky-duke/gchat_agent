@@ -104,7 +104,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   Config: `CALL_ON_RESOLVE`, `GEMINI_API_KEY` (the gate; distinct from
   `OPENROUTER_API_KEY`), `CALL_SCRIPT`, `CALL_CALLEE`, `CALL_LANGUAGE`(en|vi|ru|uk),
   `CALL_OWNER`, `CALL_LOG_DIR`. **Destination — NO hardcode**: the call rings
-  `GOOGLE_VOICE_SPACE`; if it's blank the runner SKIPS the call with a clear log (and
+  `GOOGLE_CHAT_REPORT_SPACE`; if it's blank the runner SKIPS the call with a clear log (and
   `gemini_call.py --url`/`ai_call.py` ABORT with an error) — it never silently rings
   some built-in default DM. `--url` accepts a full URL, `spaces/<id>`, `chat/<id>`, or a
   bare `<id>` and overrides the config destination. **Callee auto-resolution**:
@@ -117,6 +117,57 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   renderer) — demo-machine only, never headless/CI. The call side reads the JSON via
   `gemini_call.build_incident_persona_from_file`. Tests: `tests/test_call_on_resolve.py`
   (`subprocess.Popen` patched; payload + gate + serialize + never-crash contracts).
+- **Report-DM assistant (`REPORT_ASSISTANT`, default OFF)**: makes
+  `GOOGLE_CHAT_REPORT_SPACE` two-way. The space is the channel where the AI REPORTS
+  incidents to a human (reports land there, the resolve call rings there); with this
+  on, the human can also CHAT with the AI there — ask about the incidents/reports the
+  bot has filed, and request a call-back. **Folded into the SAME poller process**:
+  `run_cycle` calls `agent/report_assistant.py` `ReportAssistant.step(own_id)` once
+  per cycle, sharing the one `IssueStore` + single-runner lock (no concurrent-write
+  race), but using a SECOND `GoogleChatClient` bound to the report DM (built in
+  `build_runner` via the new `GoogleChatClient(space=…)` override) — so report-DM
+  traffic NEVER enters issue detection (which reads `GOOGLE_SPACE`). The assistant
+  keeps its OWN poll cursor (`AgentState.report_cursor_*`); first run pins to *now*
+  (no backfill — old reports aren't replayed as chat). Per step: (1) **missed-call
+  heads-up** — a message with a `meetSpaceLinkData.huddleStatus=MISSED` annotation
+  (the bot's own unanswered call) triggers ONE proactive "want me to call back?"
+  offer when `REPORT_MISSED_CALL_OFFER` is on (one-shot per call); (2) **call-back** —
+  a message matching a deterministic multilingual keyword set ("call me", "gọi lại",
+  …; `looks_like_callback_request`, so the critical action never depends on LLM
+  phrasing) re-relays the most recent incident via `runner._place_call_back`, which
+  reuses the resolve-time `logs/incident-<id>.json` and shares the ONE-call
+  serialization (`_active_call_proc`/`_spawn_call`) with the resolve call; (3)
+  **chat** — any other human message gets a concise `llm.chat` reply grounded in the
+  tracked issues + their on-disk reports (`prompts.report_assistant_system_prompt` +
+  `render_report_context`, report content framed UNTRUSTED). The resolve-time call
+  records `last_relayed_issue_id` so a later call-back knows which incident. The call
+  spawn was refactored: `runner._maybe_place_call` (resolve) and `_place_call_back`
+  (assistant) both go through the shared `_spawn_call`. Best-effort throughout — the
+  assistant step is wrapped so a failure never fails the issue-loop cycle. Tests:
+  `tests/test_report_assistant.py` (hermetic — FakeChatClient report DM + MockLLM +
+  patched call-back). The report channel is `GOOGLE_CHAT_REPORT_SPACE` (read by
+  `config.load_config` + the `call/` `dm_resolve.env_value` lookup). The
+  audio-"voice" machinery (`post_voice`, `REPORT_DELIVERY=voice`, TTS) is unrelated
+  and unchanged.
+- **Standalone apigw chat (`./chat_apigw.sh` → `scripts/apigw_chat.py`)**: a
+  manually-launched, self-contained sibling of `./call_apigw.sh` — chat about ONE
+  scenario incident (default `apigw`, `data/scenarios.json`) in the report DM and
+  ask it to call you by texting. It's the conversational front-end to the call:
+  instead of a one-shot ring that hangs when you miss it, you keep a chat open and
+  re-trigger the call with "call me" / "gọi lại". Core is `agent/incident_chat.py`
+  `IncidentChatAssistant` — the report-DM assistant's logic minus the IssueStore: it
+  answers from a FIXED incident brief (`prompts.render_incident_brief` from the
+  persona's facts) with an in-memory cursor, reuses `looks_like_callback_request` /
+  `huddle_status` from `report_assistant`, and on a call-back request invokes a
+  caller-supplied `call_back` that spawns `./call_apigw.sh` detached + serialized
+  (gated on `GEMINI_API_KEY`). The chat itself uses the configured LLM (no Gemini key
+  needed). Once a call is actually placed the incident is marked REPORTED (in-memory
+  `_reported`): the assistant flips to a "handled/closed — nothing left to report"
+  posture (a trusted status directive PREPENDED ahead of the UNTRUSTED brief) but
+  still answers about it from the brief as history; a later `huddleStatus=MISSED`
+  re-opens it so the offer/re-ring path stays consistent. ⚠️ Don't run this AND the
+  poller's `REPORT_ASSISTANT` on the same DM — both would answer every message.
+  Tests: `tests/test_incident_chat.py` (hermetic).
 - **Meet REST API links (`MEET_LINKS`)**: the `meet/` subpackage mirrors `chat/`
   and `github/` — a `MeetClient` Protocol + stdlib-`urllib` `MeetRestClient.
   create_space` (`POST /v2/spaces`, returning a `MeetSpace` with the `meetingUri`
@@ -187,7 +238,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   person ("Tran Duc") for both posts and bot replies.
 - **Voice reports** (`REPORT_DELIVERY=voice|both`): a resolved issue is narrated to a concise
   spoken script (`report.build_narration`) → TTS (`llm/tts.py`, OpenRouter `audio.speech`, default
-  `x-ai/grok-voice-tts-1.0`) → posted as an in-memory MP3 attachment to `GOOGLE_VOICE_SPACE` (a
+  `x-ai/grok-voice-tts-1.0`) → posted as an in-memory MP3 attachment to `GOOGLE_CHAT_REPORT_SPACE` (a
   separate space/DM; empty ⇒ in the issue thread) via `chat.post_voice` (`media.upload` multipart +
   `attachment` create, both on the bot's `chat.messages` user-OAuth scope — no service account).
   Best-effort: any failure falls back to the on-disk report. Demo offline: `demo_local.py --voice`
@@ -351,8 +402,14 @@ A batch of low-risk hardening ported from a review of the `goclaw/` Go platform
   blends the reporter's latest reply into the RAG query.
 
 ## Tooling / conventions
-- Python: `igaming` conda env (3.14). **`ty` is NOT installed here** → syntax-check with
-  `python -m py_compile <file>`; tests via stdlib `unittest`.
+- Python: `igaming` conda env (3.14). **A global PostToolUse hook runs `ty check`
+  (via `uvx ty@latest`) on every file you edit and BLOCKS on any type error** — so
+  edited files must be ty-clean (use `# ty: ignore[<rule>]`, e.g.
+  `invalid-argument-type`, for intentional violations — NOT mypy's `# type: ignore`).
+  `python -m py_compile <file>` is still a fast local syntax check; tests via stdlib
+  `unittest` (run them in the `igaming` env: `PYTHONPATH=src conda run
+  --no-capture-output -n igaming python -m unittest discover -s tests -t . -p
+  "test_*.py"`).
 - Pure stdlib everywhere except the **lazy-imported** `openai` (core LLM transport) and optional
   `langfuse`/embeddings extras. The Google Chat + OAuth path is stdlib `urllib` (ported from `smoke/`).
 - Secrets are gitignored: `client_secret*.json`, `*.apps.googleusercontent.com.json`, `smoke/.token`,

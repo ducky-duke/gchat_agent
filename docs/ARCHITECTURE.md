@@ -213,7 +213,7 @@ as an MP3 attachment via `chat.post_voice(...)`. The audio is built **in memory*
 never touches disk. Two user-OAuth REST steps deliver it: `media.upload` (the
 `chat.messages` scope covers it) returns an `attachmentDataRef`, then
 `spaces.messages.create` references it in the message's `attachment`. It targets
-`GOOGLE_VOICE_SPACE` (a separate space / DM with another account) or, if unset,
+`GOOGLE_CHAT_REPORT_SPACE` (a separate space / DM with another account) or, if unset,
 threads into the issue's own space. Voice is **best-effort**: any failure (or no TTS
 configured) falls back to the on-disk report so a resolution is never lost.
 

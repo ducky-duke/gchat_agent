@@ -233,7 +233,7 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--url", default=None,
                     help="DM to call into (REQUIRED — no hardcoded default). Accepts a "
                          "full Chat URL, 'spaces/<id>', 'chat/<id>', or a bare '<id>'. "
-                         "If omitted, falls back to GOOGLE_VOICE_SPACE in .env; if that "
+                         "If omitted, falls back to GOOGLE_CHAT_REPORT_SPACE in .env; if that "
                          "is unset the call ABORTS with an error. Whatever resolves is "
                          "also where the callee's name is read from when --callee is "
                          "omitted.")
@@ -303,15 +303,15 @@ def main(argv: "list[str] | None" = None) -> int:
         _log("  set GEMINI_API_KEY in .env or the environment, then re-run.")
         return 2
 
-    # Resolve the destination: --url, else GOOGLE_VOICE_SPACE from .env. No hardcoded
+    # Resolve the destination: --url, else GOOGLE_CHAT_REPORT_SPACE from .env. No hardcoded
     # fallback — if neither is set we abort with a clear error rather than silently
     # ringing some default DM. Accepts a full Chat URL, "spaces/<id>", "chat/<id>", or
     # a bare "<id>" — all reduce to the standalone DM deep link we ring AND scrape the
     # callee's name from.
-    raw_url = a.url or dm_resolve.env_value(_REPO_ROOT, "GOOGLE_VOICE_SPACE")
+    raw_url = a.url or dm_resolve.env_value(_REPO_ROOT, "GOOGLE_CHAT_REPORT_SPACE")
     if not raw_url:
         _log("ERROR: no call destination. Pass --url (a full Chat URL, 'spaces/<id>', "
-             "'chat/<id>', or a bare '<id>'), or set GOOGLE_VOICE_SPACE in .env.")
+             "'chat/<id>', or a bare '<id>'), or set GOOGLE_CHAT_REPORT_SPACE in .env.")
         return 2
     url = dm_resolve.normalize_dm_url(raw_url)
 

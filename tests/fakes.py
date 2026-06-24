@@ -188,10 +188,13 @@ class FakeChatClient:
         text: str,
         thread_id: str | None = None,
         sender_type: SenderType = SenderType.HUMAN,
+        annotations: "list[dict] | None" = None,
     ) -> Message:
         """Drop in a message authored by an arbitrary `sender` (e.g. a staff
         `users/<id>`), in `thread_id` or a fresh thread. Deterministic id +
-        create_time, appended in order. Returns the created `Message`."""
+        create_time, appended in order. `annotations` carries raw Chat annotations
+        (e.g. a `meetSpaceLinkData`/`huddleStatus` block, for the report-DM
+        assistant's missed-call detection). Returns the created `Message`."""
         seq = self._next_seq()
         thread = thread_id or self._new_thread_id()
         message = Message(
@@ -202,6 +205,7 @@ class FakeChatClient:
             sender_type=sender_type,
             text=text,
             create_time=self._create_time(seq),
+            annotations=list(annotations or []),
         )
         self.messages.append(message)
         return message
@@ -213,9 +217,13 @@ class FakeChatClient:
         text: str,
         thread_id: str | None = None,
         sender_type: SenderType = SenderType.HUMAN,
+        annotations: "list[dict] | None" = None,
     ) -> Message:
         """Alias for `inject` (seed a message from an arbitrary sender)."""
-        return self.inject(sender, text, thread_id=thread_id, sender_type=sender_type)
+        return self.inject(
+            sender, text, thread_id=thread_id, sender_type=sender_type,
+            annotations=annotations,
+        )
 
 
 class StaffChatView:

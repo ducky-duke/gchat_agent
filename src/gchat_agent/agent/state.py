@@ -361,6 +361,50 @@ class IssueStore:
             deduped = deduped[-_MAX_SEEN_IDS:]
         self.state.seen_message_ids = deduped
 
+    # --- report-DM assistant cursor + call bookkeeping (REPORT_ASSISTANT) ----
+    def get_report_cursor(self) -> tuple[str | None, list[str]]:
+        """The report-DM poll cursor: ``(report_cursor_message_name,
+        report_seen_message_ids)`` — the assistant's own cursor over
+        GOOGLE_CHAT_REPORT_SPACE, independent of the issue cursor (which tracks
+        GOOGLE_SPACE)."""
+        return self.state.report_cursor_message_name, list(
+            self.state.report_seen_message_ids
+        )
+
+    def set_report_cursor(self, name: str | None, seen_ids: list[str]) -> None:
+        """Advance the report-DM poll cursor (bounded seen-id set, like the issue
+        cursor)."""
+        self.state.report_cursor_message_name = name
+        deduped = _merge_unique([], seen_ids)
+        if len(deduped) > _MAX_SEEN_IDS:
+            deduped = deduped[-_MAX_SEEN_IDS:]
+        self.state.report_seen_message_ids = deduped
+
+    def get_last_relayed_issue_id(self) -> str | None:
+        """The issue id of the most recent outbound call the bot placed, so a
+        later "call me back" can re-relay that incident. `None` if none yet."""
+        return self.state.last_relayed_issue_id
+
+    def set_last_relayed_issue_id(self, issue_id: str | None) -> None:
+        """Record the issue id of the most recent outbound call (for call-back)."""
+        self.state.last_relayed_issue_id = issue_id or None
+
+    def has_offered_missed_call(self, message_id: str) -> bool:
+        """Whether the assistant has already posted its one proactive call-back
+        offer for this MISSED-call message (one-shot guard)."""
+        return bool(message_id) and message_id in self.state.missed_calls_offered
+
+    def mark_missed_call_offered(self, message_id: str) -> None:
+        """Record that the proactive call-back offer for this MISSED-call message
+        has been posted, so it never fires twice. Bounded like the seen-id set."""
+        if not message_id or message_id in self.state.missed_calls_offered:
+            return
+        self.state.missed_calls_offered.append(message_id)
+        if len(self.state.missed_calls_offered) > _MAX_SEEN_IDS:
+            self.state.missed_calls_offered = self.state.missed_calls_offered[
+                -_MAX_SEEN_IDS:
+            ]
+
     # --- bot identity -------------------------------------------------------
     def get_bot_user_id(self) -> str | None:
         """The persisted bot `users/<id>`, learned from its first post and kept

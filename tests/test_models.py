@@ -53,7 +53,8 @@ class MessageRoundTripTest(unittest.TestCase):
         self.assertIsInstance(data["sender_type"], str)
         self.assertEqual(
             set(data),
-            {"id", "space", "thread_id", "sender", "sender_type", "text", "create_time"},
+            {"id", "space", "thread_id", "sender", "sender_type", "text",
+             "create_time", "annotations"},
         )
 
     def test_round_trip_preserves_all_fields(self) -> None:
@@ -386,6 +387,10 @@ class AgentStateRoundTripTest(unittest.TestCase):
                 "seen_message_ids",
                 "issues",
                 "tombstones",
+                "report_cursor_message_name",
+                "report_seen_message_ids",
+                "last_relayed_issue_id",
+                "missed_calls_offered",
             },
         )
         # Nested issue is a plain dict with stringified enums.
@@ -438,7 +443,7 @@ class IssueFingerprintTest(unittest.TestCase):
     def test_handles_none_inputs(self) -> None:
         # Callers normally pass non-empty anchors, but the helper must not crash
         # on None (treated as empty strings).
-        fp = issue_fingerprint(None, None, None)  # type: ignore[arg-type]
+        fp = issue_fingerprint(None, None, None)  # ty: ignore[invalid-argument-type]
         self.assertEqual(len(fp), 16)
         self.assertEqual(fp, issue_fingerprint("", "", ""))
 

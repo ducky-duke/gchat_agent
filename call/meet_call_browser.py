@@ -46,7 +46,7 @@ Run
   # 1) sign in once (headed), confirm the DM loads, find the button:
   python call/meet_call_browser.py --dry-run
 
-  # 2) place the real ringing call (default target = GOOGLE_VOICE_SPACE = the
+  # 2) place the real ringing call (default target = GOOGLE_CHAT_REPORT_SPACE = the
   #    bot↔Duc DM), ring for 90s:
   python call/meet_call_browser.py --duration 90
 

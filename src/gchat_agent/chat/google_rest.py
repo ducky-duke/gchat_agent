@@ -59,9 +59,13 @@ class GoogleChatClient:
         config: Config,
         token_file: str | None = None,
         user_id: str | None = None,
+        space: str | None = None,
     ) -> None:
         self.config = config
-        self.space = config.GOOGLE_SPACE
+        # `space` lets a second instance bind to a different space (e.g. the report
+        # DM, GOOGLE_CHAT_REPORT_SPACE) with the SAME bot token/id, so the poller can
+        # read/post there alongside the monitored GOOGLE_SPACE. Default: GOOGLE_SPACE.
+        self.space = space if space is not None else config.GOOGLE_SPACE
         self.client_json = config.GOOGLE_OAUTH_CLIENT
         self.token_file = token_file or config.GOOGLE_TOKEN_FILE
         self.quota_project = config.GOOGLE_QUOTA_PROJECT or None
@@ -226,6 +230,9 @@ class GoogleChatClient:
             sender_type=sender_type,
             text=raw.get("text", ""),
             create_time=raw.get("createTime", ""),
+            # Carry annotations through (e.g. a call's meetSpaceLinkData/huddleStatus)
+            # so the report-DM assistant can detect a MISSED outbound call.
+            annotations=list(raw.get("annotations", []) or []),
         )
 
     def _require_space(self) -> str:

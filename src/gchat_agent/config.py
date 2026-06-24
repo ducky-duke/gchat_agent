@@ -203,7 +203,7 @@ class Config:
     # How a resolved issue's report is delivered:
     #   "disk"  — write Markdown to REPORTS_DIR (default; the offline/test path).
     #   "voice" — synthesize a spoken summary (TTS) and post it as an audio
-    #             attachment to GOOGLE_VOICE_SPACE (falls back to disk if voice
+    #             attachment to GOOGLE_CHAT_REPORT_SPACE (falls back to disk if voice
     #             delivery is unavailable or fails, so a report is never lost).
     #   "both"  — write the Markdown AND post the voice attachment.
     REPORT_DELIVERY: str = "disk"  # disk | voice | both
@@ -225,10 +225,14 @@ class Config:
 
     # --- Google Chat (real demo only — user OAuth, §7) ---
     GOOGLE_SPACE: str = ""
-    # Where voice reports are delivered (a DM space with another account, or a
-    # dedicated "reports" space). The bot must be a member. Empty ⇒ fall back to
-    # the issue's own space, posting the voice into the issue thread.
-    GOOGLE_VOICE_SPACE: str = ""
+    # The human-facing REPORT channel — a separate space/DM (distinct from the
+    # monitored GOOGLE_SPACE) where the AI reports incidents TO a human: resolution
+    # reports land here, the outbound voice call on resolve rings here, and (with
+    # REPORT_ASSISTANT on) the human can chat with the AI here — ask about reports
+    # and request a call-back. The bot must be a member. Empty ⇒ fall back to the
+    # issue's own space (voice posts into the issue thread; the resolve call is
+    # skipped; the assistant is inert).
+    GOOGLE_CHAT_REPORT_SPACE: str = ""
     GOOGLE_OAUTH_CLIENT: str = "secrets/oauth_client.json"
     GOOGLE_TOKEN_FILE: str = "secrets/token_bot.json"
     GOOGLE_QUOTA_PROJECT: str = ""
@@ -265,6 +269,22 @@ class Config:
     # REST API base (override only for GitHub Enterprise).
     GITHUB_API_URL: str = "https://api.github.com"
 
+    # --- Report-DM assistant (two-way chat in GOOGLE_CHAT_REPORT_SPACE) ---
+    # When on, the poller ALSO services the report channel as a conversational
+    # assistant: it reads human messages in GOOGLE_CHAT_REPORT_SPACE and replies —
+    # answering questions about tracked incidents / their reports, and (on request)
+    # placing a call-back. Folded into the SAME poller process/cycle (one lock, one
+    # .state file), so there is no concurrent-write race on shared state. Self-gating:
+    # stays inert unless GOOGLE_CHAT_REPORT_SPACE is also set. Default off (the
+    # offline/test path and an issue-only deployment need no assistant).
+    REPORT_ASSISTANT: bool = False
+    # When the assistant sees a MISSED outbound call (the human didn't pick up — a
+    # `huddleStatus=MISSED` annotation on the bot's own call in the report DM), post
+    # ONE proactive heads-up offering to call back. Off ⇒ purely reactive (the
+    # assistant only calls back when explicitly asked). No effect when REPORT_ASSISTANT
+    # is off.
+    REPORT_MISSED_CALL_OFFER: bool = True
+
     # --- Outbound voice call on resolve (call/gemini_call.py) ---
     # When on, each resolved issue ALSO triggers an outbound voice call that RELAYS
     # the clarified incident to a human: the runner spawns call/gemini_call.py
@@ -292,7 +312,7 @@ class Config:
     CALL_SCRIPT: str = "call/gemini_call.py"
     # The callee's name the AI addresses on the call (who picks up the phone).
     # Blank (the default) ⇒ gemini_call.py reads the partner's display name straight
-    # off the call DM (GOOGLE_VOICE_SPACE), so no name need be configured. Set to override.
+    # off the call DM (GOOGLE_CHAT_REPORT_SPACE), so no name need be configured. Set to override.
     CALL_CALLEE: str = ""
     # Spoken + briefing language for the call: "en" (English) or "vi" (Vietnamese).
     CALL_LANGUAGE: str = "en"
@@ -336,6 +356,8 @@ _BOOL_KEYS: Final[frozenset[str]] = frozenset(
         "GITHUB_ISSUES",
         "MEET_LINKS",
         "CALL_ON_RESOLVE",
+        "REPORT_ASSISTANT",
+        "REPORT_MISSED_CALL_OFFER",
     }
 )
 _INT_KEYS: Final[frozenset[str]] = frozenset({

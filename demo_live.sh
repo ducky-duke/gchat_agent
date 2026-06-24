@@ -10,7 +10,7 @@
 #   3. on resolve the bot files a GitHub issue (resolution report + the collected
 #      thread transcript) into the PRIVATE repo (GITHUB_REPO, ducky-duke);
 #   4. spoken delivery is the Gemini Live call on resolve (CALL_ON_RESOLVE), which
-#      rings GOOGLE_VOICE_SPACE; the legacy TTS voice-DM report is retired;
+#      rings GOOGLE_CHAT_REPORT_SPACE; the legacy TTS voice-DM report is retired;
 #   5. CONTROL CASE — a second account ("noise" persona) drops benign small talk
 #      (lunch, last night's match) into the space at the same time. The bot must
 #      NOT open or file an issue for it. The demo proves this by reading the bot's
@@ -61,7 +61,7 @@
 #
 # Requirements (all already set up in this checkout):
 #   * .env with GITHUB_ISSUES=true, a live GEMINI_API_KEY (the LLM transport),
-#     GOOGLE_SPACE + GOOGLE_VOICE_SPACE, and the OAuth tokens under secrets/
+#     GOOGLE_SPACE + GOOGLE_CHAT_REPORT_SPACE, and the OAuth tokens under secrets/
 #     (token_bot.json + a staff token);
 #   * the `gh` CLI logged in to the GITHUB_ACCOUNT (ducky-duke) so the script can
 #     read the private repo to confirm the filed issue;
@@ -140,7 +140,7 @@ envget() { sed -nE "s/^$1=([^#]*).*/\1/p" .env | head -1 | sed -E 's/[[:space:]]
 GITHUB_REPO="$(envget GITHUB_REPO)"
 GITHUB_ACCOUNT="$(envget GITHUB_ACCOUNT)"; GITHUB_ACCOUNT="${GITHUB_ACCOUNT:-ducky-duke}"
 GOOGLE_SPACE="$(envget GOOGLE_SPACE)"
-VOICE_SPACE="$(envget GOOGLE_VOICE_SPACE)"
+VOICE_SPACE="$(envget GOOGLE_CHAT_REPORT_SPACE)"
 REPORT_DELIVERY="$(envget REPORT_DELIVERY)"
 GITHUB_ISSUES="$(envget GITHUB_ISSUES)"
 
@@ -244,7 +244,7 @@ fi
 # resolve), so REPORT_DELIVERY is no longer required to be voice|both — the GitHub
 # export is the server-side proof of this demo.
 [ -n "$GOOGLE_SPACE" ]  || die "GOOGLE_SPACE is empty in .env."
-[ -n "$VOICE_SPACE" ]   || warn "GOOGLE_VOICE_SPACE empty — the outbound call has nowhere to ring."
+[ -n "$VOICE_SPACE" ]   || warn "GOOGLE_CHAT_REPORT_SPACE empty — the outbound call has nowhere to ring."
 [ -n "$GITHUB_REPO" ]   || die "GITHUB_REPO is empty in .env."
 ok "chat space: $GOOGLE_SPACE   call DM: ${VOICE_SPACE:-<unset>}"
 ok "github repo: $GITHUB_REPO   delivery: $REPORT_DELIVERY"

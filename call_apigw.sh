@@ -23,9 +23,9 @@
 #   ./call_apigw.sh --url qtotjoAAAAE            # bare space id
 #   ./call_apigw.sh --url chat/qtotjoAAAAE --callee Bob   # override the resolved name
 #
-# There is NO hardcoded default DM. If you omit --url it falls back to GOOGLE_VOICE_SPACE
+# There is NO hardcoded default DM. If you omit --url it falls back to GOOGLE_CHAT_REPORT_SPACE
 # in .env; if that is unset the call ABORTS with an error (it never silently rings some
-# default). So `./call_apigw.sh` alone works ONLY if .env sets GOOGLE_VOICE_SPACE.
+# default). So `./call_apigw.sh` alone works ONLY if .env sets GOOGLE_CHAT_REPORT_SPACE.
 # Every extra flag is passed straight through to call/gemini_call.py
 # (--voice, --model, --no-greet, --quit-browser, --diag-pickup, ...).
 #

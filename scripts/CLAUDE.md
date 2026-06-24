@@ -14,6 +14,17 @@ driver, the OAuth mint, the offline demo, and the live-demo verifiers. Each scri
 ## Agent loop, staff, demos, verifiers
 - **`run_poller.py`** — the issue-spotter bot's polling loop. `--once` for a single cycle.
   Wrapped by `./start_bot.sh` (fresh-start default; `--continue` to resume).
+- **`apigw_chat.py`** — standalone two-way chat about ONE scenario incident (default
+  `apigw`) in the report DM (`GOOGLE_CHAT_REPORT_SPACE`), with a text "call me" /
+  "gọi lại" placing the real outbound call (spawns `../call_apigw.sh`, serialized,
+  gated on `GEMINI_API_KEY`). A placed call marks the incident reported/closed
+  (nothing left to report, still answers as history); a missed call re-opens it.
+  Wrapped by the repo-root **`./chat_apigw.sh`**
+  (`--persona`, `--language vi`, `--once` passthrough). Core logic is
+  `agent/incident_chat.py` `IncidentChatAssistant`; persona → brief helpers
+  (`_persona_brief`, `_reporter_name`, `_humanize`) live here. ⚠️ Don't run it
+  alongside the poller's `REPORT_ASSISTANT` on the same DM (double replies). Tests:
+  `tests/test_incident_chat.py`.
 - **`run_staff.py`** — run one LLM staff persona against the live space.
   `--persona ops|promo|apigw|noise|dupe|injection --token <tok.json>`. `apigw` = the
   API-gateway-timeout incident (`data/scenarios.json`, used by the live demo); `noise` =

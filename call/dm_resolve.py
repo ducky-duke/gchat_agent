@@ -80,7 +80,7 @@ def env_value(repo_root: str, *keys: str) -> "str | None":
     The .env parse mirrors the hard-won rule (see MEMORY.md / gemini_voice): split on
     the FIRST ``=``, strip a matching surrounding quote, and drop a trailing
     `` # comment`` only when the value is UNQUOTED. Used to source the call
-    destination from config (GOOGLE_VOICE_SPACE) instead of hardcoding it."""
+    destination from config (GOOGLE_CHAT_REPORT_SPACE) instead of hardcoding it."""
     for k in keys:
         v = os.environ.get(k)
         if v and v.strip():

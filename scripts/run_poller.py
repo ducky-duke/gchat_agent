@@ -40,6 +40,14 @@ def _banner(config) -> str:
         f"pinned ({bot_id})" if bot_id
         else "auto-detect via tokeninfo (set GOOGLE_BOT_USER_ID to pin/skip lookup)"
     )
+    report_space = config.GOOGLE_CHAT_REPORT_SPACE or "(unset)"
+    if config.REPORT_ASSISTANT and (config.GOOGLE_CHAT_REPORT_SPACE or "").strip():
+        offer = "on" if config.REPORT_MISSED_CALL_OFFER else "off"
+        assistant = f"on → {report_space} (two-way chat; missed-call offer {offer})"
+    elif config.REPORT_ASSISTANT:
+        assistant = "on but inert (GOOGLE_CHAT_REPORT_SPACE unset)"
+    else:
+        assistant = f"off (report channel {report_space}, one-way)"
     return (
         "gchat issue-spotter poller\n"
         f"  space:    {space}\n"
@@ -49,6 +57,7 @@ def _banner(config) -> str:
         f"  state:    {config.STATE_FILE}\n"
         f"  obs:      {obs}\n"
         f"  self:     {self_filter}\n"
+        f"  assistant:{assistant}\n"
         f"  poll:     every {config.POLL_INTERVAL_SECONDS}s"
     )
 

@@ -114,6 +114,10 @@ class Message:
     sender_type: SenderType
     text: str
     create_time: str  # RFC-3339
+    # Raw Chat message annotations (e.g. a `meetSpaceLinkData` block carrying a
+    # call's `huddleStatus`). Empty for ordinary text messages; populated by the
+    # live adapter so the report-DM assistant can spot a MISSED outbound call.
+    annotations: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -124,6 +128,7 @@ class Message:
             "sender_type": _enum_value(self.sender_type),
             "text": self.text,
             "create_time": self.create_time,
+            "annotations": [dict(a) for a in self.annotations],
         }
 
     @classmethod
@@ -136,6 +141,7 @@ class Message:
             sender_type=SenderType(data.get("sender_type", SenderType.HUMAN.value)),
             text=data.get("text", ""),
             create_time=data.get("create_time", ""),
+            annotations=list(data.get("annotations", []) or []),
         )
 
 
@@ -404,6 +410,18 @@ class AgentState:
     seen_message_ids: list[str] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     tombstones: list[str] = field(default_factory=list)
+    # --- report-DM assistant state (REPORT_ASSISTANT) ---
+    # A SEPARATE poll cursor for GOOGLE_CHAT_REPORT_SPACE so the assistant tracks the
+    # report DM independently of the issue-detection cursor above (which tracks
+    # GOOGLE_SPACE). Same shape: last processed message name + a bounded seen-id set.
+    report_cursor_message_name: str | None = None
+    report_seen_message_ids: list[str] = field(default_factory=list)
+    # The issue id of the most recent outbound call the bot placed, so a later
+    # "call me back" can re-relay that incident (its `logs/incident-<id>.json`).
+    last_relayed_issue_id: str | None = None
+    # Message ids of MISSED outbound calls the assistant has already offered to call
+    # back for, so the proactive heads-up fires exactly once per missed call.
+    missed_calls_offered: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -412,6 +430,10 @@ class AgentState:
             "seen_message_ids": list(self.seen_message_ids),
             "issues": [i.to_dict() for i in self.issues],
             "tombstones": list(self.tombstones),
+            "report_cursor_message_name": self.report_cursor_message_name,
+            "report_seen_message_ids": list(self.report_seen_message_ids),
+            "last_relayed_issue_id": self.last_relayed_issue_id,
+            "missed_calls_offered": list(self.missed_calls_offered),
         }
 
     @classmethod
@@ -422,4 +444,8 @@ class AgentState:
             seen_message_ids=list(data.get("seen_message_ids", [])),
             issues=[Issue.from_dict(i) for i in data.get("issues", [])],
             tombstones=list(data.get("tombstones", [])),
+            report_cursor_message_name=data.get("report_cursor_message_name"),
+            report_seen_message_ids=list(data.get("report_seen_message_ids", []) or []),
+            last_relayed_issue_id=data.get("last_relayed_issue_id"),
+            missed_calls_offered=list(data.get("missed_calls_offered", []) or []),
         )

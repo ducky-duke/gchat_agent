@@ -37,7 +37,7 @@ receive-only; see [`../docs/CLAUDE.md`](../docs/CLAUDE.md) `google_meet/`). They
 link or run a local voice loop.
 - **`demo_meet_call.py`** — the **issue bot** (`--token`, default `token_bot`) mints a REAL Meet
   link (Meet REST `spaces.create`) for the `apigw` incident and **DMs** the briefing + join link to
-  the human stakeholder. Target precedence: `--space` > bot↔recipient DM (`GOOGLE_VOICE_SPACE`) >
+  the human stakeholder. Target precedence: `--space` > bot↔recipient DM (`GOOGLE_CHAT_REPORT_SPACE`) >
   `GOOGLE_SPACE`. Flags `--persona`, `--token`, `--callee`, `--space`, `--dry-run`, `--message`.
   Token MUST carry the `…/auth/meetings.space.created` scope (re-run `../scripts/authorize.py` for
   an older token) AND the Meet REST API must be **enabled**
@@ -45,7 +45,7 @@ link or run a local voice loop.
 - **`make_call.py`** — the **minimal "make a phone call"** utility (stripped-down sibling of
   `demo_meet_call.py`, no incident text). Run AS THE BOT (`--token`, default `token_bot`) it mints a
   Meet link and DMs the callee "calling you" + the link. Default route bot → Duc in their DM
-  (`GOOGLE_VOICE_SPACE`). Flags `--to`, `--token`, `--space`, `--message`, `--dry-run`. Each run
+  (`GOOGLE_CHAT_REPORT_SPACE`). Flags `--to`, `--token`, `--space`, `--message`, `--dry-run`. Each run
   mints a fresh meeting (never deduped). Same prereqs as above.
 - **`demo_incident_call.py`** — a **Gemini Live API "phone call"**: the AI plays the on-call
   engineer from a `data/scenarios.json` persona (default `apigw` / INFRA-2207), opens with a spoken
@@ -99,7 +99,7 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   getUserMedia binds to ai_mic), then delegates ring+join+inject to `meet_call_browser.main` over
   CDP. **PROVEN + user-confirmed 2026-06-20** (callee heard the tone, no allow click, no move-dance).
   Flags `--audio FILE` (default test tone), `--duration`, `--at-join`, `--once`, `--url` (full URL /
-  `spaces|chat/<id>` / bare `<id>`; no hardcoded default — falls back to `GOOGLE_VOICE_SPACE`
+  `spaces|chat/<id>` / bare `<id>`; no hardcoded default — falls back to `GOOGLE_CHAT_REPORT_SPACE`
   in `.env`, else aborts; via `dm_resolve`), `--port`,
   `--profile`, `--login-wait`, `--quit-browser` (stop via /proc scan — never `pkill -f <profile>`,
   self-matches). First run needs the dedicated profile signed in as mikmikb26 (script prints the
@@ -155,7 +155,7 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
 - **`dm_resolve.py`** — **leaf helper**: source a DM destination (no hardcode) + read the partner's
   name off the rendered page. `normalize_dm_url` (full URL / `spaces/<id>` / `chat/<id>` / bare
   `<id>` → the standalone deep link; a full URL passes through), `env_value(repo_root, *keys)` (first
-  non-empty env/`.env` value — used so the destination comes from `GOOGLE_VOICE_SPACE`,
+  non-empty env/`.env` value — used so the destination comes from `GOOGLE_CHAT_REPORT_SPACE`,
   never a baked-in URL), `pick_callee_name` (the two scraped signals → a name; rejects generic UI
   labels + the signed-in `Google Account:` label), and `resolve_callee_name(port, url)` (CDP into the
   signed-in caller browser, poll the DM page; cleanest signal is the `role="main"` aria-label,
@@ -178,7 +178,7 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   for a REAL resolved issue instead of scenarios.json (`build_incident_persona_from_file`;
   `--persona` wins if both are passed). **Destination + callee auto-resolution** (`dm_resolve`):
   `--url` accepts a full Chat URL, `spaces/<id>`, `chat/<id>`, or a bare `<id>`. There is **NO
-  hardcoded default DM** — omit `--url` and it falls back to `GOOGLE_VOICE_SPACE` from `.env`
+  hardcoded default DM** — omit `--url` and it falls back to `GOOGLE_CHAT_REPORT_SPACE` from `.env`
   (`dm_resolve.env_value`); if that is unset the call **aborts with an error** (it never
   silently rings a built-in DM). `--callee` is OPTIONAL too — omit it and the AI reads the partner's
   display name straight off the resolved DM (an explicit `--callee` still wins). The name is a
@@ -199,6 +199,10 @@ Wayland-occlusion blocker are all in [`../docs/CALL_AUTOMATION.md`](../docs/CALL
   [--persona apigw --url chat/<id>]`, or the repo-root convenience launcher **`./call_apigw.sh`**
   (wraps `--persona apigw`, previews `--help`, preflights `GEMINI_API_KEY`, forwards extra flags —
   e.g. `./call_apigw.sh --language vi`). Keep the window VISIBLE; callee should use a headset (AEC).
+  A **chat front-end** to this call is the repo-root **`./chat_apigw.sh`**
+  (`scripts/apigw_chat.py`): chat about the apigw incident in the report DM and text
+  "call me" / "gọi lại" to spawn THIS launcher — so a missed call is re-triggered by a
+  message instead of leaving the process ringing. See root CLAUDE.md "Standalone apigw chat".
 - **`auto_answer.py`** — the unattended CALLEE: drives a 2nd Brave (separate
   `--remote-debugging-port`, `.browser-profile-callee`, signed in as Duc) over CDP, navigates to the
   DM, and on a ring clicks **answer** then turns mic+camera ON so media flows for the caller's

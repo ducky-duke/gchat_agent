@@ -149,7 +149,7 @@ as a **spoken audio note** posted to Google Chat. Set `REPORT_DELIVERY` in `.env
 | `voice` | Synthesize a concise spoken summary (TTS) and post it as an MP3 attachment. Falls back to disk if voice delivery is unavailable or fails, so a report is never lost. |
 | `both` | Write the Markdown **and** post the voice attachment. |
 
-The voice goes to `GOOGLE_VOICE_SPACE` — a separate space, or a DM with another
+The voice goes to `GOOGLE_CHAT_REPORT_SPACE` — a separate space, or a DM with another
 account (the bot must be a member); leave it empty to post the voice into the
 issue's own thread instead. TTS runs over OpenRouter's `audio.speech` endpoint
 (same key/transport as the LLM): `TTS_MODEL` (default `x-ai/grok-voice-tts-1.0`)

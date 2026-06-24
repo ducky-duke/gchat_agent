@@ -161,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         "--space",
         default="",
         help="Chat space override (e.g. spaces/AAAA...). Empty => the bot↔recipient "
-        "DM (GOOGLE_VOICE_SPACE), else GOOGLE_SPACE.",
+        "DM (GOOGLE_CHAT_REPORT_SPACE), else GOOGLE_SPACE.",
     )
     parser.add_argument(
         "--message",
@@ -257,15 +257,15 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- 5. post the briefing + link into Chat as the reporter -------------------
     # The bot invites the stakeholder PRIVATELY: prefer an explicit --space, then
-    # the bot↔recipient DM (GOOGLE_VOICE_SPACE — the same DM voice reports use),
+    # the bot↔recipient DM (GOOGLE_CHAT_REPORT_SPACE — the same DM voice reports use),
     # then the shared incident space as a last resort.
     target_space = (
-        args.space or cfg.GOOGLE_VOICE_SPACE or cfg.GOOGLE_SPACE or ""
+        args.space or cfg.GOOGLE_CHAT_REPORT_SPACE or cfg.GOOGLE_SPACE or ""
     ).strip()
     if not target_space:
         print(
             "ERROR: no Chat space to post to — pass --space spaces/<id> or set "
-            "GOOGLE_VOICE_SPACE / GOOGLE_SPACE in .env. (The Meet link was created: "
+            "GOOGLE_CHAT_REPORT_SPACE / GOOGLE_SPACE in .env. (The Meet link was created: "
             f"{space.meeting_uri})",
             file=sys.stderr,
         )

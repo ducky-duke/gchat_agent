@@ -186,7 +186,7 @@ class RunnerCallTest(unittest.TestCase):
         cfg_over.setdefault("GEMINI_API_KEY", "test-key")
         # A call also needs a destination (no hardcoded default) — give one so
         # spawn-expecting tests spawn; the no-destination test overrides it to "".
-        cfg_over.setdefault("GOOGLE_VOICE_SPACE", "chat/test-dm")
+        cfg_over.setdefault("GOOGLE_CHAT_REPORT_SPACE", "chat/test-dm")
         chat = FakeChatClient(me="users/bot", space="spaces/MAIN")
         store = IssueStore(os.path.join(tmp, "issues.json"))
         store.load()
@@ -209,7 +209,7 @@ class RunnerCallTest(unittest.TestCase):
             runner, chat, store = self._runner(
                 tmp, CALL_ON_RESOLVE=True, CALL_SCRIPT=script,
                 CALL_CALLEE="Bob", CALL_LANGUAGE="vi",
-                GOOGLE_VOICE_SPACE="https://chat.example/dm", CALL_OWNER="Dave",
+                GOOGLE_CHAT_REPORT_SPACE="https://chat.example/dm", CALL_OWNER="Dave",
             )
             issue = _issue()
             with contextlib.redirect_stderr(io.StringIO()):
@@ -247,7 +247,7 @@ class RunnerCallTest(unittest.TestCase):
             script = self._dummy_script(tmp)
             runner, _chat, _ = self._runner(
                 tmp, CALL_ON_RESOLVE=True, CALL_SCRIPT=script, CALL_CALLEE="",
-                GOOGLE_VOICE_SPACE="chat/qtotjoAAAAE",
+                GOOGLE_CHAT_REPORT_SPACE="chat/qtotjoAAAAE",
             )
             with contextlib.redirect_stderr(io.StringIO()):
                 runner._resolve(_issue(), _thread())
@@ -258,12 +258,12 @@ class RunnerCallTest(unittest.TestCase):
             self.assertEqual(argv[argv.index("--url") + 1], "chat/qtotjoAAAAE")
 
     def test_no_destination_skips_call(self) -> None:
-        # No GOOGLE_VOICE_SPACE ⇒ nowhere to ring ⇒ skip + log, never fall back to a
+        # No GOOGLE_CHAT_REPORT_SPACE ⇒ nowhere to ring ⇒ skip + log, never fall back to a
         # hardcoded default DM. Resolve still completes.
         with tempfile.TemporaryDirectory() as tmp, _patched_popen() as Popen:
             runner, _chat, _ = self._runner(
                 tmp, CALL_ON_RESOLVE=True, CALL_SCRIPT=self._dummy_script(tmp),
-                GOOGLE_VOICE_SPACE="",
+                GOOGLE_CHAT_REPORT_SPACE="",
             )
             issue = _issue()
             with contextlib.redirect_stderr(io.StringIO()):
