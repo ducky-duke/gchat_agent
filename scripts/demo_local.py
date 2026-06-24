@@ -8,9 +8,9 @@ the *real* :class:`~gchat_agent.agent.staff.StaffAgent` personas from
 the bot and each staff member (each posting under its own ``users/<id>``, exactly
 as the live demo gives every participant its own account in one Space).
 
-The LLM is whatever ``.env`` selects: ``LLM_PROVIDER=openrouter`` runs the live
-model (the point of this script — it exercises detect → clarify rounds → resolve
-→ Markdown report against a real model); ``LLM_PROVIDER=mock`` runs fully offline.
+The LLM is whatever ``.env`` selects: ``LLM_PROVIDER=gemini`` runs the live model
+(the point of this script — it exercises detect → clarify rounds → resolve →
+Markdown report against a real model); ``LLM_PROVIDER=mock`` runs fully offline.
 
     python scripts/demo_local.py                     # ops scenario, live LLM
     python scripts/demo_local.py --persona both      # ops + promo, two threads
@@ -106,15 +106,20 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     provider = config.LLM_PROVIDER
-    model = config.OPENROUTER_MODEL if provider == "openrouter" else "(mock)"
+    if provider == "gemini":
+        model = config.GEMINI_MODEL
+    elif provider == "openrouter":
+        model = config.OPENROUTER_MODEL
+    else:
+        model = "(mock)"
     print("=" * 72)
     print("gchat issue-spotter — LOCAL demo (in-memory Chat, no Google)")
     print(f"  provider : {provider}  model={model}")
     print(f"  KB/RAG   : dir={config.KB_DIR} (top_k={config.RAG_TOP_K}, dense={config.RAG_DENSE})")
     print(f"  persona  : {args.persona}   max_rounds={config.MAX_CLARIFY_ROUNDS}")
     print(f"  reports  : {reports_dir}/")
-    if provider != "openrouter":
-        print("  NOTE: not the live model — set LLM_PROVIDER=openrouter in .env for the live demo.")
+    if provider == "mock":
+        print("  NOTE: not the live model — set LLM_PROVIDER=gemini in .env for the live demo.")
     print("=" * 72)
 
     llm = build_llm(config)

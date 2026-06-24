@@ -9,8 +9,8 @@
 #      character (one fact per reply), and the bot RESOLVES the issue;
 #   3. on resolve the bot files a GitHub issue (resolution report + the collected
 #      thread transcript) into the PRIVATE repo (GITHUB_REPO, ducky-duke);
-#   4. the voice report (audio MP3 + spoken transcript) is delivered to the DM
-#      space (GOOGLE_VOICE_SPACE);
+#   4. spoken delivery is the Gemini Live call on resolve (CALL_ON_RESOLVE), which
+#      rings GOOGLE_VOICE_SPACE; the legacy TTS voice-DM report is retired;
 #   5. CONTROL CASE — a second account ("noise" persona) drops benign small talk
 #      (lunch, last night's match) into the space at the same time. The bot must
 #      NOT open or file an issue for it. The demo proves this by reading the bot's
@@ -45,8 +45,8 @@
 #
 # The script drives all live participants for you — it starts the poller (the
 # bot) and the staff personas as background processes, then WATCHES until a brand
-# new GitHub issue appears on the server (server-side proof) and the poller log
-# confirms the voice DM. It tears every process down cleanly on exit.
+# new GitHub issue appears on the server (server-side proof). It tears every
+# process down cleanly on exit.
 #
 # Usage:
 #   ./demo_live.sh                       # default: apigw persona + noise control
@@ -60,9 +60,9 @@
 #   ./demo_live.sh --token secrets/token_promo.json   # post as a specific account
 #
 # Requirements (all already set up in this checkout):
-#   * .env with GITHUB_ISSUES=true, REPORT_DELIVERY=voice|both, a live
-#     OPENROUTER_API_KEY, GOOGLE_SPACE + GOOGLE_VOICE_SPACE, and the OAuth tokens
-#     under secrets/ (token_bot.json + a staff token);
+#   * .env with GITHUB_ISSUES=true, a live GEMINI_API_KEY (the LLM transport),
+#     GOOGLE_SPACE + GOOGLE_VOICE_SPACE, and the OAuth tokens under secrets/
+#     (token_bot.json + a staff token);
 #   * the `gh` CLI logged in to the GITHUB_ACCOUNT (ducky-duke) so the script can
 #     read the private repo to confirm the filed issue;
 #   * `jq`.
@@ -240,11 +240,13 @@ if [ "$NOISE_ENABLED" -eq 1 ] || [ "$DUPE_ENABLED" -eq 1 ] || [ "$INJECTION_ENAB
 fi
 
 [ "$GITHUB_ISSUES" = "true" ] || die "GITHUB_ISSUES is not 'true' in .env — the GitHub export is off."
-case "$REPORT_DELIVERY" in voice|both) ;; *) die "REPORT_DELIVERY='$REPORT_DELIVERY' — set it to voice|both for the audio DM." ;; esac
+# The TTS voice-DM report is retired (spoken delivery is the Gemini Live call on
+# resolve), so REPORT_DELIVERY is no longer required to be voice|both — the GitHub
+# export is the server-side proof of this demo.
 [ -n "$GOOGLE_SPACE" ]  || die "GOOGLE_SPACE is empty in .env."
-[ -n "$VOICE_SPACE" ]   || warn "GOOGLE_VOICE_SPACE empty — the voice report will land in the issue thread, not a DM."
+[ -n "$VOICE_SPACE" ]   || warn "GOOGLE_VOICE_SPACE empty — the outbound call has nowhere to ring."
 [ -n "$GITHUB_REPO" ]   || die "GITHUB_REPO is empty in .env."
-ok "chat space: $GOOGLE_SPACE   voice DM: ${VOICE_SPACE:-<issue thread>}"
+ok "chat space: $GOOGLE_SPACE   call DM: ${VOICE_SPACE:-<unset>}"
 ok "github repo: $GITHUB_REPO   delivery: $REPORT_DELIVERY"
 
 # A token for the private repo so we can confirm the filed issue server-side.
@@ -570,27 +572,14 @@ if [ "$NOISE_ENABLED" -eq 1 ]; then
 fi
 
 echo
-log "Voice report (audio + transcript) → DM"
-# Voice runs on a background pool after the in-thread close; give it a few extra
-# seconds to land, then read the bot's success log.
-for _ in $(seq 1 8); do
-  grep -q "posted voice report" "$POLLER_LOG" && break
-  sleep 3
-done
-if grep -q "posted voice report" "$POLLER_LOG"; then
-  ok "$(grep -h 'posted voice report' "$POLLER_LOG" | tail -n 1)"
-  ok "check the DM space ${VOICE_SPACE:-<issue thread>} for the MP3 + spoken transcript"
-elif grep -q "voice report delivery failed" "$POLLER_LOG"; then
-  warn "voice delivery failed (the report fell back to disk under reports/):"
-  warn "$(grep -h 'voice report delivery failed' "$POLLER_LOG" | tail -n 1)"
-else
-  warn "no voice confirmation yet — it may still be synthesizing; tail $POLLER_LOG"
-fi
+log "Resolution report → disk (reports/issue-*.md) + GitHub export (above)"
+log "  Spoken delivery is now the Gemini Live call on resolve — see logs/call-issue-*.log"
+log "  if CALL_ON_RESOLVE fired. The TTS voice-DM report is retired."
 
 echo
 log "Demo complete. Open the issue: $URL"
 log "  • Chat space (clarification thread): $GOOGLE_SPACE"
-log "  • Voice DM (audio + transcript):     ${VOICE_SPACE:-<issue thread>}"
+log "  • Resolution report:                 reports/issue-*.md (+ GitHub)"
 # One timeline, four dimensions of judgment — the combined-showcase verdict.
 if [ "$NOISE_ENABLED" -eq 1 ] || [ "$DUPE_ENABLED" -eq 1 ] || [ "$INJECTION_ENABLED" -eq 1 ]; then
   log "  Judgment on one live timeline — exactly ONE real issue filed amid the decoys:"

@@ -39,11 +39,11 @@
 #   ./demo_live_apigw.sh --keep-running   # leave the poller up after the call is placed
 #
 # Requirements (all already set up in this checkout — demo machine only):
-#   * .env with REPORT_DELIVERY=voice|both, a live OPENROUTER_API_KEY,
-#     GOOGLE_SPACE (+ GOOGLE_VOICE_SPACE for the voice DM), and the OAuth tokens
-#     under secrets/ (token_bot.json + a staff token);
-#   * GEMINI_API_KEY (the call gate; distinct from OPENROUTER_API_KEY) — HARD
-#     requirement here, since the call is the whole point of this demo;
+#   * .env with a live GEMINI_API_KEY — it powers BOTH the LLM transport
+#     (LLM_PROVIDER=gemini) AND the outbound call gate, so it is a HARD requirement
+#     here (the call is the whole point of this demo); GOOGLE_SPACE +
+#     GOOGLE_VOICE_SPACE (the DM the call rings), and the OAuth tokens under
+#     secrets/ (token_bot.json + a staff token);
 #   * the dedicated caller Brave profile (.browser-profile-caller) signed in as
 #     the bot account (first run, gemini_call.py prints the one-time sign-in cmd);
 #   * a VISIBLE desktop session — native Wayland suspends an occluded renderer,
@@ -124,13 +124,12 @@ sys.exit(0 if sys.argv[1] in data else 1)
 PY
 ok "persona '$PERSONA' present; reporting as $STAFF_TOKEN"
 
-# REPORT_DELIVERY must be voice|both — the resolve must run the voice/audio path
-# (the call rides the same resolve). disk-only would still call, but the demo
-# narrative pairs the call with the voice DM, so we require it.
-case "$REPORT_DELIVERY" in voice|both) ;; *) die "REPORT_DELIVERY='$REPORT_DELIVERY' — set it to voice|both in .env." ;; esac
+# The outbound Gemini Live call rides the resolve regardless of REPORT_DELIVERY
+# (the legacy TTS voice-DM report is retired), so it is no longer required to be
+# voice|both. GOOGLE_VOICE_SPACE is the DM the call rings — required here.
 [ -n "$GOOGLE_SPACE" ] || die "GOOGLE_SPACE is empty in .env."
-[ -n "$VOICE_SPACE" ]  || warn "GOOGLE_VOICE_SPACE empty — the voice report will land in the issue thread, not a DM."
-ok "chat space: $GOOGLE_SPACE   voice DM: ${VOICE_SPACE:-<issue thread>}   delivery: $REPORT_DELIVERY"
+[ -n "$VOICE_SPACE" ]  || die "GOOGLE_VOICE_SPACE is empty — the outbound call has nowhere to ring."
+ok "chat space: $GOOGLE_SPACE   call DM: $VOICE_SPACE   delivery: $REPORT_DELIVERY"
 
 # The CALL gate: GEMINI_API_KEY. Without it the bot self-gates the call to a
 # SILENT skip — which would make this demo pass the QA but never call. So we
@@ -345,15 +344,8 @@ fi
 
 echo
 log "Side channels on the same resolve"
-# Voice DM (audio + transcript).
-if grep -q "posted voice report" "$POLLER_LOG" 2>/dev/null; then
-  ok "voice DM: $(grep -h 'posted voice report' "$POLLER_LOG" | tail -n 1 | sed 's/^\[issue-spotter\] //')"
-  ok "  check ${VOICE_SPACE:-<issue thread>} for the MP3 + spoken transcript"
-elif grep -q "voice report delivery failed" "$POLLER_LOG" 2>/dev/null; then
-  warn "voice delivery failed (fell back to disk under reports/): $(grep -h 'voice report delivery failed' "$POLLER_LOG" | tail -n 1)"
-else
-  warn "no voice confirmation in the log yet (it may have still been synthesizing at shutdown)."
-fi
+# Spoken delivery IS the call (tailed above); the legacy TTS voice-DM report is
+# retired, so there is no separate voice-report confirmation here.
 # GitHub export (best-effort + optional server-side confirmation).
 if grep -q "filed GitHub issue for" "$POLLER_LOG" 2>/dev/null; then
   ok "github: $(grep -h 'filed GitHub issue for' "$POLLER_LOG" | tail -n 1 | sed 's/^\[issue-spotter\] //')"
@@ -407,7 +399,7 @@ fi
 echo
 log "Demo complete — apigw incident: detected → clarified → resolved → CALLED"
 log "  • Chat space (QA thread):   $GOOGLE_SPACE"
-log "  • Voice DM (audio + text):  ${VOICE_SPACE:-<issue thread>}"
+log "  • Call DM:                  $VOICE_SPACE"
 [ -n "$CALL_LOG" ] && log "  • Call transcript:          $CALL_LOG"
 log "  • Bot log:                  $POLLER_LOG"
 exit 0

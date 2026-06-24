@@ -10,7 +10,7 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
 
 ## Code layout & commands
 - **Package** (src layout): `src/gchat_agent/` — `config.py`, `models.py`, `runner.py`,
-  `observability.py`; subpackages `llm/` (base, mock, openrouter+`build_llm`, tts+`build_tts`),
+  `observability.py`; subpackages `llm/` (base, mock, gemini+`GeminiClient` (live default), openrouter+`build_llm`, tts+`build_tts`),
   `chat/` (base, google_rest, oauth, Phase-2 webhook stub), `github/` (base, rest+`build_github`),
   `rag/` (bm25, boost, chunk, fuse,
   store, optional dense), `agent/` (prompts, `state`·IssueStore, analyzer, report, staff). Entry
@@ -198,8 +198,15 @@ each gated by a full `py_compile` + `unittest` run and an independent Cursor cro
   "Voice reports = audio FILE attachment only". Because the attachment is a download-only card, the
   voice message body now **also carries the spoken transcript** (`report.voice_message_text` =
   caption + `build_narration` text), so the report stays readable in-thread without playing the file.
-- **Offline path**: `LLM_PROVIDER=mock` → MockLLM, no network/key. Live path needs `OPENROUTER_API_KEY`
-  **and** `pip install openai` (lazy core dep — NOT auto-installed in `igaming`; do it once: `conda run -n igaming pip install openai`).
+- **LLM transport**: `LLM_PROVIDER=gemini` (default) → `GeminiClient` (`llm/gemini.py`,
+  `google-genai` SDK, model `GEMINI_MODEL`=`gemini-3.5-flash`) authenticating with
+  **`GEMINI_API_KEY`** — the SAME key the Gemini Live call uses (one Google key for the
+  project). No `temperature` etc. (Gemini 3.x defaults); thinking via `GEMINI_THINKING_LEVEL`.
+  `LLM_PROVIDER=mock` → MockLLM (no network/key). `LLM_PROVIDER=openrouter` is the **legacy**
+  `openai`-SDK path (`llm/openrouter.py`+`tts.py`), kept for reference but unused by default
+  (needs `OPENROUTER_API_KEY` + `pip install openai`). The voice-report TTS rode the OpenRouter
+  path and is retired in favor of the Gemini Live call on resolve — `REPORT_DELIVERY=disk`,
+  and `build_tts` returns `None` on the gemini provider.
 - **Scripts** self-add `src/` to path: `python scripts/run_poller.py [--once]` (bot);
   `python scripts/run_staff.py --persona ops|promo|apigw|noise|dupe|injection --token <tok.json>` (staff;
   `apigw` = the "API gateway timeout" incident; `noise` = control/small-talk; `dupe` =

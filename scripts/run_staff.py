@@ -34,7 +34,9 @@ from gchat_agent.models import Message, SenderType  # noqa: E402
 def _banner(persona_id: str, token_file: str, config) -> str:
     space = config.GOOGLE_SPACE or "(unset GOOGLE_SPACE)"
     provider = config.LLM_PROVIDER
-    if provider == "openrouter":
+    if provider == "gemini":
+        provider = f"gemini:{config.GEMINI_MODEL}"
+    elif provider == "openrouter":
         provider = f"openrouter:{config.OPENROUTER_MODEL}"
     return (
         f"gchat staff persona: {persona_id}\n"

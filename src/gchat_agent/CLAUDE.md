@@ -34,7 +34,8 @@ maps *where the code is*. Docstrings cite `§N` = sections of [`PLAN.md`](../../
 
 ## Subpackages (each has its own CLAUDE.md)
 - **`agent/`** — the brain: detection · clarity · resolution · personas · persistence.
-- **`llm/`** — LLM/TTS transport (protocol, MockLLM, OpenRouter, provider factories).
+- **`llm/`** — LLM/TTS transport (protocol, MockLLM, Gemini (live default, `google-genai`),
+  legacy OpenRouter, provider factories).
 - **`chat/`** — Google Chat ingress/egress adapters + user-OAuth (stdlib urllib).
 - **`github/`** — optional GitHub issue export (Protocol + stdlib-urllib REST client +
   `build_github`). Files each resolved issue off the resolve critical path — see root

@@ -28,7 +28,9 @@ def _banner(config) -> str:
     """A one-paragraph startup banner: space, provider/model, KB on/off."""
     space = config.GOOGLE_SPACE or "(unset GOOGLE_SPACE)"
     provider = config.LLM_PROVIDER
-    if provider == "openrouter":
+    if provider == "gemini":
+        provider = f"gemini:{config.GEMINI_MODEL}"
+    elif provider == "openrouter":
         provider = f"openrouter:{config.OPENROUTER_MODEL}"
     kb = "on" if (config.KB_DIR and os.path.isdir(config.KB_DIR)) else "off"
     dense = " (dense)" if config.RAG_DENSE else ""

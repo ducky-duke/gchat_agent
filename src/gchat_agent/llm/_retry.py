@@ -1,8 +1,9 @@
-"""Shared transient-failure retry helpers for the OpenRouter LLM + TTS transports.
+"""Shared transient-failure retry helpers for the LLM + TTS transports.
 
-`OpenRouterClient` and `OpenRouterTTS` both retry 429/5xx with exponential
-backoff. This module centralizes the three pieces they previously duplicated (and
-which had drifted apart from `chat/google_rest.py`):
+`GeminiClient` (the live default), `OpenRouterClient`, and `OpenRouterTTS` all
+retry 429/5xx with exponential backoff. This module centralizes the three pieces
+they previously duplicated (and which had drifted apart from
+`chat/google_rest.py`):
 
 - `is_transient(exc)` — the 429/5xx-style classifier (status code, exception
   class name, or error text);
@@ -27,16 +28,21 @@ from typing import Any
 def is_transient(exc: Exception) -> bool:
     """True for 429 / 5xx-style errors worth an extra backoff retry.
 
-    Checks, in order: an int `status_code`/`status` attribute in the 429 or 5xx
-    range; a class name hinting at a rate-limit / connection / internal-server
-    error; or the stringified error mentioning 429 / rate limit /
-    RESOURCE_EXHAUSTED. Deliberately broad — a false positive only costs one extra
-    bounded retry, while a false negative drops a recoverable call."""
-    status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
-    if isinstance(status, int) and (status == 429 or 500 <= status < 600):
-        return True
+    Checks, in order: an int status attribute in the 429 or 5xx range — across the
+    shapes seen in the wild: the OpenAI SDK's `status_code` and the `google-genai`
+    `APIError.code` (its `status` is a STRING like 'RESOURCE_EXHAUSTED', so it's
+    skipped by the int test); a class name hinting at a rate-limit / connection /
+    server error (covers `google.genai` `ServerError`); or the stringified error
+    mentioning 429 / rate limit / RESOURCE_EXHAUSTED. Deliberately broad — a false
+    positive only costs one extra bounded retry, while a false negative drops a
+    recoverable call."""
+    for attr in ("status_code", "status", "code"):
+        val = getattr(exc, attr, None)
+        if isinstance(val, int) and (val == 429 or 500 <= val < 600):
+            return True
     name = exc.__class__.__name__.lower()
-    if "ratelimit" in name or "apiconnection" in name or "internalserver" in name:
+    if ("ratelimit" in name or "apiconnection" in name
+            or "internalserver" in name or "servererror" in name):
         return True
     text = str(exc).lower()
     return "429" in text or "rate limit" in text or "resource_exhausted" in text

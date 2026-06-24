@@ -153,10 +153,16 @@ def build_tts(config: "Config") -> "TTSClient | None":
     provider = (config.LLM_PROVIDER or "").strip().lower()
     if provider == "mock":
         return MockTTS()
+    if provider == "gemini":
+        # The voice-report TTS here is the legacy OpenRouter/`openai` transport;
+        # spoken delivery is now handled by the Gemini Live call on resolve, so the
+        # default `gemini` provider has no TTS. Return None ⇒ the runner degrades to
+        # the on-disk report (and REPORT_DELIVERY defaults to "disk" anyway).
+        return None
     if provider == "openrouter":
         if not config.OPENROUTER_API_KEY:
             raise RuntimeError("set OPENROUTER_API_KEY or LLM_PROVIDER=mock for voice reports")
         return OpenRouterTTS(config)
     raise RuntimeError(
-        f"unknown LLM_PROVIDER={config.LLM_PROVIDER!r}; use 'mock' or 'openrouter'"
+        f"unknown LLM_PROVIDER={config.LLM_PROVIDER!r}; use 'gemini', 'mock', or 'openrouter'"
     )

@@ -39,8 +39,9 @@ python -m pip install -e .
 # Option B — no install; every script and the tests run with PYTHONPATH=src
 ```
 
-The only core dependency is **`openai`** (the SDK is lazy-imported, so the
-mock/test path needs neither the package at import time nor a key). Optional
+The core LLM dependency is **`google-genai`** (the active Gemini transport;
+**`openai`** is kept for the legacy OpenRouter path). Both SDKs are lazy-imported,
+so the mock/test path needs neither the package at import time nor a key. Optional
 extras:
 
 ```bash
@@ -69,16 +70,17 @@ LLM_PROVIDER=mock
 ```
 
 `mock` uses a deterministic in-process LLM — no API key, no network. The default
-provider is `openrouter`; selecting it without `OPENROUTER_API_KEY` set makes
-`build_llm` raise a clear `RuntimeError`. On the `openrouter` path,
-`OPENROUTER_REASONING` defaults to `true`, sending
-`extra_body={"reasoning": {"enabled": True}}` on every completion so
-reasoning-capable models (e.g. `deepseek/deepseek-v4-flash`) think before
-answering; set `OPENROUTER_REASONING=false` for lower latency/cost.
-`OPENROUTER_QUANTIZATIONS` (default `fp8`, comma-separated) pins OpenRouter
-routing to endpoints serving those quants via
-`extra_body={"provider": {"quantizations": [...]}}`; leave it empty to drop the
-constraint.
+provider is **`gemini`** (the Gemini API via `google-genai`); selecting it without
+`GEMINI_API_KEY` set makes `build_llm` raise a clear `RuntimeError`. `GEMINI_API_KEY`
+is the **same key** the Gemini Live voice call uses — one Google key for the whole
+project. The model is `GEMINI_MODEL` (default `gemini-3.5-flash`); per the Gemini 3.x
+guidance the sampling knobs (`temperature`/`top_p`/`top_k`) are intentionally not set,
+and reasoning depth is tuned via `GEMINI_THINKING_LEVEL` (`minimal`|`low`|`medium`|
+`high`; blank = the model default).
+
+The legacy `openrouter` provider (the `openai` SDK pointed at OpenRouter) is kept for
+reference but is no longer the default; it needs `OPENROUTER_API_KEY` and its own
+`OPENROUTER_MODEL`/`OPENROUTER_REASONING`/`OPENROUTER_QUANTIZATIONS` knobs.
 
 ## Run the tests
 
@@ -129,7 +131,14 @@ Resolution reports land in `reports/issue-<id>.md`.
 > `users/<id>` to skip the one startup lookup. The banner's `self:` line shows
 > whether it's pinned or auto-detecting.
 
-## Voice reports (text-to-speech)
+## Voice reports (text-to-speech) — legacy
+
+> **Note:** Spoken delivery is now the **Gemini Live call on resolve**
+> (`CALL_ON_RESOLVE`), which relays the clarified incident to a human over a real
+> Chat call. The TTS voice report below rode the OpenRouter/`openai` transport and is
+> retired: keep `REPORT_DELIVERY=disk`. On the default `gemini` provider `build_tts`
+> returns `None` (graceful disk fallback); the table below applies only to the legacy
+> `LLM_PROVIDER=openrouter` path, which is kept for reference.
 
 Instead of (or alongside) the on-disk Markdown, a resolved issue can be delivered
 as a **spoken audio note** posted to Google Chat. Set `REPORT_DELIVERY` in `.env`:
@@ -193,7 +202,7 @@ gchat_agent/
 │   ├── models.py              # Conversation, Message, Issue, QAPair, Status, …
 │   ├── runner.py              # Runner / build_runner — the orchestration loop
 │   ├── observability.py       # optional langfuse tracing (no-op by default)
-│   ├── llm/                   # base protocol, mock, openrouter (build_llm), tts (build_tts)
+│   ├── llm/                   # base protocol, mock, gemini (live default), openrouter (legacy), build_llm/tts
 │   ├── chat/                  # ChatClient base, google_rest, oauth
 │   ├── rag/                   # base (Retriever protocol), store (build_retriever), bm25, boost, chunk, dense, fuse
 │   └── agent/                 # analyzer, state (IssueStore), report, staff, prompts

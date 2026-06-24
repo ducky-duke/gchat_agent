@@ -7,9 +7,12 @@ name = "gchat-agent"
 version = "0.1.0"
 description = "Google Chat issue-spotter AI agent (detect → clarify → report)."
 requires-python = ">=3.11"
-# Core LLM transport (§2/§9): the official OpenAI SDK pointed at OpenRouter.
-# Pure-Python and lazy-imported at runtime, so the mock/CI path needs no key.
+# Core LLM transport (§2/§9): `google-genai` is the active path (Gemini API,
+# GEMINI_API_KEY). `openai` is the legacy OpenRouter transport, kept but no longer
+# selected by default. Both are pure-Python and lazy-imported at runtime, so the
+# mock/CI path needs neither key nor SDK.
 dependencies = [
+    "google-genai",
     "openai",
 ]
 

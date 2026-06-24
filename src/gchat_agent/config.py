@@ -96,7 +96,24 @@ class Config:
     """Immutable, fully-resolved settings (every §10 key)."""
 
     # --- LLM provider / transport ---
-    LLM_PROVIDER: str = "openrouter"  # or: mock
+    # Live transport: "gemini" talks to the Gemini API directly via the
+    # `google-genai` SDK, authenticating with GEMINI_API_KEY (the SAME key the
+    # Gemini Live voice call uses — one Google key for the whole project). "mock"
+    # is the offline/test path. "openrouter" (the legacy `openai`-SDK transport in
+    # llm/openrouter.py + llm/tts.py) is kept for reference but no longer the
+    # default.
+    LLM_PROVIDER: str = "gemini"  # gemini | mock | openrouter
+    # Gemini model id for the live transport (see
+    # docs/gemini_live/whats-new-gemini-3.5.md.txt). gemini-3.5-flash is the GA
+    # frontier Flash model with a 1M-token context.
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+    # Optional thinking depth for Gemini 3.x: "minimal" | "low" | "medium" |
+    # "high". Blank ⇒ leave the model default (medium for gemini-3.5-flash). Use a
+    # lower level ("low"/"minimal") to trade some reasoning for latency on the
+    # detect/clarity/questions JSON tasks. (Replaces the OpenRouter `reasoning`
+    # toggle / raw `thinking_budget`.)
+    GEMINI_THINKING_LEVEL: str = ""
+    # --- legacy OpenRouter transport (kept, but not used by the gemini default) ---
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "deepseek/deepseek-v4-flash"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
@@ -265,9 +282,11 @@ class Config:
     # Wayland suspends an occluded renderer, so never headless/CI). Set False to
     # disable entirely.
     CALL_ON_RESOLVE: bool = True
-    # Gemini Live API key for the outbound call (DISTINCT from OPENROUTER_API_KEY).
-    # The runner only reads it to decide whether the call can work (the spawn is
-    # skipped when blank); gemini_call.py reads the real key from env/.env itself.
+    # The single Google API key for the whole project (distinct from the legacy
+    # OPENROUTER_API_KEY). It powers BOTH (a) the core LLM transport when
+    # LLM_PROVIDER=gemini (see GEMINI_MODEL) and (b) the outbound Gemini Live voice
+    # call on resolve. For the call the runner only reads it to decide whether the
+    # spawn can work (skipped when blank); gemini_call.py reads the real key itself.
     GEMINI_API_KEY: str = ""
     # The call orchestrator to spawn (relative to the poller's cwd, i.e. repo root).
     CALL_SCRIPT: str = "call/gemini_call.py"
@@ -334,10 +353,15 @@ _FLOAT_KEYS: Final[frozenset[str]] = frozenset({"RESOLVE_CONFIDENCE_THRESHOLD"})
 
 # Allowed values for the enum-like string settings (lower-cased on compare).
 _ENUM_CHOICES: Final[dict[str, frozenset[str]]] = {
-    "LLM_PROVIDER": frozenset({"mock", "openrouter"}),
+    "LLM_PROVIDER": frozenset({"mock", "gemini", "openrouter"}),
     "OBSERVABILITY": frozenset({"none", "langfuse"}),
     "REPORT_DELIVERY": frozenset({"disk", "voice", "both"}),
 }
+
+# Allowed Gemini thinking-depth levels; blank ⇒ leave the model default.
+_THINKING_LEVELS: Final[frozenset[str]] = frozenset(
+    {"", "minimal", "low", "medium", "high"}
+)
 
 
 def validate_config(config: Config) -> Config:
@@ -357,6 +381,13 @@ def validate_config(config: Config) -> Config:
         if val not in choices:
             allowed = ", ".join(sorted(choices))
             problems.append(f"{key}={getattr(config, key)!r} (allowed: {allowed})")
+
+    level = str(config.GEMINI_THINKING_LEVEL or "").strip().lower()
+    if level not in _THINKING_LEVELS:
+        allowed = ", ".join(sorted(c for c in _THINKING_LEVELS if c)) + ", or blank"
+        problems.append(
+            f"GEMINI_THINKING_LEVEL={config.GEMINI_THINKING_LEVEL!r} (allowed: {allowed})"
+        )
 
     if not (0.0 <= config.RESOLVE_CONFIDENCE_THRESHOLD <= 1.0):
         problems.append(
@@ -413,9 +444,9 @@ def load_config(env_file: str = _DEFAULT_ENV_FILE) -> Config:
         if name in _BOOL_KEYS:
             kwargs[name] = _to_bool(raw)
         elif name in _INT_KEYS:
-            kwargs[name] = _to_int(raw, field.default)  # type: ignore[arg-type]
+            kwargs[name] = _to_int(raw, field.default)  # ty: ignore[invalid-argument-type]
         elif name in _FLOAT_KEYS:
-            kwargs[name] = _to_float(raw, field.default)  # type: ignore[arg-type]
+            kwargs[name] = _to_float(raw, field.default)  # ty: ignore[invalid-argument-type]
         else:
             kwargs[name] = raw
-    return validate_config(Config(**kwargs))  # type: ignore[arg-type]
+    return validate_config(Config(**kwargs))  # ty: ignore[invalid-argument-type]

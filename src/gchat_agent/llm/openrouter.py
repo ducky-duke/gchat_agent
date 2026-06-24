@@ -228,19 +228,28 @@ class OpenRouterClient:
 def build_llm(config: "Config") -> LLMClient:
     """Provider factory (§5.3).
 
-    Returns `MockLLM()` when `LLM_PROVIDER == "mock"`. For `"openrouter"`, raises
-    a clear `RuntimeError` if no API key is set; otherwise returns an
-    `OpenRouterClient`.
+    Returns `MockLLM()` when `LLM_PROVIDER == "mock"`. For the live providers
+    (`"gemini"` — the default `google-genai` transport — or the legacy
+    `"openrouter"`), raises a clear `RuntimeError` if the relevant API key is
+    unset; otherwise returns the matching client. The `GeminiClient` lives in
+    `llm/gemini.py`; this stays the single provider-selection seam.
     """
     provider = (config.LLM_PROVIDER or "").strip().lower()
     if provider == "mock":
         from gchat_agent.llm.mock import MockLLM  # local import; no third-party
 
         return MockLLM()
+    if provider == "gemini":
+        if not config.GEMINI_API_KEY:
+            raise RuntimeError("set GEMINI_API_KEY or LLM_PROVIDER=mock")
+        from gchat_agent.llm.gemini import GeminiClient  # lazy: imports google-genai
+
+        return GeminiClient(config)
     if provider == "openrouter":
         if not config.OPENROUTER_API_KEY:
             raise RuntimeError("set OPENROUTER_API_KEY or LLM_PROVIDER=mock")
         return OpenRouterClient(config)
     raise RuntimeError(
-        f"unknown LLM_PROVIDER={config.LLM_PROVIDER!r}; use 'mock' or 'openrouter'"
+        f"unknown LLM_PROVIDER={config.LLM_PROVIDER!r}; "
+        "use 'gemini', 'mock', or 'openrouter'"
     )
